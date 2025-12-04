@@ -1,0 +1,33 @@
+{
+  "id": "partner-categories",
+  "type": "Collection",
+  "info": {
+    "title": "PartnerCategory",
+    "singularName": "partner-category",
+    "pluralName": "partner-categories",
+    "description": "Categories of partner"
+  },
+  "options": {
+    "draftAndPublish": true,
+    "localizations": ["en", "ro", "ru"]
+  },
+  "attributes": [
+    {
+      "id": "uid",
+      "type": "Uid",
+      "required": true
+    },
+    {
+      "id": "name",
+      "type": "Text",
+      "required": true,
+      "localized": true
+    },
+    {
+      "id": "priority",
+      "type": "Integer",
+      "unique": true,
+      "required": true
+    }
+  ]
+}

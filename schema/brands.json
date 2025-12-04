@@ -1,0 +1,38 @@
+{
+  "id": "brands",
+  "type": "Collection",
+  "info": {
+    "title": "Brands",
+    "singularName": "brand",
+    "pluralName": "brands",
+    "description": "Brands of partners"
+  },
+  "options": {
+    "draftAndPublish": true,
+    "localizations": ["en", "ro"]
+  },
+  "attributes": [
+    {
+      "id": "uid",
+      "type": "Uid",
+      "unique": true,
+      "required": true,
+      "constraints": {
+        "minimalLength": 4,
+        "maximalLength": 10
+      }
+    },
+    {
+      "id": "name",
+      "type": "Text",
+      "required": true,
+      "localized": true
+    },
+    {
+      "id": "partners",
+      "relation": "ManyToMany",
+      "target": "partners",
+      "inversedBy": "brands"
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+[workspace]
+members = [
+    "common",
+    "migration",
+    "service"
+]
+resolver = "3" # Recommended for newer Cargo features

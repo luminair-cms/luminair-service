@@ -1,0 +1,47 @@
+{
+  "id": "partners",
+  "type": "Collection",
+  "info": {
+    "title": "Partners",
+    "singularName": "partner",
+    "pluralName": "partners",
+    "description": "Partners with unique IDNO and Legal Entity"
+  },
+  "options": {
+    "draftAndPublish": true
+  },
+  "attributes": [
+    {
+      "id": "idno",
+      "type": "Text",
+      "unique": true,
+      "required": true,
+      "constraints": {
+        "pattern": "^[0-9]{13}$"
+      }
+    },
+    {
+      "id": "legal_entity",
+      "type": "Text",
+      "unique": true,
+      "required": true
+    },
+    {
+      "id": "brands",
+      "relation": "ManyToMany",
+      "target": "brands",
+      "mappedBy": "partners"
+    },
+    {
+      "id": "category",
+      "relation": "OneToOne",
+      "target": "partner-categories"
+    },
+    {
+      "id": "points-of-sale",
+      "relation": "OneToMany",
+      "target": "points-of-sale",
+      "mappedBy": "partner"
+    }
+  ]
+}

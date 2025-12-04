@@ -1,0 +1,42 @@
+{
+  "id": "points_of_sale",
+  "type": "Collection",
+  "info": {
+    "title": "Points of sale",
+    "singularName": "point-of-sale",
+    "pluralName": "points-of-sale",
+    "description": "Point of sale (concrete address)"
+  },
+  "options": {
+    "draftAndPublish": true,
+    "localizations": ["en", "ro", "ru"]
+  },
+  "attributes": [
+    {
+      "id": "title",
+      "type": "Text"
+    },
+    {
+      "id": "location",
+      "type": "Text",
+      "required": true,
+      "localized": true
+    },
+    {
+      "id": "latitude",
+      "type": "Decimal",
+      "required": true
+    },
+    {
+      "id": "longitude",
+      "type": "Decimal",
+      "required": true
+    },
+    {
+      "id": "partner",
+      "relation": "ManyToOne",
+      "target": "partners",
+      "inversedBy": "points-of-sale"
+    }
+  ]
+}
