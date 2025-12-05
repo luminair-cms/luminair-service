@@ -14,7 +14,7 @@ use crate::domain::{
 };
 
 #[derive(Clone)]
-pub struct DocumentsAdapter {
+pub(crate) struct DocumentsAdapter {
     internal: Arc<Internal>,
 }
 

@@ -1,14 +1,7 @@
-use std::collections::HashSet;
-
 use luminair_common::domain::{
     document_attributes::{AttributeBody, AttributeType},
     documents::{Document, Documents},
 };
-
-pub trait Tables: Send + Sync + Clone + 'static {
-    /// load tables from database
-    fn load(&self) -> impl Future<Output = Result<HashSet<String>, anyhow::Error>>;
-}
 
 /// Represents table in a database, used for ddl generation
 pub struct Table {

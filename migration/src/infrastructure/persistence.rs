@@ -2,25 +2,21 @@ use std::collections::HashSet;
 
 use luminair_common::infrastructure::database::Database;
 
-use crate::domain::tables::Tables;
-
+use crate::domain::persistence::Persistence;
 
 #[derive(Clone)]
-pub struct TablesAdapter {
-    database: Database
+pub struct PersistenceAdapter {
+    database: Database,
 }
 
-impl TablesAdapter {
+impl PersistenceAdapter {
     pub fn new(database: Database) -> Self {
         Self { database }
     }
 }
 
-impl Tables for TablesAdapter {
-    
-    // https://github.com/strapi/strapi/blob/develop/packages/core/database/src/dialects/postgresql/schema-inspector.ts
-    
-    async fn load(&self) -> Result<HashSet<String>, anyhow::Error> {
+impl Persistence for PersistenceAdapter {
+    async fn load(&self) -> Result<std::collections::HashSet<String>, anyhow::Error> {
         use futures::TryStreamExt;
         
         let sql = "SELECT table_name
@@ -42,5 +38,22 @@ impl Tables for TablesAdapter {
         }
         
         Ok(set)
+    }
+
+    async fn apply_migration_steps(&self, steps: Vec<impl crate::domain::migration::MigrationStep>)-> Result<(), anyhow::Error> {
+        use futures::stream::{self, StreamExt};
+    
+        let mut stream = stream::iter(steps);
+        while let Some(step) = stream.next().await {
+            let ctx = step.ctx();
+            let ddls = step.ddls();
+            self.database.excute_in_transaction(ddls, ctx).await?;
+        }
+    
+        Ok(())
+    }
+    
+    fn datbase_schema(&self) -> &str {
+        self.database.database_schema()
     }
 }
