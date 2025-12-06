@@ -1,12 +1,14 @@
-use luminair_common::{domain::documents::Documents, infrastructure::database::Database};
+use luminair_common::domain::documents::Documents;
 
-use crate::domain::tables::{Column, ForeignKeyConstraint, Index, Table, Tables, documents_into_tables};
+use crate::domain::{
+    persistence::Persistence,
+    tables::{Column, ForeignKeyConstraint, Index, Table, documents_into_tables},
+};
 
-pub trait Migration: Send + Sync + Clone + 'static {
-    type D: Documents;
-    type T: Tables;
-
-    fn migrate(&self) -> impl Future<Output = Result<(), anyhow::Error>>;
+#[derive(Clone)]
+pub struct Migration<D: Documents, P: Persistence> {
+    documents: D,
+    persistence: P,
 }
 
 pub trait MigrationStep {
@@ -35,39 +37,32 @@ impl MigrationStep for CreateTableStep {
     }
 }
 
-pub async fn migration_steps(
-    database_schema: &str,
-    documents: &impl Documents,
-    tables: &impl Tables,
-) -> Result<Vec<impl MigrationStep>, anyhow::Error> {
-    let needed_schema = documents_into_tables(documents);
-    let actual_schema = tables.load().await?;
-
-    let mut result = Vec::new();
-
-    for table in needed_schema {
-        if !actual_schema.contains(&table.name) {
-            result.push(CreateTableStep::new(database_schema, &table));
+impl<D: Documents, P: Persistence> Migration<D, P> {
+    pub fn new(documents: D, persistence: P) -> Self {
+        Self {
+            documents,
+            persistence,
         }
     }
 
-    Ok(result)
-}
+    // working with SERIAL types: https://www.bytebase.com/reference/postgres/how-to/how-to-use-serial-postgres/
+    /// migrate database schema conform documents configuration
+    pub async fn migrate(&self) -> Result<(), anyhow::Error> {
+        let needed_schema = documents_into_tables(&self.documents);
+        let actual_schema = self.persistence.load().await?;
 
-pub async fn apply_migration_steps(
-    steps: Vec<impl MigrationStep>,
-    database: &Database,
-) -> Result<(), anyhow::Error> {
-    use futures::stream::{self, StreamExt};
+        let mut migration_steps = Vec::new();
+        for table in needed_schema {
+            if !actual_schema.contains(&table.name) {
+                migration_steps.push(CreateTableStep::new(
+                    self.persistence.datbase_schema(),
+                    &table,
+                ));
+            }
+        }
 
-    let mut stream = stream::iter(steps);
-    while let Some(step) = stream.next().await {
-        let ctx = step.ctx();
-        let ddls = step.ddls();
-        database.excute_in_transaction(ddls, ctx).await?;
+        Ok(())
     }
-
-    Ok(())
 }
 
 fn create_table_ddl(schema: &str, table: &Table) -> Vec<String> {
