@@ -13,7 +13,7 @@ pub struct Attribute {
     pub body: AttributeBody
 }
 
-/// Attribute can be Field of Relation
+/// Attribute can be Field of Association
 /// in the future will be Component attribute type
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -29,11 +29,10 @@ pub enum AttributeBody {
         constraints: Option<AttributeConstraints>
     },
     Relation {
-        relation_type: RelationType,
+        association_type: RelationType,
         target: DocumentId,
         ordering: bool,
-        mapped_by: Option<AttributeId>,
-        inversed_by: Option<AttributeId>
+        related_with: Option<RelationAttribute>,
     }
 }
 
@@ -63,7 +62,8 @@ pub enum AttributeType {
         PartialOrd,
         Ord,
         Hash,
-        Serialize
+        Serialize,
+        Deserialize
     )
 )]
 pub struct AttributeId(String);
@@ -82,6 +82,15 @@ pub enum RelationType {
     OneToMany,
     ManyToOne,
     ManyToMany,
+}
+
+/// Relation attributes of bidirectional association
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub enum RelationAttribute {
+    /// in owning side, specifies the attribute on the inverse side
+    InversedBy(AttributeId),
+    /// in the inverse side, specifies the attribute on the owning side
+    MappedBy(AttributeId),
 }
 
 // implementations
@@ -104,13 +113,12 @@ impl Attribute {
     
     pub fn new_relation(
         id: AttributeId,
-        relation_type: RelationType,
+        association_type: RelationType,
         target: DocumentId,
         ordering: bool,
-        mapped_by: Option<AttributeId>,
-        inversed_by: Option<AttributeId>
+        related_with: Option<RelationAttribute>
     ) -> Self {
-        let body = AttributeBody::Relation { relation_type, target, ordering, mapped_by, inversed_by };
+        let body = AttributeBody::Relation { association_type, target, ordering, related_with };
         Self {
             id, 
             body

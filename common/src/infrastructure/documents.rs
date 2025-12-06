@@ -5,7 +5,7 @@ use serde::Deserialize;
 
 use crate::domain::{
     document_attributes::{
-        Attribute, AttributeBody, AttributeConstraints, AttributeId, AttributeType, RelationType,
+        Attribute, AttributeBody, AttributeConstraints, AttributeId, AttributeType, RelationAttribute, RelationType,
     },
     documents::{
         Document, DocumentDescription, DocumentId, DocumentInfo, DocumentOptions, DocumentTitle,
@@ -256,12 +256,17 @@ impl<'a> TryFrom<AttributeBodyRecord<'a>> for AttributeBody {
                 let target = DocumentId::try_new(target)?;
                 let mapped_by = mapped_by.map(AttributeId::try_new).transpose()?;
                 let inversed_by = inversed_by.map(AttributeId::try_new).transpose()?;
+                let related_with = match (inversed_by, mapped_by) {
+                    (None, None) => Ok::<Option<RelationAttribute>, anyhow::Error>(None),
+                    (Some(_), Some(_)) => anyhow::bail!("both mapped_by and inversed_by are set"),
+                    (Some(attribute_id), None) => Ok(Some(RelationAttribute::InversedBy(attribute_id))),
+                    (None, Some(attribute_id)) => Ok(Some(RelationAttribute::MappedBy(attribute_id))),
+                }?;
                 Self::Relation {
-                    relation_type: relation,
+                   association_type: relation,
                     target,
                     ordering,
-                    mapped_by,
-                    inversed_by,
+                    related_with
                 }
             }
         };
