@@ -27,12 +27,13 @@
       "type": "Text",
       "required": true,
       "localized": true
-    },
+    }
+  ],
+  "relations": [
     {
       "id": "partners",
-      "relation": "ManyToMany",
-      "target": "partners",
-      "inversedBy": "brands"
+      "relation": "BelongsToMany",
+      "target": "partners"
     }
   ]
 }

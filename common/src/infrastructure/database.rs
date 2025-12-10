@@ -77,7 +77,11 @@ impl Database {
             .await
             .context(format!("failed to start {} transaction", ctx))?;
 
+        println!("{}", ctx);
+
         for ddl in queries {
+            println!("{}", ddl);
+
             transaction
                 .execute(sqlx::query(&ddl))
                 .await

@@ -6,8 +6,8 @@ use crate::domain::{
 };
 
 #[derive(Clone)]
-pub struct Migration<D: Documents, P: Persistence> {
-    documents: D,
+pub struct Migration<P: Persistence> {
+    documents: &'static dyn Documents,
     persistence: P,
 }
 
@@ -37,8 +37,8 @@ impl MigrationStep for CreateTableStep {
     }
 }
 
-impl<D: Documents, P: Persistence> Migration<D, P> {
-    pub fn new(documents: D, persistence: P) -> Self {
+impl<P: Persistence> Migration<P> {
+    pub fn new(documents: &'static dyn Documents, persistence: P) -> Self {
         Self {
             documents,
             persistence,
@@ -48,7 +48,7 @@ impl<D: Documents, P: Persistence> Migration<D, P> {
     // working with SERIAL types: https://www.bytebase.com/reference/postgres/how-to/how-to-use-serial-postgres/
     /// migrate database schema conform documents configuration
     pub async fn migrate(&self) -> Result<(), anyhow::Error> {
-        let needed_schema = documents_into_tables(&self.documents);
+        let needed_schema = documents_into_tables(self.documents);
         let actual_schema = self.persistence.load().await?;
 
         let mut migration_steps = Vec::new();
@@ -60,6 +60,8 @@ impl<D: Documents, P: Persistence> Migration<D, P> {
                 ));
             }
         }
+
+        self.persistence.apply_migration_steps(migration_steps).await?;
 
         Ok(())
     }

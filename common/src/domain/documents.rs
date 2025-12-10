@@ -1,17 +1,19 @@
 use std::{borrow::Borrow, hash::Hash, sync::LazyLock};
-
+use std::fmt::Debug;
 use nutype::nutype;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 
-use crate::domain::document_attributes::Attribute;
+use crate::domain::attributes::Attribute;
+use crate::domain::DocumentId;
+use crate::domain::relations::Relation;
 
 static VALID_LOCALIZATIONS_REGEX: LazyLock<Regex> =
     LazyLock::new(|| Regex::new("^(ru|ro|en)").unwrap());
 
-pub trait Documents: Send + Sync + Clone + 'static {
+pub trait Documents: Send + Sync + Debug + 'static {
     /// return documents metadata
-    fn documents(&self) -> impl Iterator<Item = &Document>;
+    fn documents(&self) -> Box<dyn Iterator<Item = &Document> + '_>;
     /// find document by it's id
     fn get_document(&self, id: &DocumentId) -> Option<&Document>;
 }
@@ -19,7 +21,7 @@ pub trait Documents: Send + Sync + Clone + 'static {
 // structs
 
 /// A uniquely identifiable Document.
-#[derive(Clone, Debug, Serialize)]
+#[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Document {
     pub id: DocumentId,
@@ -27,6 +29,8 @@ pub struct Document {
     pub info: DocumentInfo,
     pub options: Option<DocumentOptions>,
     pub attributes: Vec<Attribute>,
+    #[serde(default)]
+    pub relations: Vec<Relation>
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -43,15 +47,6 @@ pub struct DocumentInfo {
     pub singular_name: DocumentId,
     pub plural_name: DocumentId,
 }
-
-#[nutype(
-    sanitize(trim, lowercase),
-    validate(not_empty, len_char_max=20, predicate = crate::domain::is_eligible_id),
-    derive(Clone, Debug, Display, FromStr, AsRef,
-           PartialEq, Eq, PartialOrd, Ord, Hash,
-           Serialize)
-)]
-pub struct DocumentId(String);
 
 #[nutype(
     sanitize(trim),
@@ -111,22 +106,6 @@ pub struct LocalizationId(String);
 // implementations
 
 impl Document {
-    pub fn new(
-        id: DocumentId,
-        document_type: DocumentType,
-        info: DocumentInfo,
-        options: Option<DocumentOptions>,
-        attributes: Vec<Attribute>,
-    ) -> Self {
-        Self {
-            id,
-            document_type,
-            info,
-            options,
-            attributes,
-        }
-    }
-
     pub fn has_localization(&self) -> bool {
         self.options.as_ref().map_or(false, |options|!options.localizations.is_empty())
     }
@@ -134,11 +113,6 @@ impl Document {
     pub fn has_draft_and_publish(&self) -> bool {
         self.options.as_ref().map_or(false, |options|options.draft_and_publish)
     }
-    
-    pub fn table_name(&self) -> String {
-        self.id.as_ref().replace("-", "_")
-    }
-
 }
 
 impl PartialEq for Document {
@@ -154,7 +128,7 @@ impl PartialEq<DocumentId> for Document {
     }
 }
 
-impl Borrow<DocumentId> for Document {
+impl Borrow<DocumentId> for &Document {
     fn borrow(&self) -> &DocumentId {
         &self.id
     }

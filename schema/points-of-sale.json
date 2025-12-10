@@ -1,5 +1,5 @@
 {
-  "id": "points_of_sale",
+  "id": "points-of-sale",
   "type": "Collection",
   "info": {
     "title": "Points of sale",
@@ -31,12 +31,13 @@
       "id": "longitude",
       "type": "Decimal",
       "required": true
-    },
+    }
+  ],
+  "relations": [
     {
       "id": "partner",
-      "relation": "ManyToOne",
-      "target": "partners",
-      "inversedBy": "points-of-sale"
+      "relation": "BelongsToOne",
+      "target": "partners"
     }
   ]
 }

@@ -25,23 +25,23 @@
       "type": "Text",
       "unique": true,
       "required": true
-    },
+    }
+  ],
+  "relations": [
     {
       "id": "brands",
-      "relation": "ManyToMany",
-      "target": "brands",
-      "mappedBy": "partners"
+      "relation": "HasMany",
+      "target": "brands"
     },
     {
       "id": "category",
-      "relation": "OneToOne",
+      "relation": "HasOne",
       "target": "partner-categories"
     },
     {
       "id": "points-of-sale",
-      "relation": "OneToMany",
-      "target": "points-of-sale",
-      "mappedBy": "partner"
+      "relation": "HasMany",
+      "target": "points-of-sale"
     }
   ]
 }
