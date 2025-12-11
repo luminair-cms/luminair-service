@@ -1,0 +1,109 @@
+mod generate;
+
+pub use generate::documents_into_tables;
+
+/// Represents table in a database, used for ddl generation
+pub struct Table {
+    pub name: String,
+    pub columns: Vec<Column>,
+    pub foreign_keys: Vec<ForeignKeyConstraint>,
+    pub indexes: Vec<Index>,
+}
+
+/// Represents one column in the database table
+pub struct Column {
+    pub name: String,
+    pub column_type: String,
+    pub not_null: bool,
+    pub unique: bool,
+    pub primary_key: bool,
+    pub default_value: Option<String>,
+}
+
+/// Represents foreign key constraint in the database table
+pub struct ForeignKeyConstraint {
+    pub table_name: String,
+    pub column_name: String,
+    pub referenced_table_name: String,
+    pub referenced_column_name: String,
+}
+
+/// Represents an index in the database table
+pub struct Index {
+    pub table_name: String,
+    pub columns: Vec<String>,
+    pub unique: bool,
+}
+
+impl Table {
+    pub fn new(
+        name: String,
+        columns: Vec<Column>,
+        foreign_keys: Vec<ForeignKeyConstraint>,
+        indexes: Vec<Index>,
+    ) -> Self {
+        Self {
+            name,
+            columns,
+            foreign_keys,
+            indexes,
+        }
+    }
+}
+
+impl Column {
+    pub fn new<T: Into<String>>(
+        name: T,
+        column_type: T,
+        not_null: bool,
+        unique: bool,
+        default_value: Option<T>,
+    ) -> Self {
+        let primary_key = false;
+        Self {
+            name: name.into(),
+            column_type: column_type.into(),
+            not_null,
+            unique,
+            primary_key,
+            default_value: default_value.map(T::into),
+        }
+    }
+
+    pub fn primary_key<T: Into<String>>(name: T, column_type: T) -> Self {
+        Self {
+            name: name.into(),
+            column_type: column_type.into(),
+            not_null: false,
+            unique: false,
+            primary_key: true,
+            default_value: None,
+        }
+    }
+}
+
+impl ForeignKeyConstraint {
+    pub fn new<T: Into<String>>(
+        table_name: T,
+        column_name: T,
+        referenced_table_name: T,
+        referenced_column_name: T,
+    ) -> Self {
+        Self {
+            table_name: table_name.into(),
+            column_name: column_name.into(),
+            referenced_table_name: referenced_table_name.into(),
+            referenced_column_name: referenced_column_name.into(),
+        }
+    }
+}
+
+impl Index {
+    pub fn new<T: Into<String>>(table_name: T, columns: Vec<T>, unique: bool) -> Self {
+        Self {
+            table_name: table_name.into(),
+            columns: columns.into_iter().map(T::into).collect(),
+            unique,
+        }
+    }
+}

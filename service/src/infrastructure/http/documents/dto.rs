@@ -1,6 +1,9 @@
-use luminair_common::domain::attributes::{Attribute, AttributeConstraints, AttributeType};
+use luminair_common::domain::attributes::{
+    Attribute, AttributeBody, AttributeConstraints, AttributeType, RelationTarget, RelationType,
+};
 use luminair_common::domain::documents::{Document, DocumentInfo, DocumentOptions, DocumentType};
 use serde::Serialize;
+use std::ops::Deref;
 
 /// Response for list documents route
 #[derive(Debug, Clone, Serialize)]
@@ -37,7 +40,7 @@ pub struct DetailedDocumentResponse {
     document_type: DocumentType,
     info: DocumentInfoResponse,
     options: Option<DocumentOptionsResponse>,
-    attributes: Vec<AttributeResponse>
+    attributes: Vec<AttributeResponse>,
 }
 
 /// Document info from one document response
@@ -62,13 +65,29 @@ pub struct DocumentOptionsResponse {
 #[serde(rename_all = "camelCase")]
 pub struct AttributeResponse {
     id: String,
-    attribute_type: AttributeType,
-    unique: bool,
-    #[serde(default)]
-    required: bool,
-    #[serde(default)]
-    localized: bool,
-    constraints: Option<AttributeConstraints>
+    #[serde(flatten)]
+    body: AttribteBodyResponse,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase", untagged)]
+pub enum AttribteBodyResponse {
+    Field {
+        attribute_type: AttributeType,
+        unique: bool,
+        #[serde(default)]
+        required: bool,
+        #[serde(default)]
+        localized: bool,
+        constraints: Option<AttributeConstraints>,
+    },
+    Relation {
+        #[serde(alias = "relation")]
+        relation_type: RelationType,
+        target: String,
+        #[serde(default)]
+        ordering: bool,
+    },
 }
 
 impl PartialEq for DetailedDocumentResponse {
@@ -85,7 +104,11 @@ impl From<&Document> for DetailedDocumentResponse {
             document_type: value.document_type.clone(),
             info: (&value.info).into(),
             options: value.options.as_ref().map(DocumentOptionsResponse::from),
-            attributes: value.attributes.iter().map(AttributeResponse::from).collect()
+            attributes: value
+                .attributes
+                .iter()
+                .map(AttributeResponse::from)
+                .collect(),
         }
     }
 }
@@ -105,20 +128,49 @@ impl From<&DocumentOptions> for DocumentOptionsResponse {
     fn from(value: &DocumentOptions) -> Self {
         Self {
             draft_and_publish: value.draft_and_publish,
-            localizations: value.localizations.iter().map(|l| l.to_string()).collect()
+            localizations: value.localizations.iter().map(|l| l.to_string()).collect(),
         }
     }
 }
 
 impl From<&Attribute> for AttributeResponse {
     fn from(value: &Attribute) -> Self {
-        Self {
-            id: value.id.to_string(),
-            attribute_type: value.attribute_type.clone(),
-            unique: value.unique,
-            required: value.required,
-            localized: value.localized,
-            constraints: value.constraints.as_ref().map(|c|c.clone())
-        }
+        let id = value.id.to_string();
+        let body = match &value.body {
+            AttributeBody::Field {
+                attribute_type,
+                unique,
+                required,
+                localized,
+                constraints,
+            } => {
+                let constraints = constraints.as_ref().map(|c| c.clone());
+                AttribteBodyResponse::Field {
+                    attribute_type: attribute_type.clone(),
+                    unique: *unique,
+                    required: *required,
+                    localized: *localized,
+                    constraints,
+                }
+            }
+            AttributeBody::Relation {
+                relation_type,
+                target,
+                ordering,
+            } => {
+                let target_document_lock = target.read().unwrap();
+                let target = match target_document_lock.deref() {
+                    RelationTarget::Id(id) => id.to_string(),
+                    RelationTarget::Ref(document) => document.id.to_string(),
+                };
+                AttribteBodyResponse::Relation {
+                    relation_type: relation_type.clone(),
+                    target,
+                    ordering: *ordering,
+                }
+            }
+        };
+
+        Self { id, body }
     }
 }

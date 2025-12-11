@@ -2,8 +2,9 @@ use luminair_common::domain::documents::Documents;
 
 use crate::domain::{
     persistence::Persistence,
-    tables::{Column, ForeignKeyConstraint, Index, Table, documents_into_tables},
+    tables::{Column, ForeignKeyConstraint, Index, Table},
 };
+use crate::domain::tables::documents_into_tables;
 
 #[derive(Clone)]
 pub struct Migration<P: Persistence> {

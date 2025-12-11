@@ -25,9 +25,7 @@
       "type": "Text",
       "unique": true,
       "required": true
-    }
-  ],
-  "relations": [
+    },
     {
       "id": "brands",
       "relation": "HasMany",

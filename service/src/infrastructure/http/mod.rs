@@ -5,7 +5,6 @@ use axum_prometheus::PrometheusMetricLayer;
 
 use tokio::net;
 use crate::infrastructure::AppState;
-use crate::infrastructure::http::api::{ApiError, ApiSuccess};
 use crate::infrastructure::http::documents::{documents_metadata, one_document_metadata};
 use crate::infrastructure::http::handlers::{health_check, hello_world_handler};
 

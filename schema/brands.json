@@ -27,9 +27,7 @@
       "type": "Text",
       "required": true,
       "localized": true
-    }
-  ],
-  "relations": [
+    },
     {
       "id": "partners",
       "relation": "BelongsToMany",

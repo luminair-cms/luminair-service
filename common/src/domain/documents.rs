@@ -6,7 +6,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::domain::attributes::Attribute;
 use crate::domain::DocumentId;
-use crate::domain::relations::Relation;
 
 static VALID_LOCALIZATIONS_REGEX: LazyLock<Regex> =
     LazyLock::new(|| Regex::new("^(ru|ro|en)").unwrap());
@@ -21,16 +20,13 @@ pub trait Documents: Send + Sync + Debug + 'static {
 // structs
 
 /// A uniquely identifiable Document.
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug)]
 pub struct Document {
     pub id: DocumentId,
     pub document_type: DocumentType,
     pub info: DocumentInfo,
     pub options: Option<DocumentOptions>,
-    pub attributes: Vec<Attribute>,
-    #[serde(default)]
-    pub relations: Vec<Relation>
+    pub attributes: Vec<Attribute>
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -78,7 +74,7 @@ pub struct DocumentTitle(String);
 pub struct DocumentDescription(String);
 
 /// Options of document
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug)]
 pub struct DocumentOptions {
     pub draft_and_publish: bool,
     pub localizations: Vec<LocalizationId>,
@@ -97,8 +93,7 @@ pub struct DocumentOptions {
         Eq,
         PartialOrd,
         Ord,
-        Hash,
-        Serialize
+        Hash
     )
 )]
 pub struct LocalizationId(String);
@@ -155,11 +150,3 @@ impl DocumentInfo {
         }
     }
 }
-
-/*
-impl From<&DocumentLocalization> for Vec<String> {
-    fn from(value: &DocumentLocalization) -> Self {
-        value.0.iter().map(LocalizationId::to_string).collect()
-    }
-}
-*/

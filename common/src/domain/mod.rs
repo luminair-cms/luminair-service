@@ -4,7 +4,6 @@ use regex::Regex;
 
 pub mod documents;
 pub mod attributes;
-pub mod relations;
 
 // A regex for IDs/names that may contain only ASCII letters, digits, and underscore.
 // Example: "My_Id_123" or "my-id" is valid; "my/id" or "my id" are not.

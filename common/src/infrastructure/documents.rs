@@ -1,16 +1,18 @@
-use std::{path::Path};
-use std::collections::HashSet;
-use std::sync::RwLock;
 use anyhow::{Context, anyhow};
 use serde::Deserialize;
+use std::collections::HashSet;
+use std::path::Path;
+use std::sync::RwLock;
 
-use crate::domain::{attributes::{
-    Attribute, AttributeConstraints, AttributeType,
-}, documents::{
-    Document, DocumentDescription, DocumentInfo, DocumentOptions, DocumentTitle,
-    DocumentType, Documents, LocalizationId, LocalizationIdError,
-}, AttributeId, DocumentId};
-use crate::domain::relations::{Relation, RelationId, RelationTarget, RelationType};
+use crate::domain::attributes::{AttributeBody, RelationTarget, RelationType};
+use crate::domain::{
+    AttributeId, DocumentId,
+    attributes::{Attribute, AttributeConstraints, AttributeType},
+    documents::{
+        Document, DocumentDescription, DocumentInfo, DocumentOptions, DocumentTitle, DocumentType,
+        Documents, LocalizationId, LocalizationIdError,
+    },
+};
 
 #[derive(Debug)]
 pub(crate) struct DocumentsAdapter {
@@ -59,17 +61,17 @@ impl DocumentsAdapter {
 
         Ok(Self { documents })
     }
-    
+
     pub fn initiate(&self) -> Result<(), anyhow::Error> {
         for document in self.documents.iter().copied() {
-            for relation in &document.relations {
-                {
-                    let mut target = relation.target.write().unwrap();
+            for attribute in &document.attributes {
+                if let AttributeBody::Relation {target, ..} = &attribute.body {
+                    let mut target = target.write().unwrap();
                     if let RelationTarget::Id(target_id) = &*target {
-                        let found = self
-                            .documents
-                            .get(target_id)
-                            .context(format!("Target document not found: {} from {}.{}", target_id, document.id, relation.id))?;
+                        let found = self.documents.get(target_id).context(format!(
+                            "Target document not found: {} from {}.{}",
+                            target_id, document.id, attribute.id
+                        ))?;
 
                         *target = RelationTarget::Ref(found);
                     }
@@ -110,8 +112,6 @@ struct DocumentRecord<'a> {
     info: DocumentInfoRecord<'a>,
     options: Option<DocumentOptionsRecord<'a>>,
     attributes: Vec<AttributeRecord<'a>>,
-    #[serde(default)]
-    relations: Vec<RelationRecord<'a>>
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -137,25 +137,31 @@ struct DocumentOptionsRecord<'a> {
 #[serde(rename_all = "camelCase")]
 struct AttributeRecord<'a> {
     id: &'a str,
-    #[serde(alias = "type")]
-    attribute_type: AttributeType,
-    #[serde(default)]
-    unique: bool,
-    #[serde(default)]
-    required: bool,
-    #[serde(default)]
-    localized: bool,
-    constraints: Option<AttributeConstraintsRecord<'a>>,
+    #[serde(flatten)]
+    body: AttributeRecordBody<'a>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct RelationRecord<'a> {
-    id: &'a str,
-    relation: RelationType,
-    target: &'a str,
-    #[serde(default)]
-    ordering: bool
+#[serde(rename_all = "camelCase", untagged)]
+enum AttributeRecordBody<'a> {
+    Field {
+        #[serde(alias = "type")]
+        attribute_type: AttributeType,
+        #[serde(default)]
+        unique: bool,
+        #[serde(default)]
+        required: bool,
+        #[serde(default)]
+        localized: bool,
+        constraints: Option<AttributeConstraintsRecord<'a>>,
+    },
+    Relation {
+        #[serde(alias = "relation")]
+        relation_type: RelationType,
+        target: &'a str,
+        #[serde(default)]
+        ordering: bool,
+    },
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -176,26 +182,29 @@ impl<'a> TryFrom<DocumentRecord<'a>> for Document {
         let document_type = value.document_type;
         let info = DocumentInfo::try_from(value.info)?;
         let options = value.options.map(DocumentOptions::try_from).transpose()?;
+
         let attributes: Result<Vec<Attribute>, anyhow::Error> = value
             .attributes
             .into_iter()
             .map(Attribute::try_from)
             .collect();
-        let relations: Result<Vec<Relation>, anyhow::Error> = value
-            .relations
-            .into_iter()
-            .map(Relation::try_from)
-            .collect();
+        let attributes = attributes?;
 
-        // TODO: validate uniqueness of attributes/relations id
+        // validate uniqueness of attributes/relations id
+        let mut identifiers = HashSet::new();
+        for attribute in attributes.iter() {
+            let id = attribute.id.to_string();
+            if !identifiers.insert(id) {
+
+            }
+        }
 
         Ok(Self {
             id,
             document_type,
             info,
             options,
-            attributes: attributes?,
-            relations: relations?,
+            attributes,
         })
     }
 }
@@ -240,41 +249,49 @@ impl<'a> TryFrom<AttributeRecord<'a>> for Attribute {
 
     fn try_from(value: AttributeRecord<'a>) -> Result<Self, Self::Error> {
         let id = AttributeId::try_new(value.id)?;
-        let constraints = value.constraints.map(AttributeConstraints::from);
 
-        Ok(Self {
-            id,
-            attribute_type: value.attribute_type,
-            unique: value.unique,
-            required: value.required,
-            localized: value.localized,
-            constraints
-        })
-    }
-}
+        let body = match value.body {
+            AttributeRecordBody::Field {
+                attribute_type,
+                unique,
+                required,
+                localized,
+                constraints,
+            } => {
+                let constraints = constraints.map(AttributeConstraints::from);
 
-impl<'a> TryFrom<RelationRecord<'a>> for Relation {
-    type Error = anyhow::Error;
+                Ok::<AttributeBody, Self::Error>(AttributeBody::Field {
+                    attribute_type,
+                    unique,
+                    required,
+                    localized,
+                    constraints,
+                })
+            }
+            AttributeRecordBody::Relation {
+                relation_type,
+                target,
+                ordering,
+            } => {
+                let target = DocumentId::try_new(target)?;
+                Ok(AttributeBody::Relation {
+                    relation_type,
+                    target: RwLock::new(RelationTarget::Id(target)),
+                    ordering,
+                })
+            }
+        }?;
 
-    fn try_from(value: RelationRecord<'a>) -> Result<Self, Self::Error> {
-        let id = RelationId::try_new(value.id)?;
-        let target = DocumentId::try_new(value.target)?;
-        Ok(Self {
-            id,
-            relation_type: value.relation,
-            target: RwLock::new(RelationTarget::Id(target)),
-            // target_singular_name: RefCell::new(None),
-            ordering: value.ordering
-        })
+        Ok(Self { id, body })
     }
 }
 
 impl<'a> From<AttributeConstraintsRecord<'a>> for AttributeConstraints {
-    fn from(value: AttributeConstraintsRecord<'a>) -> Self {
-        Self {
-            pattern: value.pattern.map(String::from),
-            minimal_length: value.minimal_length,
-            maximal_length: value.maximal_length,
-        }
+fn from(value: AttributeConstraintsRecord<'a>) -> Self {
+    Self {
+        pattern: value.pattern.map(String::from),
+        minimal_length: value.minimal_length,
+        maximal_length: value.maximal_length,
     }
+}
 }
