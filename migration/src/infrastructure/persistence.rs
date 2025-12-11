@@ -6,17 +6,17 @@ use crate::domain::persistence::Persistence;
 
 #[derive(Clone)]
 pub struct PersistenceAdapter {
-    database: Database,
+    database: &'static Database,
 }
 
 impl PersistenceAdapter {
-    pub fn new(database: Database) -> Self {
+    pub fn new(database: &'static Database) -> Self {
         Self { database }
     }
 }
 
 impl Persistence for PersistenceAdapter {
-    async fn load(&self) -> Result<std::collections::HashSet<String>, anyhow::Error> {
+    async fn load(&self) -> Result<HashSet<String>, anyhow::Error> {
         use futures::TryStreamExt;
         
         let sql = "SELECT table_name

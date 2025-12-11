@@ -1,0 +1,39 @@
+use crate::domain::AppState;
+use crate::infrastructure::http::api::{ApiError, ApiSuccess};
+use crate::infrastructure::http::documents::dto::{DetailedDocumentResponse, DocumentResponse};
+use axum::extract::{Path, State};
+use axum::http::StatusCode;
+use luminair_common::domain::DocumentId;
+
+mod dto;
+
+pub async fn documents_metadata<S: AppState>(
+    State(state): State<S>,
+) -> Result<ApiSuccess<Vec<DocumentResponse>>, ApiError> {
+    let result = state
+        .documents()
+        .documents()
+        .map(DocumentResponse::from)
+        .collect::<Vec<_>>();
+
+    Ok(ApiSuccess::new(StatusCode::OK, result))
+}
+
+pub async fn one_document_metadata<S: AppState>(
+    Path(id): Path<String>,
+    State(state): State<S>,
+) -> Result<ApiSuccess<DetailedDocumentResponse>, ApiError> {
+    let document_id =
+        DocumentId::try_new(id).map_err(|err| ApiError::UnprocessableEntity(err.to_string()))?;
+
+    let result = state
+        .documents()
+        .get_document(&document_id)
+        .map(DetailedDocumentResponse::from);
+
+    if let Some(document) = result {
+        Ok(ApiSuccess::new(StatusCode::OK, document))
+    } else {
+        Err(ApiError::NotFound)
+    }
+}

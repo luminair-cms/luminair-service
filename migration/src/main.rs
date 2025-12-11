@@ -2,7 +2,7 @@ use crate::{
     domain::migration::Migration,
     infrastructure::{persistence::PersistenceAdapter, settings::Settings},
 };
-use luminair_common::{infrastructure::database::Database, load_documents};
+use luminair_common::{connect_to_database, load_documents};
 
 pub mod domain;
 pub mod infrastructure;
@@ -14,9 +14,9 @@ async fn main() -> anyhow::Result<()> {
     let documents = load_documents(&settings.schema_config_path)?;
     println!("Configuration loaded");
 
-    let database = Database::new(&settings.database).await?;
+    let database = connect_to_database(&settings.database).await?;
     println!("Connected to DB");
-    let persistence = PersistenceAdapter::new(database.clone());
+    let persistence = PersistenceAdapter::new(database);
 
     // migrate database schema conform documents configuration
     let migration = Migration::new(documents, persistence);

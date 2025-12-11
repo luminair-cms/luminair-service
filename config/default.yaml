@@ -1,3 +1,4 @@
+server_port: 8080
 schema_config_path: .//schema
 database:
   connection:
