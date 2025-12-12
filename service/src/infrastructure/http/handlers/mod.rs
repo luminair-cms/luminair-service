@@ -3,6 +3,9 @@ use axum::http::StatusCode;
 use crate::domain::{AppState, HelloService};
 use crate::infrastructure::http::api::{ApiError, ApiSuccess};
 
+pub mod documents;
+mod data;
+
 // health check handler
 pub async fn health_check() -> StatusCode {
     StatusCode::OK

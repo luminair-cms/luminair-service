@@ -1,3 +1,5 @@
+# Documents model
+
 ## Associations
 
 - One way: collection A has one row of collection B
@@ -30,3 +32,107 @@
 - OneToMany is always the inverse side of a bidirectional association.
 - The owning side of a OneToOne association is the entity with the table containing the foreign key.
 - You can pick the owning side of a many-to-many association yourself.
+
+# Rest API
+
+Rest API is modeled after same in Strapi. See: https://docs.strapi.io/cms/api/rest
+
+### Plural API ID vs Singular API ID
+
+:singularApiId refers to the value of the "API ID (Singular)" field of the content-type,
+and :pluralApiId refers to the value of the "API ID (Plural)" field of the content-type.
+These values are defined when creating a content-type in the Content-Type Builder, and can be found while editing a content-type in the admin panel (see User Guide). For instance, by default, for an "Article" content-type:
+
+    :singularApiId will be article
+
+    :pluralApiId will be articles
+
+### Example of plural api
+| Method | URL                             | Description                 |
+|--------|----------------------------------|-----------------------------|
+| GET    | /api/restaurants                 | Get a list of restaurants   |
+| POST   | /api/restaurants                 | Create a restaurant         |
+| GET    | /api/restaurants/:documentId     | Get a specific restaurant   |
+| DELETE | /api/restaurants/:documentId     | Delete a restaurant         |
+| PUT    | /api/restaurants/:documentId     | Update a restaurant         |
+
+### Example of singular api
+| Method | URL            | Description                     |
+|--------|----------------|---------------------------------|
+| GET    | /api/homepage  | Get the homepage content        |
+| PUT    | /api/homepage  | Update/create the homepage content |
+| DELETE | /api/homepage  | Delete the homepage content     |
+
+
+### Example of response on /api/restaurants
+
+```json
+{
+  "data": [
+    {
+      "id": 2,
+      "Name": "BMK Paris Bamako",
+      "Description": null,
+      "createdAt": "2024-03-06T13:42:05.098Z",
+      "updatedAt": "2024-03-06T13:42:05.098Z",
+      "publishedAt": "2024-03-06T13:42:05.103Z",
+      "locale": "en"
+    },
+    {
+      "id": 4,
+      "documentId": "znrlzntu9ei5onjvwfaalu2v",
+      "Name": "Biscotte Restaurant",
+      "Description": [
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "text": "Welcome to Biscotte restaurant! Restaurant Biscotte offers a cuisine based on fresh, quality products, often local, organic when possible, and always produced by passionate producers."
+            }
+          ]
+        }
+      ],
+      "createdAt": "2024-03-06T13:43:30.172Z",
+      "updatedAt": "2024-03-06T13:43:30.172Z",
+      "publishedAt": "2024-03-06T13:43:30.175Z",
+      "locale": "en"
+    }
+  ],
+  "meta": {
+    "pagination": {
+      "page": 1,
+      "pageSize": 25,
+      "pageCount": 1,
+      "total": 2
+    }
+  }
+}
+```
+
+### Example of response on /api/restaurants/:documentId
+
+```json
+{
+  "data": {
+    "id": 6,
+    "Name": "Biscotte Restaurant",
+    "Description": [
+      {
+        "type": "paragraph",
+        "children": [
+          {
+            "type": "text",
+            "text": "Welcome to Biscotte restaurant! Restaurant Biscotte offers a cuisine bassics, such as 4 Formaggi or Calzone, and our original creations such as Do Luigi or Nduja."
+          }
+        ]
+      }
+    ],
+    "createdAt": "2024-02-27T10:19:04.953Z",
+    "updatedAt": "2024-03-05T15:52:05.591Z",
+    "publishedAt": "2024-03-05T15:52:05.600Z",
+    "locale": "en"
+  },
+  "meta": {}
+}
+```

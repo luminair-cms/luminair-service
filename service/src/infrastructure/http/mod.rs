@@ -5,12 +5,11 @@ use axum_prometheus::PrometheusMetricLayer;
 
 use tokio::net;
 use crate::infrastructure::AppState;
-use crate::infrastructure::http::documents::{documents_metadata, one_document_metadata};
+use handlers::documents::{documents_metadata, one_document_metadata};
 use crate::infrastructure::http::handlers::{health_check, hello_world_handler};
 
 mod api;
 mod handlers;
-mod documents;
 
 /// Configuration for the HTTP server.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -65,6 +64,6 @@ impl HttpServer {
 fn api_routes<S: AppState>() -> Router<S> {
     Router::new()
         .route("/hello", get(hello_world_handler::<S>))
-        .route("/documents", get(documents_metadata::<S>))
-        .route("/documents/{id}", get(one_document_metadata::<S>))
+        .route("/meta/documents", get(documents_metadata::<S>))
+        .route("/meta/documents/{id}", get(one_document_metadata::<S>))
 }
