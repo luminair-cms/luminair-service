@@ -4,7 +4,7 @@ use axum::routing::get;
 use axum_prometheus::PrometheusMetricLayer;
 
 use tokio::net;
-use crate::infrastructure::AppState;
+use crate::infrastructure::{AppState, http::handlers::data::{find_all_documents, find_document_by_id}};
 use handlers::documents::{documents_metadata, one_document_metadata};
 use crate::infrastructure::http::handlers::{health_check, hello_world_handler};
 
@@ -66,4 +66,6 @@ fn api_routes<S: AppState>() -> Router<S> {
         .route("/hello", get(hello_world_handler::<S>))
         .route("/meta/documents", get(documents_metadata::<S>))
         .route("/meta/documents/{id}", get(one_document_metadata::<S>))
+        .route("/data/documents/{document_id}", get(find_all_documents::<S>))
+        .route("/data/documents/{document_id}/{id}", get(find_document_by_id::<S>))
 }

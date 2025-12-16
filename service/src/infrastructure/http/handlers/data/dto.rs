@@ -8,6 +8,12 @@ pub struct ManyDocumentRowsResponse {
     meta: MetadataResponse
 }
 
+impl PartialEq for ManyDocumentRowsResponse {
+    fn eq(&self, other: &Self) -> bool {
+        self.data == other.data
+    }
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct MetadataResponse {
     total: usize
@@ -16,6 +22,12 @@ pub struct MetadataResponse {
 #[derive(Debug, Clone, Serialize)]
 pub struct OneDocumentRowResponse {
     data: DocumentRowResponse
+}
+
+impl PartialEq for OneDocumentRowResponse {
+    fn eq(&self, other: &Self) -> bool {
+        self.data == other.data
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -27,4 +39,10 @@ pub struct DocumentRowResponse {
     published_at: Option<DateTime<Utc>>,
     #[serde(flatten)]
     body: HashMap<String,String>
+}
+
+impl PartialEq for DocumentRowResponse {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+    }
 }

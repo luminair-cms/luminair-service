@@ -48,6 +48,7 @@ These values are defined when creating a content-type in the Content-Type Builde
     :pluralApiId will be articles
 
 ### Example of plural api
+
 | Method | URL                             | Description                 |
 |--------|----------------------------------|-----------------------------|
 | GET    | /api/restaurants                 | Get a list of restaurants   |
@@ -57,12 +58,12 @@ These values are defined when creating a content-type in the Content-Type Builde
 | PUT    | /api/restaurants/:documentId     | Update a restaurant         |
 
 ### Example of singular api
+
 | Method | URL            | Description                     |
 |--------|----------------|---------------------------------|
 | GET    | /api/homepage  | Get the homepage content        |
 | PUT    | /api/homepage  | Update/create the homepage content |
 | DELETE | /api/homepage  | Delete the homepage content     |
-
 
 ### Example of response on /api/restaurants
 
