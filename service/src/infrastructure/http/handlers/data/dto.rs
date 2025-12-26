@@ -35,7 +35,7 @@ impl PartialEq for OneDocumentRowResponse {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DocumentRowResponse {
-    document_id: i64,
+    document_id: i32,
     created_at: DateTime<Utc>,
     updated_at: DateTime<Utc>,
     published_at: Option<DateTime<Utc>>,

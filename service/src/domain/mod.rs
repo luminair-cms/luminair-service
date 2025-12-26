@@ -24,7 +24,7 @@ pub trait ResultSet {
 }
 
 pub struct ResultRow {
-    pub document_id: i64,
+    pub document_id: i32,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -38,8 +38,8 @@ pub trait AppState: Clone + Send + Sync + 'static {
     fn persistence(&self) -> &Self::P;
 }
 
-/// Select from tables DML
-/// Select from Document must be converted to SQL Select
+/// Represents Query to Database
+/// select_all generates this select (filter and populate TBD)
 /// SELECT
 ///     m.document_id,
 ///     m.created_at, m.updated_at, m.published_at,
@@ -48,8 +48,7 @@ pub trait AppState: Clone + Send + Sync + 'static {
 ///     l.field_1, ... , l.field_N
 /// FROM main_table m
 /// JOIN localization_table l ON m.document_id = l.document_id
-
-/// Represents Query to Database
+/// select_one adds to this Query expression WHERE m.document_id = ?
 pub struct Query {
     pub from: Table,
     pub joins: Vec<Table>,
@@ -145,14 +144,14 @@ impl Query {
         let joins: Vec<String> = self
             .joins
             .iter()
-            .map(|j| format!("JOIN {} AS {}", &j.name, j.alias))
+            .map(|j| format!("JOIN {} AS {} ON m.document_id = {}.document_id", &j.name, j.alias, j.alias))
             .collect();
 
         format!(
-            "SELECT {} FROM {}/n{}",
+            "SELECT {} FROM {}\n{}",
             columns.join(","),
             from_exp,
-            joins.join("/n")
+            joins.join("\n")
         )
     }
 }

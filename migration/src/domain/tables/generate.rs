@@ -51,14 +51,14 @@ impl MainTableBuilder {
     fn into(mut self) -> Table {
         self.columns.push(Column::new(
             "created_at",
-            "TIMESTAMP",
+            "TIMESTAMPTZ",
             true,
             false,
             Some("now()"),
         ));
-        self.columns.push(Column::new("updated_at", "TIMESTAMP", false, false, None));
+        self.columns.push(Column::new("updated_at", "TIMESTAMPTZ", false, false, None));
         if self.has_draft_and_publish {
-            self.columns.push(Column::new("published_at", "TIMESTAMP", false, false, None));
+            self.columns.push(Column::new("published_at", "TIMESTAMPTZ", false, false, None));
         }
 
         // TODO: add created_by_id, updated_by_id columns

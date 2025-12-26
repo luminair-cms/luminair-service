@@ -25,7 +25,7 @@ impl TryFrom <PgRow> for ResultRow {
     fn try_from(value: PgRow) -> Result<Self, Self::Error> {
         use sqlx::Row;
         
-        let document_id: i64 = value.try_get("document_id")?;
+        let document_id: i32 = value.try_get("document_id")?;
         let created_at: DateTime<Utc> = value.try_get("created_at")?;
         let updated_at: DateTime<Utc> = value.try_get("updated_at")?;
         
