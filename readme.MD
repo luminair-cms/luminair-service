@@ -1,3 +1,8 @@
+# Domain driven design
+
+see: https://berk.es/2022/09/28/value-objects-in-rust/
+
+
 # Documents model
 
 ## Associations

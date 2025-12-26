@@ -1,10 +1,14 @@
+use crate::{
+    domain::{AppState, HelloService},
+    infrastructure::persistence::PersistenceAdapter,
+};
 use anyhow::anyhow;
 use luminair_common::domain::documents::Documents;
 use luminair_common::infrastructure::database::Database;
-use crate::domain::{AppState, HelloService};
 
-pub mod settings;
 pub mod http;
+pub mod persistence;
+pub mod settings;
 
 #[derive(Clone, Debug)]
 pub struct HelloServiceAdapter {
@@ -30,19 +34,26 @@ impl HelloService for HelloServiceAdapter {
 pub struct AppStateImpl {
     hello: HelloServiceAdapter,
     documents: &'static dyn Documents,
+    persistence: PersistenceAdapter,
 }
 
 impl AppStateImpl {
-    pub fn new(hello: HelloServiceAdapter, documents: &'static dyn Documents) -> Self {
+    pub fn new(
+        hello: HelloServiceAdapter,
+        documents: &'static dyn Documents,
+        persistence: PersistenceAdapter,
+    ) -> Self {
         Self {
             hello,
-            documents
+            documents,
+            persistence,
         }
     }
 }
 
 impl AppState for AppStateImpl {
     type H = HelloServiceAdapter;
+    type P = PersistenceAdapter;
 
     fn hello_service(&self) -> &Self::H {
         &self.hello
@@ -50,5 +61,9 @@ impl AppState for AppStateImpl {
 
     fn documents(&self) -> &'static dyn Documents {
         self.documents
+    }
+
+    fn persistence(&self) -> &Self::P {
+        &self.persistence
     }
 }

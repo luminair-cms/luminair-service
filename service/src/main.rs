@@ -1,4 +1,5 @@
 use luminair_common::{connect_to_database, load_documents};
+use crate::infrastructure::persistence::PersistenceAdapter;
 use crate::infrastructure::{AppStateImpl, HelloServiceAdapter};
 use crate::infrastructure::http::{HttpServer, HttpServerConfig};
 use crate::infrastructure::settings::Settings;
@@ -27,8 +28,9 @@ async fn main() -> anyhow::Result<()> {
     println!("Connected to DB");
 
     let hello_service = HelloServiceAdapter::new(&database);
+    let persistence = PersistenceAdapter::new(&database);
 
-    let state = AppStateImpl::new(hello_service, documents);
+    let state = AppStateImpl::new(hello_service, documents, persistence);
 
     let server_config = HttpServerConfig {
         port: &settings.server_port,

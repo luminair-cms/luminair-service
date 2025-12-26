@@ -1,27 +1,28 @@
-use axum::extract::{Path, State};
-use luminair_common::domain::DocumentId;
-use crate::domain::AppState;
+use crate::domain::{AppState, Persistence, Query, ResultSet};
 use crate::infrastructure::http::api::{ApiError, ApiSuccess};
-use crate::infrastructure::http::handlers::data::dto::{ManyDocumentRowsResponse, OneDocumentRowResponse};
+use crate::infrastructure::http::handlers::data::dto::{
+    DocumentRowResponse, ManyDocumentRowsResponse, MetadataResponse, OneDocumentRowResponse,
+};
+use axum::extract::{Path, State};
+use axum::http::StatusCode;
+use luminair_common::domain::DocumentId;
 
 mod dto;
 
 pub async fn find_document_by_id<S: AppState>(
     Path(document_id): Path<String>,
     Path(id): Path<String>,
-    State(state): State<S>
+    State(state): State<S>,
 ) -> Result<ApiSuccess<OneDocumentRowResponse>, ApiError> {
-    let document_id =
-        DocumentId::try_new(document_id).map_err(|err| ApiError::UnprocessableEntity(err.to_string()))?;
-    
-    let document_metadata = state
-        .documents()
-        .get_document(&document_id);
-    
+    let document_id = DocumentId::try_new(document_id)
+        .map_err(|err| ApiError::UnprocessableEntity(err.to_string()))?;
+
+    let document_metadata = state.documents().get_document(&document_id);
+
     if document_metadata.is_none() {
         return Err(ApiError::NotFound);
     }
-    
+
     // TODO: goven document metadata call documents for create high level request
 
     Err(ApiError::NotFound)
@@ -29,20 +30,27 @@ pub async fn find_document_by_id<S: AppState>(
 
 pub async fn find_all_documents<S: AppState>(
     Path(document_id): Path<String>,
-    State(state): State<S>
+    State(state): State<S>,
 ) -> Result<ApiSuccess<ManyDocumentRowsResponse>, ApiError> {
-    let document_id =
-        DocumentId::try_new(document_id).map_err(|err| ApiError::UnprocessableEntity(err.to_string()))?;
-    
+    let document_id = DocumentId::try_new(document_id)
+        .map_err(|err| ApiError::UnprocessableEntity(err.to_string()))?;
+
     let document_metadata = state
         .documents()
-        .get_document(&document_id);
-    
-    if document_metadata.is_none() {
-        return Err(ApiError::NotFound);
-    }
-    
-    // TODO: goven document metadata call documents for create high level request
-    
-    Err(ApiError::NotFound)
+        .get_document(&document_id)
+        .ok_or(ApiError::NotFound)?;
+
+    let query = Query::select_all(&document_metadata);
+
+    let result_set = state.persistence().select_all(&query).await?;
+
+    let data: Vec<DocumentRowResponse> = result_set
+        .into_rows()
+        .iter()
+        .map(DocumentRowResponse::from)
+        .collect();
+    let meta = MetadataResponse { total: data.len() };
+    let result = ManyDocumentRowsResponse { data, meta };
+
+    Ok(ApiSuccess::new(StatusCode::OK, result))
 }

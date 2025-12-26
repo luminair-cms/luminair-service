@@ -2,10 +2,12 @@ use std::collections::HashMap;
 use serde::Serialize;
 use chrono::{DateTime, Utc};
 
+use crate::domain::ResultRow;
+
 #[derive(Debug, Clone, Serialize)]
 pub struct ManyDocumentRowsResponse {
-    data: Vec<DocumentRowResponse>,
-    meta: MetadataResponse
+    pub data: Vec<DocumentRowResponse>,
+    pub meta: MetadataResponse
 }
 
 impl PartialEq for ManyDocumentRowsResponse {
@@ -16,7 +18,7 @@ impl PartialEq for ManyDocumentRowsResponse {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct MetadataResponse {
-    total: usize
+    pub total: usize
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -33,7 +35,7 @@ impl PartialEq for OneDocumentRowResponse {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DocumentRowResponse {
-    id: String,
+    document_id: i64,
     created_at: DateTime<Utc>,
     updated_at: DateTime<Utc>,
     published_at: Option<DateTime<Utc>>,
@@ -43,6 +45,18 @@ pub struct DocumentRowResponse {
 
 impl PartialEq for DocumentRowResponse {
     fn eq(&self, other: &Self) -> bool {
-        self.id == other.id
+        self.document_id == other.document_id
+    }
+}
+
+impl From<&ResultRow> for DocumentRowResponse {
+    fn from(value: &ResultRow) -> Self {
+        Self {
+            document_id: value.document_id,
+            created_at: value.created_at,
+            updated_at: value.updated_at,
+            published_at: None,
+            body: HashMap::new()
+        }
     }
 }

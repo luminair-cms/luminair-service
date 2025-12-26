@@ -17,8 +17,6 @@ impl PersistenceAdapter {
 
 impl Persistence for PersistenceAdapter {
     async fn load(&self) -> Result<HashSet<String>, anyhow::Error> {
-        use futures::TryStreamExt;
-        
         let sql = "SELECT table_name
             FROM information_schema.tables
             WHERE
@@ -33,6 +31,7 @@ impl Persistence for PersistenceAdapter {
         
         let mut set = HashSet::new();
         
+        use futures::TryStreamExt;
         while let Some(name) = rows.try_next().await? {
             set.insert(name);
         }
