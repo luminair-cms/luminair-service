@@ -1,8 +1,5 @@
-mod generate;
-
-pub use generate::documents_into_tables;
-
 /// Represents table in a database, used for ddl generation
+#[derive(Debug)]
 pub struct Table {
     pub name: String,
     pub columns: Vec<Column>,
@@ -11,16 +8,34 @@ pub struct Table {
 }
 
 /// Represents one column in the database table
+#[derive(Debug)]
 pub struct Column {
     pub name: String,
-    pub column_type: String,
+    pub attribute_name: Option<String>,
+    pub column_type: ColumnType,
+    pub column_length: Option<usize>,
     pub not_null: bool,
     pub unique: bool,
     pub primary_key: bool,
     pub default_value: Option<String>,
 }
 
+/// Represents Column types
+#[derive(Debug)]
+pub enum ColumnType {
+    Serial,
+    Uuid,
+    Text,
+    Varchar,
+    Integer,
+    Decimal,
+    Date,
+    TimestampTZ,
+    Boolean,
+}
+
 /// Represents foreign key constraint in the database table
+#[derive(Debug)]
 pub struct ForeignKeyConstraint {
     pub table_name: String,
     pub column_name: String,
@@ -29,6 +44,7 @@ pub struct ForeignKeyConstraint {
 }
 
 /// Represents an index in the database table
+#[derive(Debug)]
 pub struct Index {
     pub table_name: String,
     pub columns: Vec<String>,
@@ -54,7 +70,9 @@ impl Table {
 impl Column {
     pub fn new<T: Into<String>>(
         name: T,
-        column_type: T,
+        attribute_name: Option<T>,
+        column_type: ColumnType,
+        column_length: Option<usize>,
         not_null: bool,
         unique: bool,
         default_value: Option<T>,
@@ -62,7 +80,9 @@ impl Column {
         let primary_key = false;
         Self {
             name: name.into(),
-            column_type: column_type.into(),
+            attribute_name: attribute_name.map(|a| a.into()),
+            column_type: column_type,
+            column_length,
             not_null,
             unique,
             primary_key,
@@ -70,10 +90,12 @@ impl Column {
         }
     }
 
-    pub fn primary_key<T: Into<String>>(name: T, column_type: T) -> Self {
+    pub fn primary_key<T: Into<String>>(name: T, column_type: ColumnType, column_length: Option<usize>) -> Self {
         Self {
             name: name.into(),
-            column_type: column_type.into(),
+            attribute_name: None,
+            column_type: column_type,
+            column_length,
             not_null: false,
             unique: false,
             primary_key: true,

@@ -18,7 +18,7 @@ impl PersistenceAdapter {
 impl Persistence for PersistenceAdapter {
     async fn load(&self) -> Result<HashSet<String>, anyhow::Error> {
         let sql = "SELECT table_name
-            FROM information_schema.tables
+            FROM information_schema.persistence
             WHERE
               table_schema = $1
               AND table_type = 'BASE TABLE'

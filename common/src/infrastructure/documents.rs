@@ -1,32 +1,40 @@
-use anyhow::{Context, anyhow};
+use anyhow::{anyhow, Context};
 use serde::Deserialize;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::sync::RwLock;
 
-use crate::domain::attributes::{AttributeBody, RelationTarget, RelationType};
 use crate::domain::{
-    AttributeId, DocumentId,
-    attributes::{Attribute, AttributeConstraints, AttributeType},
-    documents::{
-        Document, DocumentDescription, DocumentInfo, DocumentOptions, DocumentTitle, DocumentType,
-        Documents, LocalizationId, LocalizationIdError,
-    },
+    attributes::*,
+    documents::*,
+    persistence::DocumentPersistence,
+    AttributeId,
+    DocumentId,
+    Documents,
 };
 
 #[derive(Debug)]
 pub(crate) struct DocumentsAdapter {
     // Store leaked &'static Document so we can keep stable references in relations
     documents: HashSet<&'static Document>,
+    documents_tables: HashMap<DocumentId, DocumentPersistence>,
 }
 
 impl Documents for DocumentsAdapter {
     fn documents(&self) -> Box<dyn Iterator<Item = &Document> + '_> {
-        // self.documents holds &'static Document, expose as &Document iterator
+        // self.documents holds &'static Document, expose it as &Document iterator
         Box::new(self.documents.iter().copied())
     }
     fn get_document(&self, id: &DocumentId) -> Option<&Document> {
         self.documents.get(id).copied()
+    }
+
+    fn document_tables(&self) -> Box<dyn Iterator<Item=&DocumentPersistence> + '_> {
+        Box::new(self.documents_tables.values())
+    }
+
+    fn get_document_tables(&self, id: &DocumentId) -> Option<&DocumentPersistence> {
+        self.documents_tables.get(id)
     }
 }
 
@@ -59,13 +67,18 @@ impl DocumentsAdapter {
             }
         }
 
-        Ok(Self { documents })
+        let mut documents_tables = HashMap::new();
+
+        Ok(Self {
+            documents,
+            documents_tables,
+        })
     }
 
-    pub fn initiate(&self) -> Result<(), anyhow::Error> {
+    pub fn initiate(&mut self) -> Result<(), anyhow::Error> {
         for document in self.documents.iter().copied() {
             for attribute in &document.attributes {
-                if let AttributeBody::Relation {target, ..} = &attribute.body {
+                if let AttributeBody::Relation { target, .. } = &attribute.body {
                     let mut target = target.write().unwrap();
                     if let RelationTarget::Id(target_id) = &*target {
                         let found = self.documents.get(target_id).context(format!(
@@ -78,6 +91,11 @@ impl DocumentsAdapter {
                 }
             }
         }
+
+        for document in self.documents.iter() {
+            self.documents_tables.insert(document.id.clone(), DocumentPersistence::from(*document));
+        }
+
         Ok(())
     }
 }
@@ -194,9 +212,7 @@ impl<'a> TryFrom<DocumentRecord<'a>> for Document {
         let mut identifiers = HashSet::new();
         for attribute in attributes.iter() {
             let id = attribute.id.to_string();
-            if !identifiers.insert(id) {
-
-            }
+            if !identifiers.insert(id) {}
         }
 
         Ok(Self {
@@ -287,11 +303,11 @@ impl<'a> TryFrom<AttributeRecord<'a>> for Attribute {
 }
 
 impl<'a> From<AttributeConstraintsRecord<'a>> for AttributeConstraints {
-fn from(value: AttributeConstraintsRecord<'a>) -> Self {
-    Self {
-        pattern: value.pattern.map(String::from),
-        minimal_length: value.minimal_length,
-        maximal_length: value.maximal_length,
+    fn from(value: AttributeConstraintsRecord<'a>) -> Self {
+        Self {
+            pattern: value.pattern.map(String::from),
+            minimal_length: value.minimal_length,
+            maximal_length: value.maximal_length,
+        }
     }
-}
 }

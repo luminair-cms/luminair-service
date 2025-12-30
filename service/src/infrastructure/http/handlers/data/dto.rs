@@ -39,6 +39,7 @@ pub struct DocumentRowResponse {
     created_at: DateTime<Utc>,
     updated_at: DateTime<Utc>,
     published_at: Option<DateTime<Utc>>,
+    locale: Option<String>,
     #[serde(flatten)]
     body: HashMap<String,String>
 }
@@ -49,14 +50,15 @@ impl PartialEq for DocumentRowResponse {
     }
 }
 
-impl From<&ResultRow> for DocumentRowResponse {
-    fn from(value: &ResultRow) -> Self {
+impl From<ResultRow> for DocumentRowResponse {
+    fn from(value: ResultRow) -> Self {
         Self {
             document_id: value.document_id,
             created_at: value.created_at,
             updated_at: value.updated_at,
-            published_at: None,
-            body: HashMap::new()
+            published_at: value.published_at,
+            locale: value.locale,
+            body: value.body
         }
     }
 }

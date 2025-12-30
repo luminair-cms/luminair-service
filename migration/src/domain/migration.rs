@@ -1,10 +1,6 @@
-use luminair_common::domain::documents::Documents;
-
-use crate::domain::{
-    persistence::Persistence,
-    tables::{Column, ForeignKeyConstraint, Index, Table},
-};
-use crate::domain::tables::documents_into_tables;
+use luminair_common::domain::Documents;
+use luminair_common::domain::persistence::tables::{Column, ColumnType, ForeignKeyConstraint, Index, Table};
+use crate::domain::persistence::Persistence;
 
 #[derive(Clone)]
 pub struct Migration<P: Persistence> {
@@ -101,7 +97,21 @@ fn create_table_ddl(schema: &str, table: &Table) -> Vec<String> {
 }
 
 fn column_ddl(column: &Column) -> String {
-    let mut sql = format!("\"{}\" {}", column.name, column.column_type);
+    let ct = match column.column_type {
+        ColumnType::Serial => "SERIAL",
+        ColumnType::Uuid => "UUID",
+        ColumnType::Text => "TEXT",
+        ColumnType::Varchar => "VARCHAR",
+        ColumnType::Integer => "INTEGER",
+        ColumnType::Decimal => "DECIMAL",
+        ColumnType::Date => "DATE",
+        ColumnType::TimestampTZ => "TIMESTAMPTZ",
+        ColumnType::Boolean => "BOOLEAN"
+    };
+    let mut sql = format!("\"{}\" {}", column.name, ct);
+    if let Some(length) = column.column_length {
+        sql.push_str(&format!("({})", length));
+    }
     if column.not_null {
         sql.push_str(" NOT NULL");
     }
@@ -139,4 +149,21 @@ fn create_index_ddl(schema: &str, index: &Index) -> String {
         index.table_name,
         columns_sql
     )
+}
+
+// returns database persistence for given documents schema, sorted conform dependency order
+fn documents_into_tables(documents: &dyn Documents) -> Vec<&Table> {
+    let mut tables = Vec::new();
+    let mut relation_tables = Vec::new();
+
+    for d in documents.document_tables() {
+        tables.push(&d.main_table);
+        if let Some(localization_table) = &d.localization_table {
+            tables.push(&localization_table);
+        }
+        relation_tables.extend(&d.relation_tables);
+    }
+    tables.extend(relation_tables);
+
+    tables
 }

@@ -7,7 +7,7 @@ use std::sync::RwLock;
 #[derive(Debug)]
 pub struct Attribute {
     pub id: AttributeId,
-    pub body: AttributeBody
+    pub body: AttributeBody,
 }
 
 #[derive(Debug)]
@@ -17,13 +17,13 @@ pub enum AttributeBody {
         unique: bool,
         required: bool,
         localized: bool,
-        constraints: Option<AttributeConstraints>
+        constraints: Option<AttributeConstraints>,
     },
     Relation {
         relation_type: RelationType,
         target: RwLock<RelationTarget>,
         ordering: bool,
-    }
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -73,7 +73,7 @@ pub type RelationId = AttributeId;
 #[derive(Clone, Debug)]
 pub enum RelationTarget {
     Id(DocumentId),
-    Ref(&'static Document)
+    Ref(&'static Document),
 }
 
 // implementations
@@ -84,7 +84,6 @@ impl PartialEq for Attribute {
     }
 }
 impl Eq for Attribute {}
-
 
 /*
 impl Attribute {
@@ -105,6 +104,9 @@ impl RelationType {
         matches!(self, RelationType::HasOne | RelationType::HasMany)
     }
     pub fn is_inverse(&self) -> bool {
-        matches!(self, RelationType::BelongsToOne | RelationType::BelongsToMany)
+        matches!(
+            self,
+            RelationType::BelongsToOne | RelationType::BelongsToMany
+        )
     }
 }

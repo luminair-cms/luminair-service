@@ -1,9 +1,24 @@
+use std::fmt::Debug;
 use std::sync::LazyLock;
 use nutype::nutype;
 use regex::Regex;
+use crate::domain::documents::Document;
+use crate::domain::persistence::DocumentPersistence;
 
 pub mod documents;
 pub mod attributes;
+pub mod persistence;
+
+pub trait Documents: Send + Sync + Debug + 'static {
+    /// iterate all documents metadata
+    fn documents(&self) -> Box<dyn Iterator<Item = &Document> + '_>;
+    /// find document metadata by its id
+    fn get_document(&self, id: &DocumentId) -> Option<&Document>;
+    /// iterate document persistence
+    fn document_tables(&self) -> Box<dyn Iterator<Item = &DocumentPersistence> + '_>;
+    /// get document persistence by its id
+    fn get_document_tables(&self, id: &DocumentId) -> Option<&DocumentPersistence>;
+}
 
 // A regex for IDs/names that may contain only ASCII letters, digits, and underscore.
 // Example: "My_Id_123" or "my-id" is valid; "my/id" or "my id" are not.

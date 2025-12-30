@@ -10,13 +10,6 @@ use crate::domain::DocumentId;
 static VALID_LOCALIZATIONS_REGEX: LazyLock<Regex> =
     LazyLock::new(|| Regex::new("^(ru|ro|en)").unwrap());
 
-pub trait Documents: Send + Sync + Debug + 'static {
-    /// return documents metadata
-    fn documents(&self) -> Box<dyn Iterator<Item = &Document> + '_>;
-    /// find document by it's id
-    fn get_document(&self, id: &DocumentId) -> Option<&Document>;
-}
-
 // structs
 
 /// A uniquely identifiable Document.

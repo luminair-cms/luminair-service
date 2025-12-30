@@ -1,8 +1,8 @@
+use std::collections::HashMap;
 use chrono::{DateTime, Utc};
-use luminair_common::domain::{
-    attributes::AttributeBody,
-    documents::{Document, Documents},
-};
+use luminair_common::domain::persistence::DocumentPersistence;
+use luminair_common::domain::Documents;
+use luminair_common::domain::documents::Document;
 
 /// This trait used only for testing purposes.
 pub trait HelloService: Send + Sync + 'static {
@@ -15,7 +15,7 @@ pub trait Persistence: Clone + Send + Sync + 'static {
     /// select all rows from database
     fn select_all(
         &self,
-        query: &Query,
+        query: Query<'_>,
     ) -> impl Future<Output = Result<impl ResultSet, anyhow::Error>> + Send;
 }
 
@@ -27,6 +27,9 @@ pub struct ResultRow {
     pub document_id: i32,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    pub published_at: Option<DateTime<Utc>>,
+    pub locale: Option<String>,
+    pub body: HashMap<String,String>
 }
 
 //// The global application state shared between all request handlers.
@@ -36,6 +39,12 @@ pub trait AppState: Clone + Send + Sync + 'static {
     fn hello_service(&self) -> &Self::H;
     fn documents(&self) -> &'static dyn Documents;
     fn persistence(&self) -> &Self::P;
+}
+
+pub struct Query<'a> {
+    pub sql: String,
+    pub columns: Vec<Column<'a>>,
+    pub document_ref: &'static Document
 }
 
 /// Represents Query to Database
@@ -49,92 +58,58 @@ pub trait AppState: Clone + Send + Sync + 'static {
 /// FROM main_table m
 /// JOIN localization_table l ON m.document_id = l.document_id
 /// select_one adds to this Query expression WHERE m.document_id = ?
-pub struct Query {
-    pub from: Table,
-    pub joins: Vec<Table>,
-    pub select: Vec<Column>,
+pub struct QueryBuilder<'a> {
+    pub from: Table<'a>,
+    pub joins: Vec<Table<'a>>,
+    pub select: Vec<Column<'a>>,
+    pub document_ref: &'static Document
 }
 
-impl Query {
-    pub fn select_all(document: &Document) -> Query {
-        let main_table_name = document.id.normalized();
-        let has_localization = document.has_localization();
+impl <'a> QueryBuilder<'a> {
+    pub fn select_all(document: &'a DocumentPersistence) -> QueryBuilder<'a> {
+        let main_table = &document.main_table;
 
         let from = Table {
-            name: main_table_name,
+            name: &main_table.name,
             alias: "m",
         };
 
-        let joins = if has_localization {
-            let localization_table_name = format!("{}_localization", &from.name);
+        let joins = if let Some(localization_table) = document.localization_table.as_ref() {
             vec![Table {
-                name: localization_table_name,
+                name: &localization_table.name,
                 alias: "l",
             }]
         } else {
             Vec::new()
         };
+        
+        let mut select = main_table.columns.iter()
+            .map(|c| Column {
+                alias: "m",
+                name: &c.name,
+                attribute_name:
+                c.attribute_name.as_ref().map(|x| x.as_str()) })
+            .collect::<Vec<_>>();
 
-        let mut select = vec![
-            Column {
-                alias: "m",
-                name: "document_id".to_owned(),
-            },
-            Column {
-                alias: "m",
-                name: "created_at".to_owned(),
-            },
-            Column {
-                alias: "m",
-                name: "updated_at".to_owned(),
-            },
-        ];
-
-        if document.has_draft_and_publish() {
-            select.push(Column {
-                alias: "m",
-                name: "published_at".to_owned(),
-            })
+        if let Some(localization_table) = &document.localization_table {
+            localization_table.columns.iter()
+                .filter( |c| c.name != "document_id")
+                .for_each(|c| select.push(Column {
+                    alias: "l",
+                    name: &c.name,
+                    attribute_name:
+                    c.attribute_name.as_ref().map(|x| x.as_str()) }));
         }
 
-        if has_localization {
-            select.push(Column {
-                alias: "l",
-                name: "locale".to_owned(),
-            });
-        }
-
-        let mut main_columns = Vec::new();
-        let mut localization_columns = Vec::new();
-
-        for attribute in document.attributes.iter() {
-            let id = attribute.id.normalized();
-            if let AttributeBody::Field { localized, .. } = &attribute.body {
-                if *localized {
-                    localization_columns.push(Column {
-                        alias: "l",
-                        name: id,
-                    });
-                } else {
-                    main_columns.push(Column {
-                        alias: "m",
-                        name: id,
-                    });
-                }
-            }
-        }
-
-        select.append(&mut main_columns);
-        select.append(&mut localization_columns);
-
-        Query {
+        QueryBuilder {
             from,
             joins,
             select,
+            document_ref: document.document_ref
         }
     }
 
-    pub fn generate_select(&self) -> String {
+    pub fn generate(self) -> Query<'a> {
         let from_exp: String = String::from(&self.from);
         let columns: Vec<String> = self
             .select
@@ -147,29 +122,36 @@ impl Query {
             .map(|j| format!("JOIN {} AS {} ON m.document_id = {}.document_id", &j.name, j.alias, j.alias))
             .collect();
 
-        format!(
+        let sql = format!(
             "SELECT {} FROM {}\n{}",
             columns.join(","),
             from_exp,
             joins.join("\n")
-        )
+        );
+
+        Query { 
+            sql, 
+            columns: self.select.into_iter().filter(|c| c.attribute_name.is_some()).collect(), 
+            document_ref: self.document_ref
+        }
     }
 }
 
 /// Represents table in a database, used for dml generation
-pub struct Table {
-    pub name: String,
+pub struct Table<'a> {
+    pub name: &'a str,
     pub alias: &'static str,
 }
 
-impl From<&Table> for String {
+impl <'a> From<&Table<'a>> for String {
     fn from(value: &Table) -> Self {
         format!("{} AS {}", value.name, value.alias)
     }
 }
 
 // Represents one column in the database table
-pub struct Column {
+pub struct Column<'a> {
     pub alias: &'static str,
-    pub name: String,
+    pub name: &'a str,
+    pub attribute_name: Option<&'a str>
 }
