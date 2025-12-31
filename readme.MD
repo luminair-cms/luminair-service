@@ -14,6 +14,7 @@ https://berk.es/2022/09/28/value-objects-in-rust/
 https://www.howtocodeit.com/guides/master-hexagonal-architecture-in-rust
 https://www.howtocodeit.com/guides/the-definitive-guide-to-rust-error-handling
 https://www.howtocodeit.com/guides/ultimate-guide-rust-newtypes
+https://bitfieldconsulting.com/posts/best-rust-books
 
 ### Microservices architecture, separated parts
 
