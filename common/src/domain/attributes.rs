@@ -1,7 +1,5 @@
-use crate::domain::documents::Document;
 use crate::domain::{AttributeId, DocumentId};
 use serde::{Deserialize, Serialize};
-use std::sync::RwLock;
 
 /// A uniquely identifiable document Attribute.
 #[derive(Debug)]
@@ -21,12 +19,12 @@ pub enum AttributeBody {
     },
     Relation {
         relation_type: RelationType,
-        target: RwLock<RelationTarget>,
+        target: DocumentId,
         ordering: bool,
     },
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum AttributeType {
     Uid,  // unique identifier based on text
     Uuid, // unique identifier based on UUID
@@ -58,7 +56,7 @@ pub enum RelationAttribute {
     MappedBy(AttributeId),
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum RelationType {
     // owning side
     HasOne,
@@ -66,14 +64,6 @@ pub enum RelationType {
     // inverse side
     BelongsToOne,
     BelongsToMany,
-}
-
-pub type RelationId = AttributeId;
-
-#[derive(Clone, Debug)]
-pub enum RelationTarget {
-    Id(DocumentId),
-    Ref(&'static Document),
 }
 
 // implementations

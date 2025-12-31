@@ -3,11 +3,11 @@ use std::sync::LazyLock;
 use nutype::nutype;
 use regex::Regex;
 use crate::domain::documents::Document;
-use crate::domain::persistence::DocumentPersistence;
+use crate::domain::persisted::PersistedDocument;
 
 pub mod documents;
 pub mod attributes;
-pub mod persistence;
+pub mod persisted;
 
 pub trait Documents: Send + Sync + Debug + 'static {
     /// iterate all documents metadata
@@ -15,9 +15,9 @@ pub trait Documents: Send + Sync + Debug + 'static {
     /// find document metadata by its id
     fn get_document(&self, id: &DocumentId) -> Option<&Document>;
     /// iterate document persistence
-    fn document_tables(&self) -> Box<dyn Iterator<Item = &DocumentPersistence> + '_>;
+    fn persisted_documents(&self) -> Box<dyn Iterator<Item = &PersistedDocument> + '_>;
     /// get document persistence by its id
-    fn get_document_tables(&self, id: &DocumentId) -> Option<&DocumentPersistence>;
+    fn get_persisted_document(&self, id: &DocumentId) -> Option<&PersistedDocument>;
 }
 
 // A regex for IDs/names that may contain only ASCII letters, digits, and underscore.

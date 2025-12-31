@@ -1,5 +1,6 @@
 use luminair_common::domain::Documents;
-use luminair_common::domain::persistence::tables::{Column, ColumnType, ForeignKeyConstraint, Index, Table};
+use crate::domain::DocumentTables;
+use crate::domain::tables::{Column, ColumnType, ForeignKeyConstraint, Index, Table};
 use crate::domain::persistence::Persistence;
 
 #[derive(Clone)]
@@ -152,16 +153,17 @@ fn create_index_ddl(schema: &str, index: &Index) -> String {
 }
 
 // returns database persistence for given documents schema, sorted conform dependency order
-fn documents_into_tables(documents: &dyn Documents) -> Vec<&Table> {
+fn documents_into_tables(documents: &dyn Documents) -> Vec<Table> {
     let mut tables = Vec::new();
     let mut relation_tables = Vec::new();
 
-    for d in documents.document_tables() {
-        tables.push(&d.main_table);
-        if let Some(localization_table) = &d.localization_table {
-            tables.push(&localization_table);
+    for d in documents.persisted_documents() {
+        let d = DocumentTables::from(d);
+        tables.push(d.main_table);
+        if let Some(localization_table) = d.localization_table {
+            tables.push(localization_table);
         }
-        relation_tables.extend(&d.relation_tables);
+        relation_tables.extend(d.relation_tables);
     }
     tables.extend(relation_tables);
 

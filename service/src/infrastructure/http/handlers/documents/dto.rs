@@ -1,9 +1,8 @@
 use luminair_common::domain::attributes::{
-    Attribute, AttributeBody, AttributeConstraints, AttributeType, RelationTarget, RelationType,
+    Attribute, AttributeBody, AttributeConstraints, AttributeType, RelationType,
 };
 use luminair_common::domain::documents::{Document, DocumentInfo, DocumentOptions, DocumentType};
 use serde::Serialize;
-use std::ops::Deref;
 
 /// Response for list documents route
 #[derive(Debug, Clone, Serialize)]
@@ -158,11 +157,7 @@ impl From<&Attribute> for AttributeResponse {
                 target,
                 ordering,
             } => {
-                let target_document_lock = target.read().unwrap();
-                let target = match target_document_lock.deref() {
-                    RelationTarget::Id(id) => id.to_string(),
-                    RelationTarget::Ref(document) => document.id.to_string(),
-                };
+                let target = target.to_string();
                 AttribteBodyResponse::Relation {
                     relation_type: relation_type.clone(),
                     target,

@@ -11,7 +11,6 @@ pub struct Table {
 #[derive(Debug)]
 pub struct Column {
     pub name: String,
-    pub attribute_name: Option<String>,
     pub column_type: ColumnType,
     pub column_length: Option<usize>,
     pub not_null: bool,
@@ -70,7 +69,6 @@ impl Table {
 impl Column {
     pub fn new<T: Into<String>>(
         name: T,
-        attribute_name: Option<T>,
         column_type: ColumnType,
         column_length: Option<usize>,
         not_null: bool,
@@ -80,7 +78,6 @@ impl Column {
         let primary_key = false;
         Self {
             name: name.into(),
-            attribute_name: attribute_name.map(|a| a.into()),
             column_type: column_type,
             column_length,
             not_null,
@@ -93,7 +90,6 @@ impl Column {
     pub fn primary_key<T: Into<String>>(name: T, column_type: ColumnType, column_length: Option<usize>) -> Self {
         Self {
             name: name.into(),
-            attribute_name: None,
             column_type: column_type,
             column_length,
             not_null: false,

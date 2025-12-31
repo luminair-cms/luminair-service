@@ -1,4 +1,4 @@
-use crate::domain::{AppState, Persistence, Query, QueryBuilder, ResultSet};
+use crate::domain::{AppState, Persistence, QueryBuilder, ResultSet};
 use crate::infrastructure::http::api::{ApiError, ApiSuccess};
 use crate::infrastructure::http::handlers::data::dto::{
     DocumentRowResponse, ManyDocumentRowsResponse, MetadataResponse, OneDocumentRowResponse,
@@ -17,7 +17,7 @@ pub async fn find_document_by_id<S: AppState>(
     let document_id = DocumentId::try_new(document_id)
         .map_err(|err| ApiError::UnprocessableEntity(err.to_string()))?;
 
-    let document_metadata = state.documents().get_document_tables(&document_id);
+    let document_metadata = state.documents().get_persisted_document(&document_id);
 
     if document_metadata.is_none() {
         return Err(ApiError::NotFound);
@@ -37,7 +37,7 @@ pub async fn find_all_documents<S: AppState>(
 
     let document_metadata = state
         .documents()
-        .get_document_tables(&document_id)
+        .get_persisted_document(&document_id)
         .ok_or(ApiError::NotFound)?;
 
     let query = QueryBuilder::select_all(&document_metadata).generate();

@@ -10,11 +10,11 @@ Project is based on Strapi ideas, but focused on Speed and Reliability.
 
 see resources: 
 
-https://berk.es/2022/09/28/value-objects-in-rust/
-https://www.howtocodeit.com/guides/master-hexagonal-architecture-in-rust
-https://www.howtocodeit.com/guides/the-definitive-guide-to-rust-error-handling
-https://www.howtocodeit.com/guides/ultimate-guide-rust-newtypes
-https://bitfieldconsulting.com/posts/best-rust-books
+- https://berk.es/2022/09/28/value-objects-in-rust/
+- https://www.howtocodeit.com/guides/master-hexagonal-architecture-in-rust
+- https://www.howtocodeit.com/guides/the-definitive-guide-to-rust-error-handling
+- https://www.howtocodeit.com/guides/ultimate-guide-rust-newtypes
+- https://bitfieldconsulting.com/posts/best-rust-books
 
 ### Microservices architecture, separated parts
 
@@ -25,6 +25,18 @@ https://bitfieldconsulting.com/posts/best-rust-books
 * Also will be separate UI repository (probably based on React) and separate UI tool for schema generation.
 
 ## Documents model
+
+### Initial document with 
+  
+id, document_type, info, options, attributes
+
+### Persisted document with 
+
+- document_ref (&'static) and persistence details
+- main table details, needed for migration and mapping
+- localization table details (Optional), needed for migration and mapping
+- hashmap of fields, each field has needed attribute and persistence details
+- hashmap of relations, each relation has ref to PersistedDocument and persistence details
 
 ### Associations
 
