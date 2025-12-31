@@ -8,12 +8,19 @@ use crate::infrastructure::database::{Database, DatabaseSetings};
 pub mod domain;
 pub mod infrastructure;
 
+// Persited documents field names
+
+pub const DOCUMENT_ID_FIELD_NAME: &str = "document_id";
+pub const RELATION_ID_FIELD_NAME: &str = "relation_id";
+pub const LOCALE_FIELD_NAME: &str = "locale";
+pub const CREATED_FIELD_NAME: &str = "created_at";
+pub const UPDATED_FIELD_NAME: &str = "updated_at";
+pub const PUBLISHED_FIELD_NAME: &str = "published_at";
+
 static DOCUMENTS: OnceLock<Arc<dyn Documents>> = OnceLock::new();
 
 pub fn load_documents(schema_config_path: &str) -> Result<&'static dyn Documents, anyhow::Error> {
-    let mut loaded = DocumentsAdapter::load(schema_config_path)?;
-    // initiate relation references
-    loaded.initiate()?;
+    let loaded = DocumentsAdapter::load(schema_config_path)?;
     // store loaded documents in static variable
     DOCUMENTS.set(Arc::new(loaded)).expect("Failed to set documents");
     // get reference to Documents trait with static lifetime

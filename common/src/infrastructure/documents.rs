@@ -2,12 +2,11 @@ use anyhow::{anyhow, Context};
 use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
-use std::sync::RwLock;
 
 use crate::domain::{
     attributes::*,
     documents::*,
-    persistence::DocumentPersistence,
+    persisted::PersistedDocument,
     AttributeId,
     DocumentId,
     Documents,
@@ -17,7 +16,7 @@ use crate::domain::{
 pub(crate) struct DocumentsAdapter {
     // Store leaked &'static Document so we can keep stable references in relations
     documents: HashSet<&'static Document>,
-    documents_tables: HashMap<DocumentId, DocumentPersistence>,
+    persisted_documents: HashMap<DocumentId, PersistedDocument>,
 }
 
 impl Documents for DocumentsAdapter {
@@ -29,12 +28,12 @@ impl Documents for DocumentsAdapter {
         self.documents.get(id).copied()
     }
 
-    fn document_tables(&self) -> Box<dyn Iterator<Item=&DocumentPersistence> + '_> {
-        Box::new(self.documents_tables.values())
+    fn persisted_documents(&self) -> Box<dyn Iterator<Item=&PersistedDocument> + '_> {
+        Box::new(self.persisted_documents.values())
     }
 
-    fn get_document_tables(&self, id: &DocumentId) -> Option<&DocumentPersistence> {
-        self.documents_tables.get(id)
+    fn get_persisted_document(&self, id: &DocumentId) -> Option<&PersistedDocument> {
+        self.persisted_documents.get(id)
     }
 }
 
@@ -55,6 +54,7 @@ impl DocumentsAdapter {
         })?;
 
         let mut documents: HashSet<&'static Document> = HashSet::new();
+        
         for entry_res in entries {
             let entry =
                 entry_res.map_err(|e| anyhow!("failed to read a directory entry: {}", e))?;
@@ -66,37 +66,16 @@ impl DocumentsAdapter {
                 documents.insert(leaked);
             }
         }
-
-        let mut documents_tables = HashMap::new();
+        
+        let mut persisted_documents = HashMap::new();
+        for document in documents.iter() {
+            persisted_documents.insert(document.id.clone(), PersistedDocument::new(*document, &documents));
+        }
 
         Ok(Self {
             documents,
-            documents_tables,
+            persisted_documents,
         })
-    }
-
-    pub fn initiate(&mut self) -> Result<(), anyhow::Error> {
-        for document in self.documents.iter().copied() {
-            for attribute in &document.attributes {
-                if let AttributeBody::Relation { target, .. } = &attribute.body {
-                    let mut target = target.write().unwrap();
-                    if let RelationTarget::Id(target_id) = &*target {
-                        let found = self.documents.get(target_id).context(format!(
-                            "Target document not found: {} from {}.{}",
-                            target_id, document.id, attribute.id
-                        ))?;
-
-                        *target = RelationTarget::Ref(found);
-                    }
-                }
-            }
-        }
-
-        for document in self.documents.iter() {
-            self.documents_tables.insert(document.id.clone(), DocumentPersistence::from(*document));
-        }
-
-        Ok(())
     }
 }
 
@@ -292,7 +271,7 @@ impl<'a> TryFrom<AttributeRecord<'a>> for Attribute {
                 let target = DocumentId::try_new(target)?;
                 Ok(AttributeBody::Relation {
                     relation_type,
-                    target: RwLock::new(RelationTarget::Id(target)),
+                    target,
                     ordering,
                 })
             }

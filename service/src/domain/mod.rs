@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use chrono::{DateTime, Utc};
-use luminair_common::domain::persistence::DocumentPersistence;
+use luminair_common::{CREATED_FIELD_NAME, DOCUMENT_ID_FIELD_NAME, LOCALE_FIELD_NAME, PUBLISHED_FIELD_NAME, UPDATED_FIELD_NAME};
+use luminair_common::domain::persisted::PersistedDocument;
 use luminair_common::domain::Documents;
 use luminair_common::domain::documents::Document;
 
@@ -66,39 +67,45 @@ pub struct QueryBuilder<'a> {
 }
 
 impl <'a> QueryBuilder<'a> {
-    pub fn select_all(document: &'a DocumentPersistence) -> QueryBuilder<'a> {
-        let main_table = &document.main_table;
-
+    pub fn select_all(document: &'a PersistedDocument) -> QueryBuilder<'a> {
+        let details = &document.details;
         let from = Table {
-            name: &main_table.name,
+            name: &details.main_table_name,
             alias: "m",
         };
 
-        let joins = if let Some(localization_table) = document.localization_table.as_ref() {
+        let has_localization = document.document_ref.has_localization();
+        
+        let joins = if has_localization {
             vec![Table {
-                name: &localization_table.name,
+                name: &details.localization_table_name,
                 alias: "l",
             }]
         } else {
             Vec::new()
         };
         
-        let mut select = main_table.columns.iter()
-            .map(|c| Column {
-                alias: "m",
-                name: &c.name,
-                attribute_name:
-                c.attribute_name.as_ref().map(|x| x.as_str()) })
+        let mut select = document.fields.iter()
+            .map(|(attribute_id, field)| {
+                let alias = if field.localized { "l" } else { "m" };
+                Column {
+                    alias,
+                    name: &field.table_column_name,
+                    attribute_name: Some(attribute_id.as_ref()) 
+                }
+            })
             .collect::<Vec<_>>();
-
-        if let Some(localization_table) = &document.localization_table {
-            localization_table.columns.iter()
-                .filter( |c| c.name != "document_id")
-                .for_each(|c| select.push(Column {
-                    alias: "l",
-                    name: &c.name,
-                    attribute_name:
-                    c.attribute_name.as_ref().map(|x| x.as_str()) }));
+        
+        // add special fields
+        select.push(Column { alias: "m", name: DOCUMENT_ID_FIELD_NAME, attribute_name: None });
+        select.push(Column { alias: "m", name: CREATED_FIELD_NAME, attribute_name: None });
+        select.push(Column { alias: "m", name: UPDATED_FIELD_NAME, attribute_name: None });
+        
+        if document.document_ref.has_draft_and_publish() {
+            select.push(Column { alias: "m", name: PUBLISHED_FIELD_NAME, attribute_name: None });
+        }
+        if has_localization {
+            select.push(Column { alias: "l", name: LOCALE_FIELD_NAME, attribute_name: None });
         }
 
         QueryBuilder {
