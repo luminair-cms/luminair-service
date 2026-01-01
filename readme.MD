@@ -1,8 +1,10 @@
 # Backend part of the Luminair CMS
 
-This is work in progress in a very early stage. 
-Currently main goal of project - learning or Rust and investigate its possibilities.
-Project is based on Strapi ideas, but focused on Speed and Reliability.
+This is a work in progress at a very early stage. 
+
+Currently, the main goal of project - learning or Rust and investigate its possibilities.
+
+Project is based on Strapi ideas but focused on Speed and Reliability.
 
 ## Main principles
 
@@ -19,10 +21,10 @@ see resources:
 ### Microservices architecture, separated parts
 
 - common crate for common domain model and logic
-- migration create for separate migration cli tool what will be started before main service with DDL privileges
-- service service for microservice that provides rest api
+- migration create for a separate migration cli tool that will be started before the main service with DDL privileges
+- service for microservice that provides rest api
 
-* Also will be separate UI repository (probably based on React) and separate UI tool for schema generation.
+* Also, will be separate UI repository (probably based on React) and a separate UI tool for schema generation.
 
 ## Documents model
 

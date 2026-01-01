@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use chrono::{DateTime, Utc};
 use luminair_common::infrastructure::database::Database;
 use sqlx::postgres::PgRow;
-
+use luminair_common::{CREATED_FIELD_NAME, DOCUMENT_ID_FIELD_NAME, LOCALE_FIELD_NAME, PUBLISHED_FIELD_NAME, UPDATED_FIELD_NAME};
 use crate::domain::{Persistence, Query, ResultRow, ResultSet};
 
 #[derive(Clone, Debug)]
@@ -28,31 +28,29 @@ impl TryFrom <(&Query<'_>, PgRow)> for ResultRow {
 
         let (query, row) = value;
         
-        let document_id: i32 = row.try_get("document_id")?;
-        let created_at: DateTime<Utc> = row.try_get("created_at")?;
-        let updated_at: DateTime<Utc> = row.try_get("updated_at")?;
+        let document_id: i32 = row.try_get(DOCUMENT_ID_FIELD_NAME)?;
+        let created_at: DateTime<Utc> = row.try_get(CREATED_FIELD_NAME)?;
+        let updated_at: DateTime<Utc> = row.try_get(UPDATED_FIELD_NAME)?;
 
         let document = query.document_ref;
         
         let mut locale = None;
         if document.has_localization() {
             // TODO: localization column name must be specified once
-            let val: String = row.try_get("locale")?;
+            let val: String = row.try_get(LOCALE_FIELD_NAME)?;
             locale = Some(val);
         }
         
         let mut published_at = None;
         if document.has_draft_and_publish() {
-            let val: Option<DateTime<Utc>> = row.try_get("published_at")?;
+            let val: Option<DateTime<Utc>> = row.try_get(PUBLISHED_FIELD_NAME)?;
             published_at = val
         }
 
         let mut body = HashMap::new();
-        for column in query.columns.iter() {
-            if let Some(column_name) = column.attribute_name.as_ref() {
-                let value: String = row.try_get(column.name)?;
-                body.insert(column_name.to_string(), value);
-            }
+        for (attribute_id, field) in query.fields.iter() {
+                let value: String = row.try_get(field.table_column_name.as_str())?;
+                body.insert(attribute_id.to_string(), value);
         }
         
         Ok(ResultRow { document_id, created_at, updated_at, published_at, locale, body })

@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use chrono::{DateTime, Utc};
 use luminair_common::{CREATED_FIELD_NAME, DOCUMENT_ID_FIELD_NAME, LOCALE_FIELD_NAME, PUBLISHED_FIELD_NAME, UPDATED_FIELD_NAME};
-use luminair_common::domain::persisted::PersistedDocument;
+use luminair_common::domain::persisted::{PersistedDocument, PersistedField};
 use luminair_common::domain::Documents;
 use luminair_common::domain::documents::Document;
 
@@ -10,10 +10,10 @@ pub trait HelloService: Send + Sync + 'static {
     fn hello(&self) -> impl Future<Output = Result<String, anyhow::Error>> + Send;
 }
 
-/// Service that translate requests to document model into requests to db
+/// Service that translate requests to a document model into requests to db
 /// and provide serialize/deserialize
 pub trait Persistence: Clone + Send + Sync + 'static {
-    /// select all rows from database
+    /// select all rows from a database
     fn select_all(
         &self,
         query: Query<'_>,
@@ -44,8 +44,8 @@ pub trait AppState: Clone + Send + Sync + 'static {
 
 pub struct Query<'a> {
     pub sql: String,
-    pub columns: Vec<Column<'a>>,
-    pub document_ref: &'static Document
+    pub document_ref: &'static Document,
+    pub fields: HashMap<String, &'a PersistedField>
 }
 
 /// Represents Query to Database
@@ -63,7 +63,8 @@ pub struct QueryBuilder<'a> {
     pub from: Table<'a>,
     pub joins: Vec<Table<'a>>,
     pub select: Vec<Column<'a>>,
-    pub document_ref: &'static Document
+    pub document_ref: &'static Document,
+    pub fields: HashMap<String, &'a PersistedField>
 }
 
 impl <'a> QueryBuilder<'a> {
@@ -84,35 +85,38 @@ impl <'a> QueryBuilder<'a> {
         } else {
             Vec::new()
         };
-        
-        let mut select = document.fields.iter()
-            .map(|(attribute_id, field)| {
-                let alias = if field.localized { "l" } else { "m" };
-                Column {
-                    alias,
-                    name: &field.table_column_name,
-                    attribute_name: Some(attribute_id.as_ref()) 
-                }
-            })
-            .collect::<Vec<_>>();
-        
-        // add special fields
-        select.push(Column { alias: "m", name: DOCUMENT_ID_FIELD_NAME, attribute_name: None });
-        select.push(Column { alias: "m", name: CREATED_FIELD_NAME, attribute_name: None });
-        select.push(Column { alias: "m", name: UPDATED_FIELD_NAME, attribute_name: None });
-        
+
+        let mut select = vec![
+            Column { alias: "m", name: DOCUMENT_ID_FIELD_NAME },
+            Column { alias: "m", name: CREATED_FIELD_NAME },
+            Column { alias: "m", name: UPDATED_FIELD_NAME }
+        ];
+
         if document.document_ref.has_draft_and_publish() {
-            select.push(Column { alias: "m", name: PUBLISHED_FIELD_NAME, attribute_name: None });
+            select.push(Column { alias: "m", name: PUBLISHED_FIELD_NAME });
         }
         if has_localization {
-            select.push(Column { alias: "l", name: LOCALE_FIELD_NAME, attribute_name: None });
+            select.push(Column { alias: "l", name: LOCALE_FIELD_NAME });
+        }
+
+        let mut fields = HashMap::new();
+
+        for (attribute_id, field) in document.fields.iter() {
+            let alias = if field.localized { "l" } else { "m" };
+            select.push(
+            Column {
+                alias,
+                name: &field.table_column_name
+            });
+            fields.insert(attribute_id.to_string(), field);
         }
 
         QueryBuilder {
             from,
             joins,
             select,
-            document_ref: document.document_ref
+            document_ref: document.document_ref,
+            fields
         }
     }
 
@@ -138,7 +142,7 @@ impl <'a> QueryBuilder<'a> {
 
         Query { 
             sql, 
-            columns: self.select.into_iter().filter(|c| c.attribute_name.is_some()).collect(), 
+            fields: self.fields,
             document_ref: self.document_ref
         }
     }
@@ -159,6 +163,5 @@ impl <'a> From<&Table<'a>> for String {
 // Represents one column in the database table
 pub struct Column<'a> {
     pub alias: &'static str,
-    pub name: &'a str,
-    pub attribute_name: Option<&'a str>
+    pub name: &'a str
 }

@@ -160,10 +160,6 @@ impl LocalizationTableBuilder {
             vec![fkey_index],
         )
     }
-
-    fn columns(&self) -> &[Column] {
-        &self.columns
-    }
 }
 
 impl RelationTablesBuilder {
