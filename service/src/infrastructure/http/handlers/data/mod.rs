@@ -44,8 +44,12 @@ pub async fn find_all_documents<S: AppState>(
 
     let result_set = state.persistence().select_all(query).await?;
 
+    use itertools::Itertools;
+    
     let data: Vec<DocumentRowResponse> = result_set
         .into_rows()
+        .into_iter()
+        .into_group_map_by(|row|row.document_id)
         .into_iter()
         .map(DocumentRowResponse::from)
         .collect();

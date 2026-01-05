@@ -47,13 +47,19 @@ impl TryFrom <(&Query<'_>, PgRow)> for ResultRow {
             published_at = val
         }
 
-        let mut body = HashMap::new();
+        let mut fields = HashMap::new();
+        let mut localized_fields = HashMap::new();
         for (attribute_id, field) in query.fields.iter() {
-                let value: String = row.try_get(field.table_column_name.as_str())?;
-                body.insert(attribute_id.to_string(), value);
+            let id = attribute_id.to_string();
+            let value: String = row.try_get(field.table_column_name.as_str())?;
+            if field.localized {
+                localized_fields.insert(id, value);
+            } else {
+                fields.insert(id, value);
+            }
         }
         
-        Ok(ResultRow { document_id, created_at, updated_at, published_at, locale, body })
+        Ok(ResultRow { document_id, created_at, updated_at, published_at, locale, fields, localized_fields })
     }
 }
 

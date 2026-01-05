@@ -30,7 +30,8 @@ pub struct ResultRow {
     pub updated_at: DateTime<Utc>,
     pub published_at: Option<DateTime<Utc>>,
     pub locale: Option<String>,
-    pub body: HashMap<String,String>
+    pub fields: HashMap<String,String>,
+    pub localized_fields: HashMap<String,String>
 }
 
 //// The global application state shared between all request handlers.
@@ -61,8 +62,9 @@ pub struct Query<'a> {
 /// select_one adds to this Query expression WHERE m.document_id = ?
 pub struct QueryBuilder<'a> {
     pub from: Table<'a>,
-    pub joins: Vec<Table<'a>>,
     pub select: Vec<Column<'a>>,
+    pub joins: Vec<Table<'a>>,
+    pub order: Vec<Column<'a>>,
     pub document_ref: &'static Document,
     pub fields: HashMap<String, &'a PersistedField>
 }
@@ -110,11 +112,17 @@ impl <'a> QueryBuilder<'a> {
             });
             fields.insert(attribute_id.to_string(), field);
         }
+        
+        let mut order = vec![Column { alias: "m", name: DOCUMENT_ID_FIELD_NAME },];
+        if has_localization {
+            order.push(Column { alias: "l", name: LOCALE_FIELD_NAME });
+        };
 
         QueryBuilder {
             from,
-            joins,
             select,
+            joins,
+            order,
             document_ref: document.document_ref,
             fields
         }
@@ -125,7 +133,7 @@ impl <'a> QueryBuilder<'a> {
         let columns: Vec<String> = self
             .select
             .iter()
-            .map(|c| format!("{}.{}", c.alias, &c.name))
+            .map(|c|c.into())
             .collect();
         let joins: Vec<String> = self
             .joins
@@ -133,11 +141,18 @@ impl <'a> QueryBuilder<'a> {
             .map(|j| format!("JOIN {} AS {} ON m.document_id = {}.document_id", &j.name, j.alias, j.alias))
             .collect();
 
+        let order: Vec<String> = self
+            .order
+            .iter()
+            .map(|c|c.into())
+            .collect();
+        
         let sql = format!(
-            "SELECT {} FROM {}\n{}",
+            "SELECT {} FROM {}\n{}\n ORDER BY {}",
             columns.join(","),
             from_exp,
-            joins.join("\n")
+            joins.join("\n"),
+            order.join(",")
         );
 
         Query { 
@@ -164,4 +179,10 @@ impl <'a> From<&Table<'a>> for String {
 pub struct Column<'a> {
     pub alias: &'static str,
     pub name: &'a str
+}
+
+impl <'a> Into<String> for &Column<'a> {
+    fn into(self) -> String {
+        format!("{}.{}", self.alias, self.name)
+    }
 }
