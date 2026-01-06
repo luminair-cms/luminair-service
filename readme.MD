@@ -26,6 +26,10 @@ see resources:
 
 * Also, will be separate UI repository (probably based on React) and a separate UI tool for schema generation.
 
+## Rust design patterns and idioms
+
+https://rust-unofficial.github.io/patterns/patterns/creational/builder.html
+
 ## Documents model
 
 ### Initial document with

@@ -1,4 +1,4 @@
-use std::{collections::HashMap, hash::Hash};
+use std::{collections::HashMap, io::ErrorKind};
 use serde::Serialize;
 use chrono::{DateTime, Utc};
 
@@ -16,6 +16,16 @@ impl PartialEq for ManyDocumentRowsResponse {
     }
 }
 
+impl From<Vec<DocumentRowResponse>> for ManyDocumentRowsResponse {
+    fn from(value: Vec<DocumentRowResponse>) -> Self {
+        let meta = MetadataResponse { total: value.len() };
+        Self {
+            data: value,
+            meta
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct MetadataResponse {
     pub total: usize
@@ -23,12 +33,23 @@ pub struct MetadataResponse {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct OneDocumentRowResponse {
-    data: DocumentRowResponse
+    pub data: DocumentRowResponse
 }
 
 impl PartialEq for OneDocumentRowResponse {
     fn eq(&self, other: &Self) -> bool {
         self.data == other.data
+    }
+}
+
+impl TryFrom<Vec<DocumentRowResponse>> for OneDocumentRowResponse {
+   type Error = std::io::Error;
+
+    fn try_from(value: Vec<DocumentRowResponse>) -> Result<Self, Self::Error> {
+        value.into_iter()
+            .next()
+            .map(|row| OneDocumentRowResponse { data: row })
+            .ok_or_else(||std::io::Error::new(ErrorKind::NotFound, "Document not found"))
     }
 }
 
