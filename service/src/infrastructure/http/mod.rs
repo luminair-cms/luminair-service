@@ -1,15 +1,19 @@
 use anyhow::Context;
-use axum::Router;
+use axum::http::StatusCode;
+use axum::{Extension, Router};
 use axum::routing::get;
 use axum_prometheus::PrometheusMetricLayer;
 
+use serde_querystring::ParseMode;
 use tokio::net;
+use crate::infrastructure::http::querystring::QueryStringConfig;
 use crate::infrastructure::{AppState, http::handlers::data::{find_all_documents, find_document_by_id}};
 use handlers::documents::{documents_metadata, one_document_metadata};
 use crate::infrastructure::http::handlers::{health_check, hello_world_handler};
 
 mod api;
 mod handlers;
+mod querystring;
 
 /// Configuration for the HTTP server.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -37,6 +41,12 @@ impl HttpServer {
         let (prometheus_layer, metric_handle) = PrometheusMetricLayer::pair();
 
         let router = Router::new()
+            .layer(Extension(
+                QueryStringConfig::new(ParseMode::Brackets)
+                    .ehandler(|err| {
+                             (StatusCode::BAD_REQUEST, err.to_string()) // return type should impl IntoResponse
+                         }),
+            ))
             .route("/health", get(health_check))
             .nest("/api", api_routes())
             .route("/metrics", get(|| async move { metric_handle.render() }))
