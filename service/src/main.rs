@@ -22,10 +22,10 @@ async fn main() -> anyhow::Result<()> {
         .init();
 
     let documents = load_documents(&settings.schema_config_path)?;
-    println!("Configuration loaded");
+    tracing::debug!("Configuration loaded");
 
     let database = connect_to_database(&settings.database).await?;
-    println!("Connected to DB");
+    tracing::debug!("Connected to DB");
 
     let hello_service = HelloServiceAdapter::new(&database);
     let persistence = PersistenceAdapter::new(&database);

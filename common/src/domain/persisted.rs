@@ -1,13 +1,14 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use crate::domain::attributes::{AttributeBody, AttributeType, RelationType};
 use crate::domain::documents::Document;
 
-use crate::domain::AttributeId;
+use crate::domain::{AttributeId, DocumentId, DocumentRef};
 
 /// Represents a Persistence structure on Document in Database
 #[derive(Debug)]
 pub struct PersistedDocument {
-    pub document_ref: &'static Document,
+    pub has_localization: bool,
+    pub has_draft_and_publish: bool,
     pub details: TableDetails,
     pub fields: HashMap<AttributeId, PersistedField>,
     pub relations: HashMap<AttributeId, PersistedRelation>,
@@ -32,7 +33,7 @@ pub struct PersistedField {
 #[derive(Debug)]
 pub struct PersistedRelation {
     pub relation_type: RelationType,
-    pub target: &'static Document,
+    pub target: DocumentRef,
     pub ordering: bool,
     pub relation_table_name: String,
 }
@@ -47,7 +48,7 @@ impl From<&'static Document> for TableDetails {
 }
 
 impl PersistedDocument {
-    pub fn new(document: &'static Document, documents: &HashSet<&'static Document>) -> Self {
+    pub fn new(document: &'static Document, index: &HashMap<DocumentId, usize>) -> Self {
         let details = TableDetails::from(document);
         
         let mut fields = HashMap::new();
@@ -78,8 +79,8 @@ impl PersistedDocument {
                     ordering,
                 } => {
                     let relation_table_name = format!("{}_{}_relation", &details.main_table_name, id);
-                    let target = match documents.get(target) {
-                        Some(target) => target,
+                    let target = match index.get(target) {
+                        Some(idx) => DocumentRef::from(*idx),
                         None => panic!("Don't found document for relation {}", target.as_ref())
                     };
                     let relation = PersistedRelation {
@@ -94,7 +95,8 @@ impl PersistedDocument {
         };
 
         Self {
-            document_ref: document,
+            has_localization: document.has_localization(),
+            has_draft_and_publish: document.has_draft_and_publish(),
             details,
             fields,
             relations

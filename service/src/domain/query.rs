@@ -3,10 +3,11 @@ use std::{borrow::Cow, collections::HashMap};
 use luminair_common::{
     CREATED_FIELD_NAME, DOCUMENT_ID_FIELD_NAME, LOCALE_FIELD_NAME, PUBLISHED_FIELD_NAME,
     UPDATED_FIELD_NAME,
-    domain::persisted::{PersistedDocument, PersistedField},
+    domain::{attributes::RelationType, persisted::{PersistedDocument, PersistedField}},
 };
 
 /// Represents Query to Database:
+/// query to main document:
 /// SELECT
 ///     m.document_id,
 ///     m.created_at, m.updated_at, m.published_at,
@@ -17,6 +18,23 @@ use luminair_common::{
 /// JOIN localization_table l ON m.document_id = l.document_id
 /// WHERE m.document_id = ?1
 /// ORDER BY m.document_id, l.locale
+/// query for populate:
+/// SELECT
+///     r.owning_column_name,
+///     m.document_id,
+//      m.created_at, m.updated_at, m.published_at,
+///     l.locale,
+///     m.field_1,..., m.field_N,
+///     l.field_1, ... , l.field_N
+/// FROM relation_table r
+/// JOIN populated_table m ON l.document_id = r.populated_column_name
+/// JOIN localization_table l ON m.document_id = l.document_id
+/// WHERE r.main_column_name = ?1
+/// ORDER BY m.document_id, l.locale
+/// if relation.is_owning then:
+///     main_column_name = owning_column_name, populated_column_name = inverse_column_name
+/// else:
+///     main_column_name = inverse_column_name, populated_column_name = owning_column_name
 pub struct Query<'a> {
     /// Sql statement for this query
     pub sql: String,
@@ -51,22 +69,15 @@ const LOCALE_COLUMN: Column<'static> = Column {
     name: LOCALE_FIELD_NAME,
 };
 
-pub struct QueryBuilder<'a> {
+pub struct MainQueryBuilder<'a> {
     pub document: &'a PersistedDocument,
-    pub has_localization: bool,
-    pub has_draft_and_publish: bool,
-    pub find_by_document_id: bool,
+    pub find_by_document_id: bool
 }
 
-impl<'a> QueryBuilder<'a> {
-    pub fn new(document: &'a PersistedDocument) -> QueryBuilder<'a> {
-        let has_localization = document.document_ref.has_localization();
-        let has_draft_and_publish = document.document_ref.has_draft_and_publish();
-
+impl<'a> MainQueryBuilder<'a> {
+    pub fn new(document: &'a PersistedDocument) -> MainQueryBuilder<'a> {
         Self {
             document,
-            has_localization,
-            has_draft_and_publish,
             find_by_document_id: false,
         }
     }
@@ -77,7 +88,7 @@ impl<'a> QueryBuilder<'a> {
     }
 
     pub fn build(self) -> Query<'a> {
-        let parts = QueryParts::from(&self);
+        let builder = QueryBuilder::from(&self);
         let fields = self
             .document
             .fields
@@ -85,16 +96,22 @@ impl<'a> QueryBuilder<'a> {
             .map(|(attribute_id, field)| (attribute_id.to_string(), field))
             .collect();
         Query {
-            sql: parts.sql(),
-            has_localization: self.has_localization,
-            has_draft_and_publish: self.has_draft_and_publish,
+            sql: builder.sql(),
+            has_localization: self.document.has_localization,
+            has_draft_and_publish: self.document.has_draft_and_publish,
             fields: fields,
         }
     }
 }
 
+pub struct PopulateQueryBuilder<'a> {
+    pub relation_type: RelationType,
+    pub target_document: &'a PersistedDocument,
+    pub relation_table_name: String,
+}
+
 /// Represents parts of query statement
-struct QueryParts<'a> {
+struct QueryBuilder<'a> {
     pub from: Table<'a>,
     pub select: Vec<ColumnRef<'a>>,
     pub joins: Vec<Table<'a>>,
@@ -102,15 +119,15 @@ struct QueryParts<'a> {
     pub order: Vec<ColumnRef<'a>>,
 }
 
-impl<'a> From<&QueryBuilder<'a>> for QueryParts<'a> {
-    fn from(value: &QueryBuilder<'a>) -> Self {
+impl<'a> From<&MainQueryBuilder<'a>> for QueryBuilder<'a> {
+    fn from(value: &MainQueryBuilder<'a>) -> Self {
         let details = &value.document.details;
         let from = Table {
             name: &details.main_table_name,
             alias: "m",
         };
 
-        let joins = if value.has_localization {
+        let joins = if value.document.has_localization {
             vec![Table {
                 name: &details.localization_table_name,
                 alias: "l",
@@ -125,10 +142,10 @@ impl<'a> From<&QueryBuilder<'a>> for QueryParts<'a> {
             Cow::Borrowed(&UPDATED_COLUMN),
         ];
 
-        if value.has_draft_and_publish {
+        if value.document.has_draft_and_publish {
             select.push(Cow::Borrowed(&PUBLISHED_COLUMN));
         }
-        if value.has_localization {
+        if value.document.has_localization {
             select.push(Cow::Borrowed(&LOCALE_COLUMN));
         }
 
@@ -148,8 +165,12 @@ impl<'a> From<&QueryBuilder<'a>> for QueryParts<'a> {
             Vec::new()
         };
 
-        let mut order = vec![Cow::Borrowed(&DOCUMENT_ID_COLUMN)];
-        if value.has_localization {
+        let mut order = if value.find_by_document_id {
+            Vec::new()
+        } else {
+            vec![Cow::Borrowed(&DOCUMENT_ID_COLUMN)]
+        };
+        if value.document.has_localization {
             order.push(Cow::Borrowed(&LOCALE_COLUMN));
         };
 
@@ -163,7 +184,7 @@ impl<'a> From<&QueryBuilder<'a>> for QueryParts<'a> {
     }
 }
 
-impl<'a> QueryParts<'a> {
+impl<'a> QueryBuilder<'a> {
     fn sql(self) -> String {
         let from_exp: String = String::from(&self.from);
         let columns: Vec<String> = self.select.iter().map(|c| c.as_ref().into()).collect();
@@ -178,7 +199,7 @@ impl<'a> QueryParts<'a> {
             })
             .collect();
 
-        let conditions = if self.conditions.is_empty() {
+        let where_clause = if self.conditions.is_empty() {
             "".to_string()
         } else {
             let conditions: Vec<String> = self
@@ -189,15 +210,20 @@ impl<'a> QueryParts<'a> {
             format!(" WHERE {}", conditions.join(" AND "))
         };
 
-        let order: Vec<String> = self.order.iter().map(|c| c.as_ref().into()).collect();
+        let order_by_clause = if self.order.is_empty() {
+            "".to_owned()
+        } else {
+            let order_columns: Vec<String> = self.order.iter().map(|c| c.as_ref().into()).collect();
+            format!(" ORDER BY {}", order_columns.join(","))
+        };
 
         format!(
-            "SELECT {} FROM {} {}{} ORDER BY {}",
+            "SELECT {} FROM {} {}{}{}",
             columns.join(","),
             from_exp,
             joins.join("\n"),
-            conditions,
-            order.join(",")
+            where_clause,
+            order_by_clause
         )
     }
 }

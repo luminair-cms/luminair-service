@@ -158,7 +158,7 @@ fn documents_into_tables(documents: &dyn Documents) -> Vec<Table> {
     let mut relation_tables = Vec::new();
 
     for d in documents.persisted_documents() {
-        let d = DocumentTables::from(d);
+        let d = DocumentTables::new(d, documents);
         tables.push(d.main_table);
         if let Some(localization_table) = d.localization_table {
             tables.push(localization_table);

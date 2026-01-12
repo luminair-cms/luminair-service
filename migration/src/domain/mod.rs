@@ -1,5 +1,5 @@
 use luminair_common::{
-    CREATED_FIELD_NAME, DOCUMENT_ID_FIELD_NAME, LOCALE_FIELD_NAME, PUBLISHED_FIELD_NAME, RELATION_ID_FIELD_NAME, UPDATED_FIELD_NAME, domain::{attributes::AttributeType, persisted::{PersistedDocument, PersistedRelation}}
+    CREATED_FIELD_NAME, DOCUMENT_ID_FIELD_NAME, LOCALE_FIELD_NAME, PUBLISHED_FIELD_NAME, RELATION_ID_FIELD_NAME, UPDATED_FIELD_NAME, domain::{Documents, attributes::AttributeType, persisted::{PersistedDocument, PersistedRelation}}
 };
 
 use crate::domain::tables::{Column, ColumnType, ForeignKeyConstraint, Index, Table};
@@ -14,26 +14,26 @@ struct DocumentTables {
     pub relation_tables: Vec<Table>,
 }
 
-impl From<&PersistedDocument> for DocumentTables {
-    fn from(value: &PersistedDocument) -> Self {
-        let mut main_table_builder = MainTableBuilder::new(value);
-        let mut localization_table_builder = LocalizationTableBuilder::new(value);
-        let mut relation_tables_builder = RelationTablesBuilder::new(value);
+impl DocumentTables {
+    fn new(document: &PersistedDocument, documents: &dyn Documents) -> Self {
+        let mut main_table_builder = MainTableBuilder::new(document);
+        let mut localization_table_builder = LocalizationTableBuilder::new(document);
+        let mut relation_tables_builder = RelationTablesBuilder::new(document);
 
         handle_document_fields(
-            value,
+            document,
             &mut main_table_builder,
             &mut localization_table_builder,
         );
 
-        for (_, relation) in value.relations.iter() {
+        for (_, relation) in document.relations.iter() {
             if relation.relation_type.is_owning() {
-                relation_tables_builder.push(relation);
+                relation_tables_builder.push(relation, documents);
             }
         }
 
         let main_table = main_table_builder.into();
-        let localization_table = if value.document_ref.has_localization() {
+        let localization_table = if document.document_ref.has_localization() {
             Some(localization_table_builder.into())
         } else {
             None
@@ -176,10 +176,10 @@ impl RelationTablesBuilder {
         }
     }
 
-    fn push(&mut self, relation: &PersistedRelation) {
-        let target_document = relation.target;
+    fn push(&mut self, relation: &PersistedRelation, documents: &dyn Documents) {
+        let target_document = documents.get_persisted_document_by_ref(relation.target).unwrap();
         let relation_table_name = relation.relation_table_name.clone();
-        let inverse_column_name = format!("{}_id", target_document.info.singular_name.normalized());
+        let inverse_column_name = format!("{}_id", target_document.document_ref.info.singular_name.normalized());
 
         let mut columns = vec![
             Column::primary_key(RELATION_ID_FIELD_NAME, ColumnType::Serial, None),
@@ -222,7 +222,7 @@ impl RelationTablesBuilder {
             ForeignKeyConstraint::new(
                 &relation_table_name as &str,
                 &inverse_column_name,
-                target_document.id.normalized().as_ref(),
+                target_document.document_ref.id.normalized().as_ref(),
                 DOCUMENT_ID_FIELD_NAME,
             ),
         ];

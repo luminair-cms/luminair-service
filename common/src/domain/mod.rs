@@ -18,6 +18,8 @@ pub trait Documents: Send + Sync + Debug + 'static {
     fn persisted_documents(&self) -> Box<dyn Iterator<Item = &PersistedDocument> + '_>;
     /// get document persistence by its id
     fn get_persisted_document(&self, id: &DocumentId) -> Option<&PersistedDocument>;
+    /// get document persistence by its ref
+    fn get_persisted_document_by_ref(&self, document_ref: DocumentRef) -> Option<&PersistedDocument>;
 }
 
 // A regex for IDs/names that may contain only ASCII letters, digits, and underscore.
@@ -79,5 +81,20 @@ pub struct AttributeId(String);
 impl AttributeId {
     pub fn normalized(&self) -> String {
         self.as_ref().replace("-", "_")
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct DocumentRef(usize);
+
+impl DocumentRef {
+    pub fn as_index(&self) -> usize {
+        self.0
+    }
+}
+
+impl From<usize> for DocumentRef {
+    fn from(value: usize) -> Self {
+        Self(value)
     }
 }

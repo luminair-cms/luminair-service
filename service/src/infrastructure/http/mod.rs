@@ -41,15 +41,15 @@ impl HttpServer {
         let (prometheus_layer, metric_handle) = PrometheusMetricLayer::pair();
 
         let router = Router::new()
+            .route("/health", get(health_check))
+            .nest("/api", api_routes())
+            .route("/metrics", get(|| async move { metric_handle.render() }))
             .layer(Extension(
                 QueryStringConfig::new(ParseMode::Brackets)
                     .ehandler(|err| {
                              (StatusCode::BAD_REQUEST, err.to_string()) // return type should impl IntoResponse
                          }),
             ))
-            .route("/health", get(health_check))
-            .nest("/api", api_routes())
-            .route("/metrics", get(|| async move { metric_handle.render() }))
             .layer(trace_layer)
             .layer(prometheus_layer)
             .with_state(state);

@@ -3,6 +3,7 @@ use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
+use crate::domain::DocumentRef;
 use crate::domain::{
     attributes::*,
     documents::*,
@@ -14,26 +15,33 @@ use crate::domain::{
 
 #[derive(Debug)]
 pub(crate) struct DocumentsAdapter {
-    // Store leaked &'static Document so we can keep stable references in relations
-    documents: HashSet<&'static Document>,
-    persisted_documents: HashMap<DocumentId, PersistedDocument>,
+    /// index of documents
+    index: HashMap<DocumentId, usize>,
+    /// Document descriptions
+    documents: Vec<&'static Document>,
+    /// Details about documents persisting
+    persisted_documents: Vec<&'static PersistedDocument>,
 }
 
 impl Documents for DocumentsAdapter {
     fn documents(&self) -> Box<dyn Iterator<Item = &Document> + '_> {
-        // self.documents holds &'static Document, expose it as &Document iterator
         Box::new(self.documents.iter().copied())
     }
+    
     fn get_document(&self, id: &DocumentId) -> Option<&Document> {
-        self.documents.get(id).copied()
+        self.index.get(id).and_then(|idx| self.documents.get(*idx).copied())
     }
 
     fn persisted_documents(&self) -> Box<dyn Iterator<Item=&PersistedDocument> + '_> {
-        Box::new(self.persisted_documents.values())
+        Box::new(self.persisted_documents.iter().copied())
     }
 
     fn get_persisted_document(&self, id: &DocumentId) -> Option<&PersistedDocument> {
-        self.persisted_documents.get(id)
+        self.index.get(id).and_then(|idx| self.persisted_documents.get(*idx).copied())
+    }
+
+    fn get_persisted_document_by_ref(&self, document_ref: crate::domain::DocumentRef) -> Option<&PersistedDocument> {
+        self.persisted_documents.get(document_ref.as_index()).copied()
     }
 }
 
@@ -53,26 +61,27 @@ impl DocumentsAdapter {
             )
         })?;
 
-        let mut documents: HashSet<&'static Document> = HashSet::new();
-        
+        let mut documents = Vec::new();
         for entry_res in entries {
             let entry =
                 entry_res.map_err(|e| anyhow!("failed to read a directory entry: {}", e))?;
             let path = entry.path();
             if path.is_file() && is_json(&path) {
                 let document = load_document(&path)?;
-                // Leak the document to get an &'static reference that can be stored in relations
-                let leaked: &'static Document = Box::leak(Box::new(document));
-                documents.insert(leaked);
+                let static_ref: &'static Document = Box::leak(Box::new(document));
+                documents.push(static_ref);
             }
         }
         
-        let mut persisted_documents = HashMap::new();
-        for document in documents.iter() {
-            persisted_documents.insert(document.id.clone(), PersistedDocument::new(*document, &documents));
-        }
+        let index = documents.iter().enumerate().map(|(idx,d)|(d.id.clone(), idx)).collect();
+        let persisted_documents = documents.iter().map(|d| {
+            let persisted = PersistedDocument::new(d, &index);
+            let static_ref: &'static PersistedDocument = Box::leak(Box::new(persisted));
+            static_ref
+        }).collect();
 
         Ok(Self {
+            index,
             documents,
             persisted_documents,
         })
