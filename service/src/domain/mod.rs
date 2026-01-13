@@ -28,7 +28,7 @@ pub trait Persistence: Clone + Send + Sync + 'static {
     ) -> impl Future<Output = Result<impl ResultSet, anyhow::Error>> + Send;
 }
 
-pub trait ResultSet {
+pub trait ResultSet: Send {
     fn into_rows(self) -> Vec<ResultRow>;
 }
 

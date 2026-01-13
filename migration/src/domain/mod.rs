@@ -33,7 +33,7 @@ impl DocumentTables {
         }
 
         let main_table = main_table_builder.into();
-        let localization_table = if document.document_ref.has_localization() {
+        let localization_table = if document.has_localization {
             Some(localization_table_builder.into())
         } else {
             None
@@ -69,7 +69,7 @@ struct RelationTablesBuilder {
 impl MainTableBuilder {
     fn new(document: &PersistedDocument) -> Self {
         let table_name = document.details.main_table_name.clone();
-        let has_draft_and_publish = document.document_ref.has_draft_and_publish();
+        let has_draft_and_publish = document.has_draft_and_publish;
         let columns = vec![Column::primary_key(
             DOCUMENT_ID_FIELD_NAME,
             ColumnType::Serial,
@@ -179,7 +179,7 @@ impl RelationTablesBuilder {
     fn push(&mut self, relation: &PersistedRelation, documents: &dyn Documents) {
         let target_document = documents.get_persisted_document_by_ref(relation.target).unwrap();
         let relation_table_name = relation.relation_table_name.clone();
-        let inverse_column_name = format!("{}_id", target_document.document_ref.info.singular_name.normalized());
+        let inverse_column_name = format!("{}_id", target_document.details.relation_column_name);
 
         let mut columns = vec![
             Column::primary_key(RELATION_ID_FIELD_NAME, ColumnType::Serial, None),
@@ -222,7 +222,7 @@ impl RelationTablesBuilder {
             ForeignKeyConstraint::new(
                 &relation_table_name as &str,
                 &inverse_column_name,
-                target_document.document_ref.id.normalized().as_ref(),
+                &target_document.details.main_table_name,
                 DOCUMENT_ID_FIELD_NAME,
             ),
         ];

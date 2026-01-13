@@ -24,23 +24,23 @@ pub(crate) struct DocumentsAdapter {
 }
 
 impl Documents for DocumentsAdapter {
-    fn documents(&self) -> Box<dyn Iterator<Item = &Document> + '_> {
+    fn documents(&self) -> Box<dyn Iterator<Item = &'static Document> + '_> {
         Box::new(self.documents.iter().copied())
     }
     
-    fn get_document(&self, id: &DocumentId) -> Option<&Document> {
+    fn get_document(&self, id: &DocumentId) -> Option<&'static Document> {
         self.index.get(id).and_then(|idx| self.documents.get(*idx).copied())
     }
 
-    fn persisted_documents(&self) -> Box<dyn Iterator<Item=&PersistedDocument> + '_> {
+    fn persisted_documents(&self) -> Box<dyn Iterator<Item=&'static PersistedDocument> + '_> {
         Box::new(self.persisted_documents.iter().copied())
     }
 
-    fn get_persisted_document(&self, id: &DocumentId) -> Option<&PersistedDocument> {
+    fn get_persisted_document(&self, id: &DocumentId) -> Option<&'static PersistedDocument> {
         self.index.get(id).and_then(|idx| self.persisted_documents.get(*idx).copied())
     }
 
-    fn get_persisted_document_by_ref(&self, document_ref: crate::domain::DocumentRef) -> Option<&PersistedDocument> {
+    fn get_persisted_document_by_ref(&self, document_ref: crate::domain::DocumentRef) -> Option<&'static PersistedDocument> {
         self.persisted_documents.get(document_ref.as_index()).copied()
     }
 }

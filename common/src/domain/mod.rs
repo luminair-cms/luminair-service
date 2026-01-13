@@ -11,15 +11,15 @@ pub mod persisted;
 
 pub trait Documents: Send + Sync + Debug + 'static {
     /// iterate all documents metadata
-    fn documents(&self) -> Box<dyn Iterator<Item = &Document> + '_>;
+    fn documents(&self) -> Box<dyn Iterator<Item = &'static Document> + '_>;
     /// find document metadata by its id
-    fn get_document(&self, id: &DocumentId) -> Option<&Document>;
+    fn get_document(&self, id: &DocumentId) -> Option<&'static Document>;
     /// iterate document persistence
-    fn persisted_documents(&self) -> Box<dyn Iterator<Item = &PersistedDocument> + '_>;
+    fn persisted_documents(&self) -> Box<dyn Iterator<Item = &'static PersistedDocument> + '_>;
     /// get document persistence by its id
-    fn get_persisted_document(&self, id: &DocumentId) -> Option<&PersistedDocument>;
+    fn get_persisted_document(&self, id: &DocumentId) -> Option<&'static PersistedDocument>;
     /// get document persistence by its ref
-    fn get_persisted_document_by_ref(&self, document_ref: DocumentRef) -> Option<&PersistedDocument>;
+    fn get_persisted_document_by_ref(&self, document_ref: DocumentRef) -> Option<&'static PersistedDocument>;
 }
 
 // A regex for IDs/names that may contain only ASCII letters, digits, and underscore.

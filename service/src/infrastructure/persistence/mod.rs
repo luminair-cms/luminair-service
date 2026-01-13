@@ -32,21 +32,22 @@ impl TryFrom <(&Query<'_>, PgRow)> for ResultRow {
         let created_at: DateTime<Utc> = row.try_get(CREATED_FIELD_NAME)?;
         let updated_at: DateTime<Utc> = row.try_get(UPDATED_FIELD_NAME)?;
         
+        let document = query.document;
         let mut locale = None;
-        if query.has_localization {
+        if document.has_localization {
             let val: String = row.try_get(LOCALE_FIELD_NAME)?;
             locale = Some(val);
         }
         
         let mut published_at = None;
-        if query.has_draft_and_publish {
+        if document.has_draft_and_publish {
             let val: Option<DateTime<Utc>> = row.try_get(PUBLISHED_FIELD_NAME)?;
             published_at = val
         }
 
         let mut fields = HashMap::new();
         let mut localized_fields = HashMap::new();
-        for (attribute_id, field) in query.fields.iter() {
+        for (attribute_id, field) in document.fields.iter() {
             let id = attribute_id.to_string();
             let value: String = row.try_get(field.table_column_name.as_str())?;
             if field.localized {

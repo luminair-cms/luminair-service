@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use crate::domain::query::MainQueryBuilder;
+use crate::domain::query::{Query, QueryBuilder};
 use crate::domain::{AppState, Persistence, ResultSet};
 use crate::infrastructure::http::api::{ApiError, ApiSuccess};
 use crate::infrastructure::http::handlers::data::dto::{
@@ -27,13 +27,15 @@ pub async fn find_document_by_id<S: AppState>(
     let document_id = DocumentId::try_new(document_id)
         .map_err(|err| ApiError::UnprocessableEntity(err.to_string()))?;
 
-    let document_metadata = state
-        .documents()
+    let documents = state.documents();
+    let persistence = state.persistence();
+    
+    let document_metadata = documents
         .get_persisted_document(&document_id)
         .ok_or(ApiError::NotFound)?;
     
-    let query = MainQueryBuilder::new(document_metadata).find_by_id().build();
-    let result_set = state.persistence().select_by_id(query, id).await?;
+    let query = QueryBuilder::from(document_metadata).find_by_document_id();
+    let result_set = persistence.select_by_id(query, id).await?;
     
     if let Some(relations_to_populate) = params.populate {
         for relation_to_populate in relations_to_populate.iter() {
@@ -42,10 +44,11 @@ pub async fn find_document_by_id<S: AppState>(
             
             let relation = document_metadata.relations.get(&attribute_id)
                 .ok_or(ApiError::UnprocessableEntity(format!("Attribute {} to populate doesn't exist", relation_to_populate)))?;
-            let relation_document_metadata = state.documents().get_persisted_document_by_ref(relation.target).unwrap();
-            // TODO: given document_metadata, relation_document_metadata and relation
-            // create query and load needed rows from relation document
-            tracing::debug!("relation to populate: {:?}", relation);
+            let related_document_metadata = documents.get_persisted_document_by_ref(relation.target).unwrap();
+            
+            let query = QueryBuilder::from_relation(document_metadata, relation, related_document_metadata);
+            let related_result_set = persistence.select_by_id(query, id).await?;
+            let related_data = result_set_into_document_response(related_result_set);
         }
     }
     
@@ -69,7 +72,8 @@ pub async fn find_all_documents<S: AppState>(
         .get_persisted_document(&document_id)
         .ok_or(ApiError::NotFound)?;
 
-    let query = MainQueryBuilder::new(&document_metadata).build();
+    let query: Query = QueryBuilder::from(document_metadata).into();
+
     let result_set = state.persistence().select_all(query).await?;
     
     let data = result_set_into_document_response(result_set);

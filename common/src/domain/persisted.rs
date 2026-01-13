@@ -35,7 +35,7 @@ pub struct PersistedRelation {
     pub relation_type: RelationType,
     pub target: DocumentRef,
     pub ordering: bool,
-    pub relation_table_name: String,
+    pub relation_table_name: String
 }
 
 impl From<&'static Document> for TableDetails {

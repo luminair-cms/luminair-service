@@ -1,9 +1,9 @@
-use std::{borrow::Cow, collections::HashMap};
+use std::borrow::Cow;
 
 use luminair_common::{
     CREATED_FIELD_NAME, DOCUMENT_ID_FIELD_NAME, LOCALE_FIELD_NAME, PUBLISHED_FIELD_NAME,
     UPDATED_FIELD_NAME,
-    domain::{attributes::RelationType, persisted::{PersistedDocument, PersistedField}},
+    domain::persisted::{PersistedDocument, PersistedRelation},
 };
 
 /// Represents Query to Database:
@@ -36,14 +36,20 @@ use luminair_common::{
 /// else:
 ///     main_column_name = inverse_column_name, populated_column_name = owning_column_name
 pub struct Query<'a> {
+    /// Query for Document
+    pub document: &'a PersistedDocument,
     /// Sql statement for this query
-    pub sql: String,
-    /// Document has localization
-    pub has_localization: bool,
-    /// Document has draft&publish facility
-    pub has_draft_and_publish: bool,
-    /// Mapping from document attributes to query fields
-    pub fields: HashMap<String, &'a PersistedField>,
+    pub sql: String
+}
+
+impl <'a> From<QueryBuilder<'a>> for Query<'a> {
+    fn from(value: QueryBuilder<'a>) -> Self {
+        let sql = value.sql();
+        Self {
+            document: value.document,
+            sql
+        }
+    }
 }
 
 /// Common columns
@@ -69,123 +75,113 @@ const LOCALE_COLUMN: Column<'static> = Column {
     name: LOCALE_FIELD_NAME,
 };
 
-pub struct MainQueryBuilder<'a> {
-    pub document: &'a PersistedDocument,
-    pub find_by_document_id: bool
-}
-
-impl<'a> MainQueryBuilder<'a> {
-    pub fn new(document: &'a PersistedDocument) -> MainQueryBuilder<'a> {
-        Self {
-            document,
-            find_by_document_id: false,
-        }
-    }
-
-    pub fn find_by_id(mut self) -> Self {
-        self.find_by_document_id = true;
-        self
-    }
-
-    pub fn build(self) -> Query<'a> {
-        let builder = QueryBuilder::from(&self);
-        let fields = self
-            .document
-            .fields
-            .iter()
-            .map(|(attribute_id, field)| (attribute_id.to_string(), field))
-            .collect();
-        Query {
-            sql: builder.sql(),
-            has_localization: self.document.has_localization,
-            has_draft_and_publish: self.document.has_draft_and_publish,
-            fields: fields,
-        }
-    }
-}
-
-pub struct PopulateQueryBuilder<'a> {
-    pub relation_type: RelationType,
-    pub target_document: &'a PersistedDocument,
-    pub relation_table_name: String,
-}
-
 /// Represents parts of query statement
-struct QueryBuilder<'a> {
-    pub from: Table<'a>,
-    pub select: Vec<ColumnRef<'a>>,
-    pub joins: Vec<Table<'a>>,
-    pub conditions: Vec<Condition<'a>>,
-    pub order: Vec<ColumnRef<'a>>,
+pub struct QueryBuilder<'a> {
+    pub document: &'a PersistedDocument,
+    from: Table<'a>,
+    select: Vec<ColumnRef<'a>>,
+    joins: Vec<Join<'a>>,
+    conditions: Vec<Condition<'a>>,
+    order: Vec<ColumnRef<'a>>,
 }
 
-impl<'a> From<&MainQueryBuilder<'a>> for QueryBuilder<'a> {
-    fn from(value: &MainQueryBuilder<'a>) -> Self {
-        let details = &value.document.details;
+impl<'a> From<&'a PersistedDocument> for QueryBuilder<'a> {
+    fn from(value: &'a PersistedDocument) -> Self {
         let from = Table {
-            name: &details.main_table_name,
+            name: &value.details.main_table_name,
             alias: "m",
         };
+        Self::new(value, from)
+    }
+}
 
-        let joins = if value.document.has_localization {
-            vec![Table {
-                name: &details.localization_table_name,
-                alias: "l",
-            }]
-        } else {
-            Vec::new()
-        };
-
+impl<'a> QueryBuilder<'a> {
+    pub fn new(document: &'a PersistedDocument, from: Table<'a>) -> Self {
         let mut select = vec![
             Cow::Borrowed(&DOCUMENT_ID_COLUMN),
             Cow::Borrowed(&CREATED_COLUMN),
             Cow::Borrowed(&UPDATED_COLUMN),
         ];
 
-        if value.document.has_draft_and_publish {
+        if document.has_draft_and_publish {
             select.push(Cow::Borrowed(&PUBLISHED_COLUMN));
         }
-        if value.document.has_localization {
+        if document.has_localization {
             select.push(Cow::Borrowed(&LOCALE_COLUMN));
         }
 
-        for field in value.document.fields.values() {
+        for field in document.fields.values() {
             let alias = if field.localized { "l" } else { "m" };
             select.push(Cow::Owned(Column {
                 alias,
                 name: &field.table_column_name,
             }));
         }
-
-        let conditions = if value.find_by_document_id {
-            vec![Condition {
-                column: Cow::Borrowed(&DOCUMENT_ID_COLUMN),
-            }]
+        
+        let joins = if document.has_localization {
+            vec![Join {
+                    join_table: Table {
+                        name: &document.details.localization_table_name,
+                        alias: "l",
+                    },
+                    main_column_name: Cow::Borrowed(DOCUMENT_ID_FIELD_NAME),
+                    join_column_name: Cow::Borrowed(DOCUMENT_ID_FIELD_NAME)
+                }]
         } else {
             Vec::new()
         };
-
-        let mut order = if value.find_by_document_id {
-            Vec::new()
-        } else {
-            vec![Cow::Borrowed(&DOCUMENT_ID_COLUMN)]
-        };
-        if value.document.has_localization {
+        
+        let mut order = vec![Cow::Borrowed(&DOCUMENT_ID_COLUMN)];
+        if document.has_localization {
             order.push(Cow::Borrowed(&LOCALE_COLUMN));
         };
-
+        
         Self {
+            document,
             from,
             select,
             joins,
-            conditions,
-            order,
+            conditions: Vec::new(),
+            order
         }
     }
-}
-
-impl<'a> QueryBuilder<'a> {
-    fn sql(self) -> String {
+    
+    pub fn find_by_document_id(mut self) -> Query<'a> {
+        self.conditions.push(Condition {
+            column: Cow::Borrowed(&DOCUMENT_ID_COLUMN),
+        });
+        Query::from(self)
+    }
+    
+    pub fn from_relation(populated_document: &'a PersistedDocument, relation: &'a PersistedRelation, related_document: &'a PersistedDocument) -> Query<'a> {
+        let from = Table { name: &relation.relation_table_name as &str, alias: "r" };
+        let mut builder = Self::new(related_document, from);
+        
+        let main_table = Table {
+            name: &related_document.details.main_table_name,
+            alias: "m",
+        };
+        
+        let condition = Condition {
+            column: Cow::Owned(Column {
+                alias: "r",
+                name: &populated_document.details.relation_column_name,
+            }),
+        };
+        
+        let join = Join {
+            join_table: main_table,
+            main_column_name: Cow::Borrowed(&related_document.details.relation_column_name as &str),
+            join_column_name: Cow::Borrowed(DOCUMENT_ID_FIELD_NAME)
+        };
+        builder.joins.push(join);
+       
+        builder.conditions.push(condition);
+        
+        Query::from(builder)
+    }
+    
+    fn sql(&self) -> String {
         let from_exp: String = String::from(&self.from);
         let columns: Vec<String> = self.select.iter().map(|c| c.as_ref().into()).collect();
         let joins: Vec<String> = self
@@ -193,8 +189,10 @@ impl<'a> QueryBuilder<'a> {
             .iter()
             .map(|j| {
                 format!(
-                    "JOIN {} AS {} ON m.document_id = {}.document_id",
-                    &j.name, j.alias, j.alias
+                    "JOIN {} AS {} ON {}.{} = {}.{}",
+                    &j.join_table.name, j.join_table.alias, 
+                    self.from.alias, j.main_column_name,
+                    j.join_table.alias, j.join_column_name
                 )
             })
             .collect();
@@ -253,6 +251,12 @@ impl<'a> Into<String> for &Column<'a> {
     fn into(self) -> String {
         format!("{}.{}", self.alias, self.name)
     }
+}
+
+struct Join<'a> {
+    pub join_table: Table<'a>,
+    pub main_column_name: Cow<'a, str>,
+    pub join_column_name: Cow<'a, str>
 }
 
 struct Condition<'a> {
