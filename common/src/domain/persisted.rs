@@ -42,7 +42,7 @@ impl From<&'static Document> for TableDetails {
     fn from(value: &'static Document) -> Self {
         let main_table_name = value.id.normalized();
         let localization_table_name = format!("{}_localization", &main_table_name);
-        let relation_column_name = value.info.singular_name.normalized();
+        let relation_column_name = format!("{}_id", value.info.singular_name.normalized());
         Self { main_table_name, localization_table_name, relation_column_name }
     }
 }

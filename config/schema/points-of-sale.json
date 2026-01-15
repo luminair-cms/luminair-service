@@ -11,31 +11,26 @@
     "draftAndPublish": true,
     "localizations": ["en", "ro", "ru"]
   },
-  "attributes": [
-    {
-      "id": "title",
+  "attributes": {
+    "title": {
       "type": "Text"
     },
-    {
-      "id": "location",
+    "location": {
       "type": "Text",
       "required": true,
       "localized": true
     },
-    {
-      "id": "latitude",
+    "latitude": {
       "type": "Decimal",
       "required": true
     },
-    {
-      "id": "longitude",
+    "longitude": {
       "type": "Decimal",
       "required": true
     },
-    {
-      "id": "partner",
+    "partner": {
       "relation": "BelongsToOne",
       "target": "partners"
     }
-  ]
+  }
 }

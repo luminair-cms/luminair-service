@@ -96,7 +96,7 @@ impl<'a> From<&'a PersistedDocument> for QueryBuilder<'a> {
 }
 
 impl<'a> QueryBuilder<'a> {
-    pub fn new(document: &'a PersistedDocument, from: Table<'a>) -> Self {
+    fn new(document: &'a PersistedDocument, from: Table<'a>) -> Self {
         let mut select = vec![
             Cow::Borrowed(&DOCUMENT_ID_COLUMN),
             Cow::Borrowed(&CREATED_COLUMN),
@@ -124,7 +124,7 @@ impl<'a> QueryBuilder<'a> {
                         name: &document.details.localization_table_name,
                         alias: "l",
                     },
-                    main_column_name: Cow::Borrowed(DOCUMENT_ID_FIELD_NAME),
+                    main_column: Cow::Borrowed(&DOCUMENT_ID_COLUMN),
                     join_column_name: Cow::Borrowed(DOCUMENT_ID_FIELD_NAME)
                 }]
         } else {
@@ -171,10 +171,13 @@ impl<'a> QueryBuilder<'a> {
         
         let join = Join {
             join_table: main_table,
-            main_column_name: Cow::Borrowed(&related_document.details.relation_column_name as &str),
+            main_column: Cow::Owned(Column {
+                alias: "r",
+                name: &related_document.details.relation_column_name
+            }),
             join_column_name: Cow::Borrowed(DOCUMENT_ID_FIELD_NAME)
         };
-        builder.joins.push(join);
+        builder.joins.insert(0, join);
        
         builder.conditions.push(condition);
         
@@ -191,7 +194,7 @@ impl<'a> QueryBuilder<'a> {
                 format!(
                     "JOIN {} AS {} ON {}.{} = {}.{}",
                     &j.join_table.name, j.join_table.alias, 
-                    self.from.alias, j.main_column_name,
+                    j.main_column.alias, j.main_column.name,
                     j.join_table.alias, j.join_column_name
                 )
             })
@@ -255,7 +258,7 @@ impl<'a> Into<String> for &Column<'a> {
 
 struct Join<'a> {
     pub join_table: Table<'a>,
-    pub main_column_name: Cow<'a, str>,
+    pub main_column: ColumnRef<'a>,
     pub join_column_name: Cow<'a, str>
 }
 

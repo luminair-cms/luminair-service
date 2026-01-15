@@ -179,7 +179,7 @@ impl RelationTablesBuilder {
     fn push(&mut self, relation: &PersistedRelation, documents: &dyn Documents) {
         let target_document = documents.get_persisted_document_by_ref(relation.target).unwrap();
         let relation_table_name = relation.relation_table_name.clone();
-        let inverse_column_name = format!("{}_id", target_document.details.relation_column_name);
+        let inverse_column_name = &target_document.details.relation_column_name as &str;
 
         let mut columns = vec![
             Column::primary_key(RELATION_ID_FIELD_NAME, ColumnType::Serial, None),
@@ -192,7 +192,7 @@ impl RelationTablesBuilder {
                 None,
             ),
             Column::new(
-                &inverse_column_name as &str,
+                inverse_column_name,
                 ColumnType::Integer,
                 None,
                 true,
@@ -221,15 +221,15 @@ impl RelationTablesBuilder {
             ),
             ForeignKeyConstraint::new(
                 &relation_table_name as &str,
-                &inverse_column_name,
+                inverse_column_name,
                 &target_document.details.main_table_name,
                 DOCUMENT_ID_FIELD_NAME,
             ),
         ];
 
         let indexes = vec![
-            Index::new(&relation_table_name, vec![&self.owning_column_name], false),
-            Index::new(&relation_table_name, vec![&inverse_column_name], false),
+            Index::new(&relation_table_name as &str, vec![&self.owning_column_name as &str], false),
+            Index::new(&relation_table_name as &str, vec![inverse_column_name], false),
         ];
 
         let table = Table::new(relation_table_name, columns, foreign_keys, indexes);

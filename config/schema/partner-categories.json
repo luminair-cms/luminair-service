@@ -11,23 +11,20 @@
     "draftAndPublish": true,
     "localizations": ["en", "ro", "ru"]
   },
-  "attributes": [
-    {
-      "id": "uid",
+  "attributes": {
+    "uid": {
       "type": "Uid",
       "required": true
     },
-    {
-      "id": "name",
+    "name": {
       "type": "Text",
       "required": true,
       "localized": true
     },
-    {
-      "id": "priority",
+    "priority": {
       "type": "Integer",
       "unique": true,
       "required": true
     }
-  ]
+  }
 }

@@ -68,7 +68,8 @@ pub struct DocumentRowResponse {
 #[serde(untagged)]
 pub enum AttributeResponse {
     Field(String),
-    LocalizedField(HashMap<String,String>)
+    LocalizedField(HashMap<String,String>),
+    Relation(Vec<DocumentRowResponse>)
 }
 
 impl PartialEq for DocumentRowResponse {

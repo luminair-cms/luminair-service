@@ -10,9 +10,8 @@
   "options": {
     "draftAndPublish": true
   },
-  "attributes": [
-    {
-      "id": "idno",
+  "attributes": {
+    "idno": {
       "type": "Text",
       "unique": true,
       "required": true,
@@ -20,26 +19,22 @@
         "pattern": "^[0-9]{13}$"
       }
     },
-    {
-      "id": "legal_entity",
+    "legal_entity": {
       "type": "Text",
       "unique": true,
       "required": true
     },
-    {
-      "id": "brands",
+    "brands": {
       "relation": "HasMany",
       "target": "brands"
     },
-    {
-      "id": "category",
+    "category": {
       "relation": "HasOne",
       "target": "partner-categories"
     },
-    {
-      "id": "points-of-sale",
+    "points-of-sale": {
       "relation": "HasMany",
       "target": "points-of-sale"
     }
-  ]
+  }
 }

@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use crate::domain::query::{Query, QueryBuilder};
 use crate::domain::{AppState, Persistence, ResultSet};
@@ -37,7 +37,11 @@ pub async fn find_document_by_id<S: AppState>(
     let query = QueryBuilder::from(document_metadata).find_by_document_id();
     let result_set = persistence.select_by_id(query, id).await?;
     
+    let data = result_set_into_document_response(result_set);
+    
     if let Some(relations_to_populate) = params.populate {
+        let mut populated_relations = HashMap::new();
+        
         for relation_to_populate in relations_to_populate.iter() {
             let attribute_id = AttributeId::try_new(relation_to_populate)
                 .map_err(|err| ApiError::UnprocessableEntity(err.to_string()))?;
@@ -49,10 +53,15 @@ pub async fn find_document_by_id<S: AppState>(
             let query = QueryBuilder::from_relation(document_metadata, relation, related_document_metadata);
             let related_result_set = persistence.select_by_id(query, id).await?;
             let related_data = result_set_into_document_response(related_result_set);
+            populated_relations.insert(attribute_id.to_string(), related_data);
         }
+        let populated_relations = transpose(populated_relations);
+        tracing::info!("populated: {:?}", populated_relations);
+        // TODO: add populated_relations into data
+        // populated relations must have form: HashMap<DocumentId,HashMap<AttributeId,Vec<DocumentRowResponse>>
+        // where DocumentId is a id of populated document, not related documents
+        // for find_document_by_id case we have only one DocumentId
     }
-    
-    let data = result_set_into_document_response(result_set);
     
     OneDocumentRowResponse::try_from(data)
         .map(|result|ApiSuccess::new(StatusCode::OK, result))
@@ -61,7 +70,6 @@ pub async fn find_document_by_id<S: AppState>(
 
 pub async fn find_all_documents<S: AppState>(
     Path(document_id): Path<String>,
-    QueryString(params): QueryString<QueryParams>,
     State(state): State<S>,
 ) -> Result<ApiSuccess<ManyDocumentRowsResponse>, ApiError> {
     let document_id = DocumentId::try_new(document_id)
@@ -91,4 +99,26 @@ fn result_set_into_document_response(result_set: impl ResultSet) -> Vec<Document
         .into_iter()
         .map(DocumentRowResponse::from)
         .collect()
+}
+
+fn transpose<K, V>(map: HashMap<K, Vec<V>>) -> Vec<HashMap<K, V>> 
+where 
+    K: Clone + Eq + std::hash::Hash, 
+    V: Clone 
+{
+    // 1. Determine the number of maps needed (length of the inner vectors)
+    let len = map.values().next().map_or(0, |v| v.len());
+    
+    // 2. Initialize a vector of empty HashMaps
+    let mut result = vec![HashMap::with_capacity(map.len()); len];
+
+    // 3. Populate maps by index
+    for (key, values) in map {
+        for (i, value) in values.into_iter().enumerate() {
+            if i < result.len() {
+                result[i].insert(key.clone(), value);
+            }
+        }
+    }
+    result
 }
