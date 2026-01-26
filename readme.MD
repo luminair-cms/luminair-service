@@ -30,6 +30,10 @@ see resources:
 
 https://rust-unofficial.github.io/patterns/patterns/creational/builder.html
 
+https://dsar.rantai.dev/docs/dsar/
+
+https://www.sea-ql.org/blog/2026-01-12-sea-orm-2.0/
+
 ## Documents model
 
 ### Initial document with

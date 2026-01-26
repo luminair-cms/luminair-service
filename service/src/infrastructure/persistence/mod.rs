@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 use chrono::{DateTime, Utc};
 use luminair_common::infrastructure::database::Database;
-use sqlx::postgres::PgRow;
-use luminair_common::{CREATED_FIELD_NAME, DOCUMENT_ID_FIELD_NAME, LOCALE_FIELD_NAME, PUBLISHED_FIELD_NAME, UPDATED_FIELD_NAME};
-use crate::domain::{Persistence, ResultRow, ResultSet, query::Query};
+use sqlx::{postgres::PgRow, types::Json};
+use luminair_common::{CREATED_FIELD_NAME, DOCUMENT_ID_FIELD_NAME, PUBLISHED_FIELD_NAME, UPDATED_FIELD_NAME};
+use crate::domain::{FieldValue, Persistence, ResultRow, ResultSet, query::Query};
 
 #[derive(Clone, Debug)]
 pub struct PersistenceAdapter {
@@ -28,16 +28,12 @@ impl TryFrom <(&Query<'_>, PgRow)> for ResultRow {
 
         let (query, row) = value;
         
+        let owning_id: Option<i32> = row.try_get(0).ok();
         let document_id: i32 = row.try_get(DOCUMENT_ID_FIELD_NAME)?;
         let created_at: DateTime<Utc> = row.try_get(CREATED_FIELD_NAME)?;
         let updated_at: DateTime<Utc> = row.try_get(UPDATED_FIELD_NAME)?;
         
         let document = query.document;
-        let mut locale = None;
-        if document.has_localization {
-            let val: String = row.try_get(LOCALE_FIELD_NAME)?;
-            locale = Some(val);
-        }
         
         let mut published_at = None;
         if document.has_draft_and_publish {
@@ -46,18 +42,18 @@ impl TryFrom <(&Query<'_>, PgRow)> for ResultRow {
         }
 
         let mut fields = HashMap::new();
-        let mut localized_fields = HashMap::new();
         for (attribute_id, field) in document.fields.iter() {
             let id = attribute_id.to_string();
-            let value: String = row.try_get(field.table_column_name.as_str())?;
             if field.localized {
-                localized_fields.insert(id, value);
+                let value: Json<HashMap<String, String>> = row.try_get(field.table_column_name.as_str())?;
+                fields.insert(id, FieldValue::Localized(value.0));
             } else {
-                fields.insert(id, value);
+                let value: String = row.try_get(field.table_column_name.as_str())?;
+                fields.insert(id, FieldValue::Ordinal(value));
             }
         }
         
-        Ok(ResultRow { document_id, created_at, updated_at, published_at, locale, fields, localized_fields })
+        Ok(ResultRow { owning_id, document_id, created_at, updated_at, published_at, fields })
     }
 }
 

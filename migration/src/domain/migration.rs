@@ -107,7 +107,8 @@ fn column_ddl(column: &Column) -> String {
         ColumnType::Decimal => "DECIMAL",
         ColumnType::Date => "DATE",
         ColumnType::TimestampTZ => "TIMESTAMPTZ",
-        ColumnType::Boolean => "BOOLEAN"
+        ColumnType::Boolean => "BOOLEAN",
+        ColumnType::JsonB => "JSONB"
     };
     let mut sql = format!("\"{}\" {}", column.name, ct);
     if let Some(length) = column.column_length {
@@ -160,9 +161,6 @@ fn documents_into_tables(documents: &dyn Documents) -> Vec<Table> {
     for d in documents.persisted_documents() {
         let d = DocumentTables::new(d, documents);
         tables.push(d.main_table);
-        if let Some(localization_table) = d.localization_table {
-            tables.push(localization_table);
-        }
         relation_tables.extend(d.relation_tables);
     }
     tables.extend(relation_tables);

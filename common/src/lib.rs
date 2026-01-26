@@ -12,7 +12,6 @@ pub mod infrastructure;
 
 pub const DOCUMENT_ID_FIELD_NAME: &str = "document_id";
 pub const RELATION_ID_FIELD_NAME: &str = "relation_id";
-pub const LOCALE_FIELD_NAME: &str = "locale";
 pub const CREATED_FIELD_NAME: &str = "created_at";
 pub const UPDATED_FIELD_NAME: &str = "updated_at";
 pub const PUBLISHED_FIELD_NAME: &str = "published_at";

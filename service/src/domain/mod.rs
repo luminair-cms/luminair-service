@@ -33,13 +33,17 @@ pub trait ResultSet: Send {
 }
 
 pub struct ResultRow {
+    pub owning_id: Option<i32>,
     pub document_id: i32,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub published_at: Option<DateTime<Utc>>,
-    pub locale: Option<String>,
-    pub fields: HashMap<String,String>,
-    pub localized_fields: HashMap<String,String>
+    pub fields: HashMap<String,FieldValue>,
+}
+
+pub enum FieldValue {
+    Ordinal(String),
+    Localized(HashMap<String,String>)
 }
 
 //// The global application state shared between all request handlers.

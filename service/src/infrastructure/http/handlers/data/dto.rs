@@ -2,7 +2,7 @@ use std::{collections::HashMap, io::ErrorKind};
 use serde::Serialize;
 use chrono::{DateTime, Utc};
 
-use crate::domain::ResultRow;
+use crate::domain::{FieldValue, ResultRow};
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ManyDocumentRowsResponse {
@@ -56,12 +56,20 @@ impl TryFrom<Vec<DocumentRowResponse>> for OneDocumentRowResponse {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DocumentRowResponse {
-    document_id: i32,
-    created_at: DateTime<Utc>,
-    updated_at: DateTime<Utc>,
-    published_at: Option<DateTime<Utc>>,
+    #[serde(skip_serializing)]
+    pub owning_id: Option<i32>,
+    pub document_id: i32,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub published_at: Option<DateTime<Utc>>,
     #[serde(flatten)]
     fields: HashMap<String,AttributeResponse>
+}
+
+impl DocumentRowResponse {
+    pub fn add_relation(&mut self, attribute_id: String, relation: Vec<DocumentRowResponse>) {
+        self.fields.insert(attribute_id, AttributeResponse::Relation(relation));
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -78,37 +86,23 @@ impl PartialEq for DocumentRowResponse {
     }
 }
 
-impl From<(i32, Vec<ResultRow>)> for DocumentRowResponse {
-    fn from((document_id, rows): (i32, Vec<ResultRow>)) -> Self {
-        // safety: there must be at least one row for each document_id
-        // many rows in case of localized fields: one row for each locale
-        let value = unsafe { rows.get_unchecked(0) };
-        
+impl From<ResultRow> for DocumentRowResponse {
+    fn from(value: ResultRow) -> Self {
+        let owning_id = value.owning_id;
+        let document_id = value.document_id;
         let created_at = value.created_at;
         let updated_at = value.updated_at;
         let published_at = value.published_at;
-        let mut fields: HashMap<String, AttributeResponse> = value.fields.iter()
-            .map(|(k,v)|(k.to_owned(), AttributeResponse::Field(v.to_owned())))
+        
+        let fields: HashMap<String, AttributeResponse> = value.fields.iter()
+            .map(|(k,v)|(k.to_owned(), match v {
+                FieldValue::Ordinal(value) => AttributeResponse::Field(value.to_owned()),
+                FieldValue::Localized(value) => AttributeResponse::LocalizedField(value.to_owned())
+            }))
             .collect();
         
-        for row in rows.into_iter() {
-            if let Some(ref locale) = row.locale {
-                for (k,v) in row.localized_fields {
-                    fields.entry(k)
-                        .and_modify(|e| { 
-                            match e {
-                                AttributeResponse::LocalizedField(map) => {
-                                    map.insert(locale.to_owned(), v.clone());
-                                },
-                                _ => unreachable!()
-                            };
-                        })
-                        .or_insert_with(||AttributeResponse::LocalizedField(HashMap::from([(locale.to_owned(), v)])));
-                }
-            }
-        }
-        
         Self {
+            owning_id,
             document_id,
             created_at,
             updated_at,

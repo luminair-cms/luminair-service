@@ -7,7 +7,6 @@ use crate::domain::{AttributeId, DocumentId, DocumentRef};
 /// Represents a Persistence structure on Document in Database
 #[derive(Debug)]
 pub struct PersistedDocument {
-    pub has_localization: bool,
     pub has_draft_and_publish: bool,
     pub details: TableDetails,
     pub fields: HashMap<AttributeId, PersistedField>,
@@ -17,7 +16,6 @@ pub struct PersistedDocument {
 #[derive(Debug)]
 pub struct TableDetails {
     pub main_table_name: String,
-    pub localization_table_name: String,
     pub relation_column_name: String,
 }
 
@@ -41,9 +39,8 @@ pub struct PersistedRelation {
 impl From<&'static Document> for TableDetails {
     fn from(value: &'static Document) -> Self {
         let main_table_name = value.id.normalized();
-        let localization_table_name = format!("{}_localization", &main_table_name);
         let relation_column_name = format!("{}_id", value.info.singular_name.normalized());
-        Self { main_table_name, localization_table_name, relation_column_name }
+        Self { main_table_name, relation_column_name }
     }
 }
 
@@ -95,7 +92,6 @@ impl PersistedDocument {
         };
 
         Self {
-            has_localization: document.has_localization(),
             has_draft_and_publish: document.has_draft_and_publish(),
             details,
             fields,

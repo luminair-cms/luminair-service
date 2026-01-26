@@ -31,6 +31,7 @@ pub enum ColumnType {
     Date,
     TimestampTZ,
     Boolean,
+    JsonB
 }
 
 /// Represents foreign key constraint in the database table

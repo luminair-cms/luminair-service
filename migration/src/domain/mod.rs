@@ -1,5 +1,5 @@
 use luminair_common::{
-    CREATED_FIELD_NAME, DOCUMENT_ID_FIELD_NAME, LOCALE_FIELD_NAME, PUBLISHED_FIELD_NAME, RELATION_ID_FIELD_NAME, UPDATED_FIELD_NAME, domain::{Documents, attributes::AttributeType, persisted::{PersistedDocument, PersistedRelation}}
+    CREATED_FIELD_NAME, DOCUMENT_ID_FIELD_NAME, PUBLISHED_FIELD_NAME, RELATION_ID_FIELD_NAME, UPDATED_FIELD_NAME, domain::{Documents, attributes::AttributeType, persisted::{PersistedDocument, PersistedRelation}}
 };
 
 use crate::domain::tables::{Column, ColumnType, ForeignKeyConstraint, Index, Table};
@@ -10,20 +10,17 @@ pub mod tables;
 
 struct DocumentTables {
     pub main_table: Table,
-    pub localization_table: Option<Table>,
     pub relation_tables: Vec<Table>,
 }
 
 impl DocumentTables {
     fn new(document: &PersistedDocument, documents: &dyn Documents) -> Self {
         let mut main_table_builder = MainTableBuilder::new(document);
-        let mut localization_table_builder = LocalizationTableBuilder::new(document);
         let mut relation_tables_builder = RelationTablesBuilder::new(document);
 
         handle_document_fields(
             document,
-            &mut main_table_builder,
-            &mut localization_table_builder,
+            &mut main_table_builder
         );
 
         for (_, relation) in document.relations.iter() {
@@ -33,16 +30,10 @@ impl DocumentTables {
         }
 
         let main_table = main_table_builder.into();
-        let localization_table = if document.has_localization {
-            Some(localization_table_builder.into())
-        } else {
-            None
-        };
         let relation_tables = relation_tables_builder.into();
 
         Self {
             main_table,
-            localization_table,
             relation_tables,
         }
     }
@@ -51,12 +42,6 @@ impl DocumentTables {
 struct MainTableBuilder {
     table_name: String,
     has_draft_and_publish: bool,
-    columns: Vec<Column>,
-}
-
-struct LocalizationTableBuilder {
-    main_table_name: String,
-    localization_table_name: String,
     columns: Vec<Column>,
 }
 
@@ -117,48 +102,6 @@ impl MainTableBuilder {
         // TODO: add created_by_id, updated_by_id columns
 
         Table::new(self.table_name, self.columns, Vec::new(), Vec::new())
-    }
-}
-
-impl LocalizationTableBuilder {
-    fn new(document: &PersistedDocument) -> Self {
-        let details = &document.details;
-        let main_table_name = details.main_table_name.clone();
-        let localization_table_name = details.localization_table_name.clone();
-        let columns = vec![
-            Column::primary_key(DOCUMENT_ID_FIELD_NAME, ColumnType::Integer, None),
-            Column::primary_key(LOCALE_FIELD_NAME, ColumnType::Varchar, Some(2)),
-        ];
-        Self {
-            main_table_name,
-            localization_table_name,
-            columns,
-        }
-    }
-
-    fn push(&mut self, column: Column) {
-        self.columns.push(column);
-    }
-
-    fn into(self) -> Table {
-        let fkey_constraint = ForeignKeyConstraint::new(
-            &self.localization_table_name as &str,
-            DOCUMENT_ID_FIELD_NAME,
-            &self.main_table_name,
-            DOCUMENT_ID_FIELD_NAME,
-        );
-        let fkey_index = Index::new(
-            &self.localization_table_name as &str,
-            vec![DOCUMENT_ID_FIELD_NAME],
-            false,
-        );
-
-        Table::new(
-            self.localization_table_name,
-            self.columns,
-            vec![fkey_constraint],
-            vec![fkey_index],
-        )
     }
 }
 
@@ -243,19 +186,22 @@ impl RelationTablesBuilder {
 
 fn handle_document_fields(
     document: &PersistedDocument,
-    main_table_builder: &mut MainTableBuilder,
-    localization_table_builder: &mut LocalizationTableBuilder,
+    main_table_builder: &mut MainTableBuilder
 ) {
     for (_, persisted) in document.fields.iter() {
-        let column_type = match persisted.attribute_type {
-            AttributeType::Uid => ColumnType::Text,
-            AttributeType::Uuid => ColumnType::Uuid,
-            AttributeType::Text => ColumnType::Text,
-            AttributeType::Integer => ColumnType::Integer,
-            AttributeType::Decimal => ColumnType::Decimal,
-            AttributeType::Date => ColumnType::Date,
-            AttributeType::DateTime => ColumnType::TimestampTZ,
-            AttributeType::Boolean => ColumnType::Boolean,
+        let column_type = if persisted.localized {
+            ColumnType::JsonB
+        } else {
+            match persisted.attribute_type {
+                AttributeType::Uid => ColumnType::Text,
+                AttributeType::Uuid => ColumnType::Uuid,
+                AttributeType::Text => ColumnType::Text,
+                AttributeType::Integer => ColumnType::Integer,
+                AttributeType::Decimal => ColumnType::Decimal,
+                AttributeType::Date => ColumnType::Date,
+                AttributeType::DateTime => ColumnType::TimestampTZ,
+                AttributeType::Boolean => ColumnType::Boolean,
+            }
         };
 
         let column = Column::new(
@@ -266,11 +212,7 @@ fn handle_document_fields(
             persisted.unique,
             None,
         );
-
-        if persisted.localized {
-            localization_table_builder.push(column);
-        } else {
-            main_table_builder.push(column);
-        }
+        
+        main_table_builder.push(column);
     }
 }

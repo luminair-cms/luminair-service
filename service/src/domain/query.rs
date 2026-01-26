@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 
 use luminair_common::{
-    CREATED_FIELD_NAME, DOCUMENT_ID_FIELD_NAME, LOCALE_FIELD_NAME, PUBLISHED_FIELD_NAME,
+    CREATED_FIELD_NAME, DOCUMENT_ID_FIELD_NAME, PUBLISHED_FIELD_NAME,
     UPDATED_FIELD_NAME,
     domain::persisted::{PersistedDocument, PersistedRelation},
 };
@@ -11,26 +11,22 @@ use luminair_common::{
 /// SELECT
 ///     m.document_id,
 ///     m.created_at, m.updated_at, m.published_at,
-///     l.locale,
 ///     m.field_1,..., m.field_N,
 ///     l.field_1, ... , l.field_N
 /// FROM main_table m
-/// JOIN localization_table l ON m.document_id = l.document_id
 /// WHERE m.document_id = ?1
-/// ORDER BY m.document_id, l.locale
+/// ORDER BY m.document_id
 /// query for populate:
 /// SELECT
 ///     r.owning_column_name,
 ///     m.document_id,
 //      m.created_at, m.updated_at, m.published_at,
-///     l.locale,
 ///     m.field_1,..., m.field_N,
 ///     l.field_1, ... , l.field_N
 /// FROM relation_table r
 /// JOIN populated_table m ON l.document_id = r.populated_column_name
-/// JOIN localization_table l ON m.document_id = l.document_id
 /// WHERE r.main_column_name = ?1
-/// ORDER BY m.document_id, l.locale
+/// ORDER BY m.document_id
 /// if relation.is_owning then:
 ///     main_column_name = owning_column_name, populated_column_name = inverse_column_name
 /// else:
@@ -70,10 +66,6 @@ const PUBLISHED_COLUMN: Column<'static> = Column {
     alias: "m",
     name: PUBLISHED_FIELD_NAME,
 };
-const LOCALE_COLUMN: Column<'static> = Column {
-    alias: "l",
-    name: LOCALE_FIELD_NAME,
-};
 
 /// Represents parts of query statement
 pub struct QueryBuilder<'a> {
@@ -106,43 +98,21 @@ impl<'a> QueryBuilder<'a> {
         if document.has_draft_and_publish {
             select.push(Cow::Borrowed(&PUBLISHED_COLUMN));
         }
-        if document.has_localization {
-            select.push(Cow::Borrowed(&LOCALE_COLUMN));
-        }
 
         for field in document.fields.values() {
-            let alias = if field.localized { "l" } else { "m" };
             select.push(Cow::Owned(Column {
-                alias,
+                alias: "m",
                 name: &field.table_column_name,
             }));
         }
-        
-        let joins = if document.has_localization {
-            vec![Join {
-                    join_table: Table {
-                        name: &document.details.localization_table_name,
-                        alias: "l",
-                    },
-                    main_column: Cow::Borrowed(&DOCUMENT_ID_COLUMN),
-                    join_column_name: Cow::Borrowed(DOCUMENT_ID_FIELD_NAME)
-                }]
-        } else {
-            Vec::new()
-        };
-        
-        let mut order = vec![Cow::Borrowed(&DOCUMENT_ID_COLUMN)];
-        if document.has_localization {
-            order.push(Cow::Borrowed(&LOCALE_COLUMN));
-        };
         
         Self {
             document,
             from,
             select,
-            joins,
+            joins: Vec::new(),
             conditions: Vec::new(),
-            order
+            order: vec![Cow::Borrowed(&DOCUMENT_ID_COLUMN)]
         }
     }
     
@@ -153,20 +123,20 @@ impl<'a> QueryBuilder<'a> {
         Query::from(self)
     }
     
-    pub fn from_relation(populated_document: &'a PersistedDocument, relation: &'a PersistedRelation, related_document: &'a PersistedDocument) -> Query<'a> {
+    pub fn from_relation(populated_document: &'a PersistedDocument, relation: &'a PersistedRelation, related_document: &'a PersistedDocument) -> QueryBuilder<'a> {
         let from = Table { name: &relation.relation_table_name as &str, alias: "r" };
         let mut builder = Self::new(related_document, from);
         
+        let owning_column_name = &populated_document.details.relation_column_name;
+        
+        builder.select.insert(0, Cow::Owned(Column {
+            alias: "r",
+            name: owning_column_name,
+        }));
+
         let main_table = Table {
             name: &related_document.details.main_table_name,
             alias: "m",
-        };
-        
-        let condition = Condition {
-            column: Cow::Owned(Column {
-                alias: "r",
-                name: &populated_document.details.relation_column_name,
-            }),
         };
         
         let join = Join {
@@ -179,9 +149,17 @@ impl<'a> QueryBuilder<'a> {
         };
         builder.joins.insert(0, join);
        
-        builder.conditions.push(condition);
-        
-        Query::from(builder)
+        builder
+    }
+
+    pub fn with_owning_id_condition(mut self, owning_column_name: &'a str) -> Self {
+        self.conditions.push(Condition {
+            column: Cow::Owned(Column {
+                alias: "r",
+                name: owning_column_name,
+            }),
+        });
+        self
     }
     
     fn sql(&self) -> String {

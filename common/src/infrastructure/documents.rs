@@ -117,7 +117,7 @@ struct DocumentRecord<'a> {
     document_type: DocumentType,
     info: DocumentInfoRecord<'a>,
     options: Option<DocumentOptionsRecord<'a>>,
-    attributes: Vec<AttributeRecord<'a>>,
+    attributes: HashMap<&'a str, AttributeRecord<'a>>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -140,16 +140,8 @@ struct DocumentOptionsRecord<'a> {
 }
 
 #[derive(Clone, Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct AttributeRecord<'a> {
-    id: &'a str,
-    #[serde(flatten)]
-    body: AttributeRecordBody<'a>,
-}
-
-#[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase", untagged)]
-enum AttributeRecordBody<'a> {
+enum AttributeRecord<'a> {
     Field {
         #[serde(alias = "type")]
         attribute_type: AttributeType,
@@ -248,14 +240,14 @@ impl<'a> TryFrom<DocumentInfoRecord<'a>> for DocumentInfo {
     }
 }
 
-impl<'a> TryFrom<AttributeRecord<'a>> for Attribute {
+impl<'a> TryFrom<(&'a str, AttributeRecord<'a>)> for Attribute {
     type Error = anyhow::Error;
 
-    fn try_from(value: AttributeRecord<'a>) -> Result<Self, Self::Error> {
-        let id = AttributeId::try_new(value.id)?;
+    fn try_from(value: (&'a str, AttributeRecord<'a>)) -> Result<Self, Self::Error> {
+        let id = AttributeId::try_new(value.0)?;
 
-        let body = match value.body {
-            AttributeRecordBody::Field {
+        let body = match value.1 {
+            AttributeRecord::Field {
                 attribute_type,
                 unique,
                 required,
@@ -272,7 +264,7 @@ impl<'a> TryFrom<AttributeRecord<'a>> for Attribute {
                     constraints,
                 })
             }
-            AttributeRecordBody::Relation {
+            AttributeRecord::Relation {
                 relation_type,
                 target,
                 ordering,
