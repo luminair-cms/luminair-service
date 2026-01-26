@@ -158,7 +158,7 @@ fn documents_into_tables(documents: &dyn Documents) -> Vec<Table> {
     let mut tables = Vec::new();
     let mut relation_tables = Vec::new();
 
-    for d in documents.persisted_documents() {
+    for d in documents.documents() {
         let d = DocumentTables::new(d, documents);
         tables.push(d.main_table);
         relation_tables.extend(d.relation_tables);

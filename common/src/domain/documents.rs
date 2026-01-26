@@ -1,11 +1,12 @@
+use std::collections::HashMap;
 use std::{borrow::Borrow, hash::Hash, sync::LazyLock};
 use std::fmt::Debug;
 use nutype::nutype;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 
-use crate::domain::attributes::Attribute;
-use crate::domain::DocumentId;
+use crate::domain::attributes::{DocumentField, DocumentRelation};
+use crate::domain::{AttributeId, DocumentId};
 
 static VALID_LOCALIZATIONS_REGEX: LazyLock<Regex> =
     LazyLock::new(|| Regex::new("^(ru|ro|en)").unwrap());
@@ -19,7 +20,9 @@ pub struct Document {
     pub document_type: DocumentType,
     pub info: DocumentInfo,
     pub options: Option<DocumentOptions>,
-    pub attributes: Vec<Attribute>
+    pub persistence: DocumentPersistence,
+    pub fields: HashMap<AttributeId, DocumentField>,
+    pub relations: HashMap<AttributeId, DocumentRelation>
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -35,6 +38,12 @@ pub struct DocumentInfo {
     pub description: DocumentDescription,
     pub singular_name: DocumentId,
     pub plural_name: DocumentId,
+}
+
+#[derive(Debug)]
+pub struct DocumentPersistence {
+    pub main_table_name: String,
+    pub relation_column_name: String,
 }
 
 #[nutype(

@@ -3,23 +3,15 @@ use std::sync::LazyLock;
 use nutype::nutype;
 use regex::Regex;
 use crate::domain::documents::Document;
-use crate::domain::persisted::PersistedDocument;
 
 pub mod documents;
 pub mod attributes;
-pub mod persisted;
 
 pub trait Documents: Send + Sync + Debug + 'static {
     /// iterate all documents metadata
     fn documents(&self) -> Box<dyn Iterator<Item = &'static Document> + '_>;
     /// find document metadata by its id
     fn get_document(&self, id: &DocumentId) -> Option<&'static Document>;
-    /// iterate document persistence
-    fn persisted_documents(&self) -> Box<dyn Iterator<Item = &'static PersistedDocument> + '_>;
-    /// get document persistence by its id
-    fn get_persisted_document(&self, id: &DocumentId) -> Option<&'static PersistedDocument>;
-    /// get document persistence by its ref
-    fn get_persisted_document_by_ref(&self, document_ref: DocumentRef) -> Option<&'static PersistedDocument>;
 }
 
 // A regex for IDs/names that may contain only ASCII letters, digits, and underscore.
@@ -81,20 +73,5 @@ pub struct AttributeId(String);
 impl AttributeId {
     pub fn normalized(&self) -> String {
         self.as_ref().replace("-", "_")
-    }
-}
-
-#[derive(Clone, Copy, Debug)]
-pub struct DocumentRef(usize);
-
-impl DocumentRef {
-    pub fn as_index(&self) -> usize {
-        self.0
-    }
-}
-
-impl From<usize> for DocumentRef {
-    fn from(value: usize) -> Self {
-        Self(value)
     }
 }

@@ -1,5 +1,6 @@
+use luminair_common::domain::AttributeId;
 use luminair_common::domain::attributes::{
-    Attribute, AttributeBody, AttributeConstraints, AttributeType, RelationType,
+    AttributeConstraints, AttributeType, DocumentField, DocumentRelation, RelationType,
 };
 use luminair_common::domain::documents::{Document, DocumentInfo, DocumentOptions, DocumentType};
 use serde::Serialize;
@@ -97,17 +98,23 @@ impl PartialEq for DetailedDocumentResponse {
 
 impl From<&Document> for DetailedDocumentResponse {
     fn from(value: &Document) -> Self {
+        let mut attributes = Vec::with_capacity(value.fields.len() + value.relations.len());
+        
+        for f in value.fields.iter() {
+            attributes.push(f.into())
+        };
+        
+        for r in value.relations.iter() {
+            attributes.push(r.into());
+        }
+        
         Self {
             id: value.id.to_string(),
             title: value.info.title.to_string(),
             document_type: value.document_type.clone(),
             info: (&value.info).into(),
             options: value.options.as_ref().map(DocumentOptionsResponse::from),
-            attributes: value
-                .attributes
-                .iter()
-                .map(AttributeResponse::from)
-                .collect(),
+            attributes
         }
     }
 }
@@ -132,40 +139,32 @@ impl From<&DocumentOptions> for DocumentOptionsResponse {
     }
 }
 
-impl From<&Attribute> for AttributeResponse {
-    fn from(value: &Attribute) -> Self {
-        let id = value.id.to_string();
-        let body = match &value.body {
-            AttributeBody::Field {
-                attribute_type,
-                unique,
-                required,
-                localized,
-                constraints,
-            } => {
-                let constraints = constraints.as_ref().map(|c| c.clone());
-                AttribteBodyResponse::Field {
-                    attribute_type: attribute_type.clone(),
-                    unique: *unique,
-                    required: *required,
-                    localized: *localized,
-                    constraints,
-                }
-            }
-            AttributeBody::Relation {
-                relation_type,
-                target,
-                ordering,
-            } => {
-                let target = target.to_string();
-                AttribteBodyResponse::Relation {
-                    relation_type: relation_type.clone(),
-                    target,
-                    ordering: *ordering,
-                }
-            }
+impl From<(&AttributeId,&DocumentField)> for AttributeResponse {
+    fn from(value: (&AttributeId,&DocumentField)) -> Self {
+        let id = value.0.to_string();
+        let body = value.1;
+        let constraints = body.constraints.as_ref().map(|c| c.clone());
+        let body = AttribteBodyResponse::Field {
+            attribute_type: body.attribute_type.clone(),
+            unique: body.unique,
+            required: body.required,
+            localized: body.localized,
+            constraints,
         };
+        Self { id, body }
+    }
+}
 
+impl From<(&AttributeId,&DocumentRelation)> for AttributeResponse {
+    fn from(value: (&AttributeId,&DocumentRelation)) -> Self {
+        let id = value.0.to_string();
+        let body = value.1;
+        let target = body.target.to_string();
+        let body = AttribteBodyResponse::Relation {
+            relation_type: body.relation_type.clone(),
+            target,
+            ordering: body.ordering,
+        };
         Self { id, body }
     }
 }

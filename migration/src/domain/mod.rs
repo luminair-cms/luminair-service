@@ -1,8 +1,14 @@
-use luminair_common::{
-    CREATED_FIELD_NAME, DOCUMENT_ID_FIELD_NAME, PUBLISHED_FIELD_NAME, RELATION_ID_FIELD_NAME, UPDATED_FIELD_NAME, domain::{Documents, attributes::AttributeType, persisted::{PersistedDocument, PersistedRelation}}
-};
-
 use crate::domain::tables::{Column, ColumnType, ForeignKeyConstraint, Index, Table};
+use luminair_common::domain::documents::Document;
+use luminair_common::{
+    domain::{
+        attributes::AttributeType,
+        Documents,
+    }, CREATED_FIELD_NAME, DOCUMENT_ID_FIELD_NAME, PUBLISHED_FIELD_NAME,
+    RELATION_ID_FIELD_NAME,
+    UPDATED_FIELD_NAME,
+};
+use luminair_common::domain::attributes::DocumentRelation;
 
 pub mod migration;
 pub mod persistence;
@@ -14,14 +20,11 @@ struct DocumentTables {
 }
 
 impl DocumentTables {
-    fn new(document: &PersistedDocument, documents: &dyn Documents) -> Self {
+    fn new(document: &Document, documents: &dyn Documents) -> Self {
         let mut main_table_builder = MainTableBuilder::new(document);
         let mut relation_tables_builder = RelationTablesBuilder::new(document);
 
-        handle_document_fields(
-            document,
-            &mut main_table_builder
-        );
+        handle_document_fields(document, &mut main_table_builder);
 
         for (_, relation) in document.relations.iter() {
             if relation.relation_type.is_owning() {
@@ -52,9 +55,9 @@ struct RelationTablesBuilder {
 }
 
 impl MainTableBuilder {
-    fn new(document: &PersistedDocument) -> Self {
-        let table_name = document.details.main_table_name.clone();
-        let has_draft_and_publish = document.has_draft_and_publish;
+    fn new(document: &Document) -> Self {
+        let table_name = document.persistence.main_table_name.clone();
+        let has_draft_and_publish = document.has_draft_and_publish();
         let columns = vec![Column::primary_key(
             DOCUMENT_ID_FIELD_NAME,
             ColumnType::Serial,
@@ -106,12 +109,12 @@ impl MainTableBuilder {
 }
 
 impl RelationTablesBuilder {
-    fn new(document: &PersistedDocument) -> Self {
-        let details = &document.details;
-        let main_table_name = details.main_table_name.clone();
-        let owning_column_name = details.relation_column_name.clone();
+    fn new(document: &Document) -> Self {
+        let document_persistence = &document.persistence;
+        let main_table_name = document_persistence.main_table_name.clone();
+        let owning_column_name = document_persistence.relation_column_name.clone();
         let relation_tables = Vec::new();
-        
+
         Self {
             main_table_name,
             owning_column_name,
@@ -119,10 +122,12 @@ impl RelationTablesBuilder {
         }
     }
 
-    fn push(&mut self, relation: &PersistedRelation, documents: &dyn Documents) {
-        let target_document = documents.get_persisted_document_by_ref(relation.target).unwrap();
+    fn push(&mut self, relation: &DocumentRelation, documents: &dyn Documents) {
+        let target_document = documents
+            .get_document(&relation.target)
+            .unwrap();
         let relation_table_name = relation.relation_table_name.clone();
-        let inverse_column_name = &target_document.details.relation_column_name as &str;
+        let inverse_column_name = &target_document.persistence.relation_column_name as &str;
 
         let mut columns = vec![
             Column::primary_key(RELATION_ID_FIELD_NAME, ColumnType::Serial, None),
@@ -165,14 +170,22 @@ impl RelationTablesBuilder {
             ForeignKeyConstraint::new(
                 &relation_table_name as &str,
                 inverse_column_name,
-                &target_document.details.main_table_name,
+                &target_document.persistence.main_table_name,
                 DOCUMENT_ID_FIELD_NAME,
             ),
         ];
 
         let indexes = vec![
-            Index::new(&relation_table_name as &str, vec![&self.owning_column_name as &str], false),
-            Index::new(&relation_table_name as &str, vec![inverse_column_name], false),
+            Index::new(
+                &relation_table_name as &str,
+                vec![&self.owning_column_name as &str],
+                false,
+            ),
+            Index::new(
+                &relation_table_name as &str,
+                vec![inverse_column_name],
+                false,
+            ),
         ];
 
         let table = Table::new(relation_table_name, columns, foreign_keys, indexes);
@@ -184,10 +197,7 @@ impl RelationTablesBuilder {
     }
 }
 
-fn handle_document_fields(
-    document: &PersistedDocument,
-    main_table_builder: &mut MainTableBuilder
-) {
+fn handle_document_fields(document: &Document, main_table_builder: &mut MainTableBuilder) {
     for (_, persisted) in document.fields.iter() {
         let column_type = if persisted.localized {
             ColumnType::JsonB
@@ -212,7 +222,7 @@ fn handle_document_fields(
             persisted.unique,
             None,
         );
-        
+
         main_table_builder.push(column);
     }
 }

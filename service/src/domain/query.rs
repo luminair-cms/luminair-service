@@ -2,8 +2,7 @@ use std::borrow::Cow;
 
 use luminair_common::{
     CREATED_FIELD_NAME, DOCUMENT_ID_FIELD_NAME, PUBLISHED_FIELD_NAME,
-    UPDATED_FIELD_NAME,
-    domain::persisted::{PersistedDocument, PersistedRelation},
+    UPDATED_FIELD_NAME
 };
 
 /// Represents Query to Database:
@@ -33,7 +32,7 @@ use luminair_common::{
 ///     main_column_name = inverse_column_name, populated_column_name = owning_column_name
 pub struct Query<'a> {
     /// Query for Document
-    pub document: &'a PersistedDocument,
+    pub document: &'a Document,
     /// Sql statement for this query
     pub sql: String
 }
@@ -69,7 +68,7 @@ const PUBLISHED_COLUMN: Column<'static> = Column {
 
 /// Represents parts of query statement
 pub struct QueryBuilder<'a> {
-    pub document: &'a PersistedDocument,
+    pub document: &'a Document,
     from: Table<'a>,
     select: Vec<ColumnRef<'a>>,
     joins: Vec<Join<'a>>,
@@ -77,10 +76,10 @@ pub struct QueryBuilder<'a> {
     order: Vec<ColumnRef<'a>>,
 }
 
-impl<'a> From<&'a PersistedDocument> for QueryBuilder<'a> {
-    fn from(value: &'a PersistedDocument) -> Self {
+impl<'a> From<&'a Document> for QueryBuilder<'a> {
+    fn from(value: &'a Document) -> Self {
         let from = Table {
-            name: &value.details.main_table_name,
+            name: &value.persistence.main_table_name,
             alias: "m",
         };
         Self::new(value, from)
@@ -88,14 +87,14 @@ impl<'a> From<&'a PersistedDocument> for QueryBuilder<'a> {
 }
 
 impl<'a> QueryBuilder<'a> {
-    fn new(document: &'a PersistedDocument, from: Table<'a>) -> Self {
+    fn new(document: &'a Document, from: Table<'a>) -> Self {
         let mut select = vec![
             Cow::Borrowed(&DOCUMENT_ID_COLUMN),
             Cow::Borrowed(&CREATED_COLUMN),
             Cow::Borrowed(&UPDATED_COLUMN),
         ];
 
-        if document.has_draft_and_publish {
+        if document.has_draft_and_publish() {
             select.push(Cow::Borrowed(&PUBLISHED_COLUMN));
         }
 
@@ -123,11 +122,11 @@ impl<'a> QueryBuilder<'a> {
         Query::from(self)
     }
     
-    pub fn from_relation(populated_document: &'a PersistedDocument, relation: &'a PersistedRelation, related_document: &'a PersistedDocument) -> QueryBuilder<'a> {
+    pub fn from_relation(populated_document: &'a Document, relation: &'a DocumentRelation, related_document: &'a Document) -> QueryBuilder<'a> {
         let from = Table { name: &relation.relation_table_name as &str, alias: "r" };
         let mut builder = Self::new(related_document, from);
         
-        let owning_column_name = &populated_document.details.relation_column_name;
+        let owning_column_name = &populated_document.persistence.relation_column_name;
         
         builder.select.insert(0, Cow::Owned(Column {
             alias: "r",
@@ -135,7 +134,7 @@ impl<'a> QueryBuilder<'a> {
         }));
 
         let main_table = Table {
-            name: &related_document.details.main_table_name,
+            name: &related_document.persistence.main_table_name,
             alias: "m",
         };
         
@@ -143,7 +142,7 @@ impl<'a> QueryBuilder<'a> {
             join_table: main_table,
             main_column: Cow::Owned(Column {
                 alias: "r",
-                name: &related_document.details.relation_column_name
+                name: &related_document.persistence.relation_column_name
             }),
             join_column_name: Cow::Borrowed(DOCUMENT_ID_FIELD_NAME)
         };
@@ -252,6 +251,8 @@ impl<'a> Into<String> for &Condition<'a> {
 }
 
 use std::fmt::Display;
+use luminair_common::domain::attributes::DocumentRelation;
+use luminair_common::domain::documents::Document;
 
 impl<'a> Display for Condition<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

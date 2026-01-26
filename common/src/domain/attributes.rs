@@ -1,27 +1,24 @@
 use crate::domain::{AttributeId, DocumentId};
 use serde::{Deserialize, Serialize};
 
-/// A uniquely identifiable document Attribute.
+/// A uniquely identifiable document Field.
 #[derive(Debug)]
-pub struct Attribute {
-    pub id: AttributeId,
-    pub body: AttributeBody,
+pub struct DocumentField {
+    pub attribute_type: AttributeType,
+    pub unique: bool,
+    pub required: bool,
+    pub localized: bool,
+    pub constraints: Option<AttributeConstraints>,
+    pub table_column_name: String,
 }
 
+/// A uniquely identifiable document Relation.
 #[derive(Debug)]
-pub enum AttributeBody {
-    Field {
-        attribute_type: AttributeType,
-        unique: bool,
-        required: bool,
-        localized: bool,
-        constraints: Option<AttributeConstraints>,
-    },
-    Relation {
-        relation_type: RelationType,
-        target: DocumentId,
-        ordering: bool,
-    },
+pub struct DocumentRelation {
+    pub relation_type: RelationType,
+    pub target: DocumentId,
+    pub ordering: bool,
+    pub relation_table_name: String,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -67,27 +64,6 @@ pub enum RelationType {
 }
 
 // implementations
-
-impl PartialEq for Attribute {
-    fn eq(&self, other: &Self) -> bool {
-        self.id == other.id
-    }
-}
-impl Eq for Attribute {}
-
-/*
-impl Attribute {
-    pub fn target_document(&self) -> &Document {
-        if let AttributeBody::Relation {target, ..} = self.body {
-            let target_document_lock = target.read().unwrap();
-            match target_document_lock.deref() {
-                RelationTarget::Ref(d) => d,
-                _ => panic!("Relation target must be a reference to a document, got {:?}", target.read().unwrap())
-            }
-        }
-    }
-}
- */
 
 impl RelationType {
     pub fn is_owning(&self) -> bool {

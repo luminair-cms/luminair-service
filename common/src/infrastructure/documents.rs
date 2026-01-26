@@ -3,45 +3,22 @@ use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
-use crate::domain::DocumentRef;
-use crate::domain::{
-    attributes::*,
-    documents::*,
-    persisted::PersistedDocument,
-    AttributeId,
-    DocumentId,
-    Documents,
-};
+use crate::domain::{attributes::*, documents::*, AttributeId, DocumentId, Documents};
 
 #[derive(Debug)]
 pub(crate) struct DocumentsAdapter {
-    /// index of documents
-    index: HashMap<DocumentId, usize>,
-    /// Document descriptions
-    documents: Vec<&'static Document>,
-    /// Details about documents persisting
-    persisted_documents: Vec<&'static PersistedDocument>,
+    documents: HashSet<&'static Document>,
 }
 
 impl Documents for DocumentsAdapter {
     fn documents(&self) -> Box<dyn Iterator<Item = &'static Document> + '_> {
         Box::new(self.documents.iter().copied())
     }
-    
+
     fn get_document(&self, id: &DocumentId) -> Option<&'static Document> {
-        self.index.get(id).and_then(|idx| self.documents.get(*idx).copied())
-    }
-
-    fn persisted_documents(&self) -> Box<dyn Iterator<Item=&'static PersistedDocument> + '_> {
-        Box::new(self.persisted_documents.iter().copied())
-    }
-
-    fn get_persisted_document(&self, id: &DocumentId) -> Option<&'static PersistedDocument> {
-        self.index.get(id).and_then(|idx| self.persisted_documents.get(*idx).copied())
-    }
-
-    fn get_persisted_document_by_ref(&self, document_ref: crate::domain::DocumentRef) -> Option<&'static PersistedDocument> {
-        self.persisted_documents.get(document_ref.as_index()).copied()
+        self.documents
+            .get(id)
+            .and_then(|idx| self.documents.get(*idx).copied())
     }
 }
 
@@ -61,7 +38,7 @@ impl DocumentsAdapter {
             )
         })?;
 
-        let mut documents = Vec::new();
+        let mut documents = HashSet::new();
         for entry_res in entries {
             let entry =
                 entry_res.map_err(|e| anyhow!("failed to read a directory entry: {}", e))?;
@@ -69,22 +46,11 @@ impl DocumentsAdapter {
             if path.is_file() && is_json(&path) {
                 let document = load_document(&path)?;
                 let static_ref: &'static Document = Box::leak(Box::new(document));
-                documents.push(static_ref);
+                documents.insert(static_ref);
             }
         }
-        
-        let index = documents.iter().enumerate().map(|(idx,d)|(d.id.clone(), idx)).collect();
-        let persisted_documents = documents.iter().map(|d| {
-            let persisted = PersistedDocument::new(d, &index);
-            let static_ref: &'static PersistedDocument = Box::leak(Box::new(persisted));
-            static_ref
-        }).collect();
 
-        Ok(Self {
-            index,
-            documents,
-            persisted_documents,
-        })
+        Ok(Self { documents })
     }
 }
 
@@ -181,18 +147,54 @@ impl<'a> TryFrom<DocumentRecord<'a>> for Document {
         let info = DocumentInfo::try_from(value.info)?;
         let options = value.options.map(DocumentOptions::try_from).transpose()?;
 
-        let attributes: Result<Vec<Attribute>, anyhow::Error> = value
-            .attributes
-            .into_iter()
-            .map(Attribute::try_from)
-            .collect();
-        let attributes = attributes?;
+        let persistence = DocumentPersistence {
+            main_table_name: id.normalized(),
+            relation_column_name: format!("{}_id", info.singular_name.normalized()),
+        };
 
-        // validate uniqueness of attributes/relations id
-        let mut identifiers = HashSet::new();
-        for attribute in attributes.iter() {
-            let id = attribute.id.to_string();
-            if !identifiers.insert(id) {}
+        let mut fields = HashMap::new();
+        let mut relations = HashMap::new();
+
+        for attribute in value.attributes.into_iter() {
+            let id = AttributeId::try_new(attribute.0)?;
+
+            match attribute.1 {
+                AttributeRecord::Field {
+                    attribute_type,
+                    unique,
+                    required,
+                    localized,
+                    constraints,
+                } => {
+                    let constraints = constraints.map(AttributeConstraints::from);
+                    let table_column_name = id.normalized();
+                    let field = DocumentField {
+                        attribute_type,
+                        unique,
+                        required,
+                        localized,
+                        constraints,
+                        table_column_name,
+                    };
+                    fields.insert(id, field);
+                }
+                AttributeRecord::Relation {
+                    relation_type,
+                    target,
+                    ordering,
+                } => {
+                    let target = DocumentId::try_new(target)?;
+                    let relation_table_name =
+                        format!("{}_{}_relation", &persistence.main_table_name, id.normalized());
+                    let relation = DocumentRelation {
+                        relation_type,
+                        target,
+                        ordering,
+                        relation_table_name,
+                    };
+                    relations.insert(id, relation);
+                }
+            }
         }
 
         Ok(Self {
@@ -200,7 +202,9 @@ impl<'a> TryFrom<DocumentRecord<'a>> for Document {
             document_type,
             info,
             options,
-            attributes,
+            persistence,
+            fields,
+            relations,
         })
     }
 }
@@ -237,48 +241,6 @@ impl<'a> TryFrom<DocumentInfoRecord<'a>> for DocumentInfo {
             singular_name,
             plural_name,
         })
-    }
-}
-
-impl<'a> TryFrom<(&'a str, AttributeRecord<'a>)> for Attribute {
-    type Error = anyhow::Error;
-
-    fn try_from(value: (&'a str, AttributeRecord<'a>)) -> Result<Self, Self::Error> {
-        let id = AttributeId::try_new(value.0)?;
-
-        let body = match value.1 {
-            AttributeRecord::Field {
-                attribute_type,
-                unique,
-                required,
-                localized,
-                constraints,
-            } => {
-                let constraints = constraints.map(AttributeConstraints::from);
-
-                Ok::<AttributeBody, Self::Error>(AttributeBody::Field {
-                    attribute_type,
-                    unique,
-                    required,
-                    localized,
-                    constraints,
-                })
-            }
-            AttributeRecord::Relation {
-                relation_type,
-                target,
-                ordering,
-            } => {
-                let target = DocumentId::try_new(target)?;
-                Ok(AttributeBody::Relation {
-                    relation_type,
-                    target,
-                    ordering,
-                })
-            }
-        }?;
-
-        Ok(Self { id, body })
     }
 }
 

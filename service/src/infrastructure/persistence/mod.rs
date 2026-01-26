@@ -36,7 +36,7 @@ impl TryFrom <(&Query<'_>, PgRow)> for ResultRow {
         let document = query.document;
         
         let mut published_at = None;
-        if document.has_draft_and_publish {
+        if document.has_draft_and_publish() {
             let val: Option<DateTime<Utc>> = row.try_get(PUBLISHED_FIELD_NAME)?;
             published_at = val
         }

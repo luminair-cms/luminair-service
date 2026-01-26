@@ -16,11 +16,11 @@ mod dto;
 
 #[derive(Deserialize, Debug)]
 pub struct QueryParams {
-    pub populate: Option<HashSet<String>>
+    pub populate: Option<HashSet<String>>,
 }
 
 pub async fn find_document_by_id<S: AppState>(
-    Path((document_id,id)): Path<(String,i32)>,
+    Path((document_id, id)): Path<(String, i32)>,
     QueryString(params): QueryString<QueryParams>,
     State(state): State<S>,
 ) -> Result<ApiSuccess<OneDocumentRowResponse>, ApiError> {
@@ -29,42 +29,47 @@ pub async fn find_document_by_id<S: AppState>(
 
     let documents = state.documents();
     let persistence = state.persistence();
-    
+
     let document_metadata = documents
-        .get_persisted_document(&document_id)
+        .get_document(&document_id)
         .ok_or(ApiError::NotFound)?;
-    
+
     let query = QueryBuilder::from(document_metadata).find_by_document_id();
     let result_set = persistence.select_by_id(query, id).await?;
-    
+
     let mut data = result_set_into_document_response(result_set);
-    
+
     if let Some(relations_to_populate) = params.populate {
         // map from attribute_id to vector of related documents
         let mut populated_relations = HashMap::new();
-        
+
         for relation_to_populate in relations_to_populate.iter() {
             let attribute_id = AttributeId::try_new(relation_to_populate)
                 .map_err(|err| ApiError::UnprocessableEntity(err.to_string()))?;
-            
-            let relation = document_metadata.relations.get(&attribute_id)
-                .ok_or(ApiError::UnprocessableEntity(format!("Attribute {} to populate doesn't exist", relation_to_populate)))?;
-            let related_document_metadata = documents.get_persisted_document_by_ref(relation.target).unwrap();
-            
-            let query = QueryBuilder::from_relation(document_metadata, relation, related_document_metadata)
-                .with_owning_id_condition(&document_metadata.details.relation_column_name)
-                .into();
+
+            let relation = document_metadata.relations.get(&attribute_id).ok_or(
+                ApiError::UnprocessableEntity(format!(
+                    "Attribute {} to populate doesn't exist",
+                    relation_to_populate
+                )),
+            )?;
+            let related_document_metadata = documents.get_document(&relation.target).unwrap();
+
+            let query =
+                QueryBuilder::from_relation(document_metadata, relation, related_document_metadata)
+                    .with_owning_id_condition(&document_metadata.persistence.relation_column_name)
+                    .into();
             let related_result_set = persistence.select_by_id(query, id).await?;
             let related_data = result_set_into_document_response(related_result_set);
             populated_relations.insert(attribute_id.to_string(), related_data);
         }
 
-       data = join_relations(data, populated_relations);
+        data = join_relations(data, populated_relations);
     }
-    
+
     OneDocumentRowResponse::try_from(data)
-        .map(|result|ApiSuccess::new(StatusCode::OK, result))
-        .map_err(|_|ApiError::NotFound)
+        .map(|result| ApiSuccess::new(StatusCode::OK, result))
+        .map_err(|_| ApiError::NotFound)
 }
 
 pub async fn find_all_documents<S: AppState>(
@@ -79,27 +84,33 @@ pub async fn find_all_documents<S: AppState>(
     let persistence = state.persistence();
 
     let document_metadata = documents
-        .get_persisted_document(&document_id)
+        .get_document(&document_id)
         .ok_or(ApiError::NotFound)?;
 
     let query: Query = QueryBuilder::from(document_metadata).into();
 
     let result_set = persistence.select_all(query).await?;
-    
+
     let mut data = result_set_into_document_response(result_set);
 
     if let Some(relations_to_populate) = params.populate {
         let mut populated_relations = HashMap::new();
-        
+
         for relation_to_populate in relations_to_populate.iter() {
             let attribute_id = AttributeId::try_new(relation_to_populate)
                 .map_err(|err| ApiError::UnprocessableEntity(err.to_string()))?;
-            
-            let relation = document_metadata.relations.get(&attribute_id)
-                .ok_or(ApiError::UnprocessableEntity(format!("Attribute {} to populate doesn't exist", relation_to_populate)))?;
-            let related_document_metadata = documents.get_persisted_document_by_ref(relation.target).unwrap();
-            
-            let query = QueryBuilder::from_relation(document_metadata, relation, related_document_metadata).into();
+
+            let relation = document_metadata.relations.get(&attribute_id).ok_or(
+                ApiError::UnprocessableEntity(format!(
+                    "Attribute {} to populate doesn't exist",
+                    relation_to_populate
+                )),
+            )?;
+            let related_document_metadata = documents.get_document(&relation.target).unwrap();
+
+            let query =
+                QueryBuilder::from_relation(document_metadata, relation, related_document_metadata)
+                    .into();
             let related_result_set = persistence.select_all(query).await?;
             let related_data = result_set_into_document_response(related_result_set);
             populated_relations.insert(attribute_id.to_string(), related_data);
@@ -108,7 +119,10 @@ pub async fn find_all_documents<S: AppState>(
         data = join_relations(data, populated_relations);
     }
 
-    Ok(ApiSuccess::new(StatusCode::OK, ManyDocumentRowsResponse::from(data)))
+    Ok(ApiSuccess::new(
+        StatusCode::OK,
+        ManyDocumentRowsResponse::from(data),
+    ))
 }
 
 fn result_set_into_document_response(result_set: impl ResultSet) -> Vec<DocumentRowResponse> {
