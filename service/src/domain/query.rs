@@ -34,7 +34,8 @@ pub struct Query<'a> {
     /// Query for Document
     pub document: &'a Document,
     /// Sql statement for this query
-    pub sql: String
+    pub sql: String,
+    pub  columns_indexes: ColumnsIndexes
 }
 
 impl <'a> From<QueryBuilder<'a>> for Query<'a> {
@@ -42,7 +43,8 @@ impl <'a> From<QueryBuilder<'a>> for Query<'a> {
         let sql = value.sql();
         Self {
             document: value.document,
-            sql
+            sql,
+            columns_indexes: value.select.column_indexes()
         }
     }
 }
@@ -70,10 +72,12 @@ const PUBLISHED_COLUMN: Column<'static> = Column {
 pub struct QueryBuilder<'a> {
     pub document: &'a Document,
     from: Table<'a>,
-    select: Vec<ColumnRef<'a>>,
+    select: Select<'a>,
     joins: Vec<Join<'a>>,
     conditions: Vec<Condition<'a>>,
     order: Vec<ColumnRef<'a>>,
+    // TODO: add group by
+    // TODO: add offset and limit
 }
 
 impl<'a> From<&'a Document> for QueryBuilder<'a> {
@@ -88,15 +92,7 @@ impl<'a> From<&'a Document> for QueryBuilder<'a> {
 
 impl<'a> QueryBuilder<'a> {
     fn new(document: &'a Document, from: Table<'a>) -> Self {
-        let mut select = vec![
-            Cow::Borrowed(&DOCUMENT_ID_COLUMN),
-            Cow::Borrowed(&CREATED_COLUMN),
-            Cow::Borrowed(&UPDATED_COLUMN),
-        ];
-
-        if document.has_draft_and_publish() {
-            select.push(Cow::Borrowed(&PUBLISHED_COLUMN));
-        }
+        let mut select = Select::new(document.has_draft_and_publish());
 
         for field in document.fields.values() {
             select.push(Cow::Owned(Column {
@@ -126,12 +122,9 @@ impl<'a> QueryBuilder<'a> {
         let from = Table { name: &relation.relation_table_name as &str, alias: "r" };
         let mut builder = Self::new(related_document, from);
         
-        let owning_column_name = &populated_document.persistence.relation_column_name;
+        let owning_column_name = &populated_document.persistence.relation_column_name as &str;
         
-        builder.select.insert(0, Cow::Owned(Column {
-            alias: "r",
-            name: owning_column_name,
-        }));
+        builder.select.insert_owning_id(owning_column_name);
 
         let main_table = Table {
             name: &related_document.persistence.main_table_name,
@@ -163,7 +156,7 @@ impl<'a> QueryBuilder<'a> {
     
     fn sql(&self) -> String {
         let from_exp: String = String::from(&self.from);
-        let columns: Vec<String> = self.select.iter().map(|c| c.as_ref().into()).collect();
+        let columns: Vec<String> = self.select.columns.iter().map(|c| c.as_ref().into()).collect();
         let joins: Vec<String> = self
             .joins
             .iter()
@@ -215,6 +208,69 @@ struct Table<'a> {
 impl<'a> From<&Table<'a>> for String {
     fn from(value: &Table) -> Self {
         format!("{} AS {}", value.name, value.alias)
+    }
+}
+
+struct Select<'a> {
+    pub columns: Vec<ColumnRef<'a>>,
+    has_draft_and_publish: bool,
+    has_owning_column: bool,
+}
+
+pub struct ColumnsIndexes {
+    has_draft_and_publish: bool,
+    has_owning_column: bool,
+}
+
+impl<'a> Select<'a> {
+    // TODO: for select add indexes of standard columns for select by ID
+    // TODO: add index for optional PUBLISHED_COLUMN
+    // TODO: add index for optional OWNING_COLUMN
+
+    fn new(has_draft_and_publish: bool) -> Self {
+        let mut columns = vec![
+            Cow::Borrowed(&DOCUMENT_ID_COLUMN),
+            Cow::Borrowed(&CREATED_COLUMN),
+            Cow::Borrowed(&UPDATED_COLUMN),
+        ];
+        if has_draft_and_publish {
+            columns.push(Cow::Borrowed(&PUBLISHED_COLUMN));
+        }
+        Self { columns, has_draft_and_publish, has_owning_column: false }
+    }
+
+    fn insert_owning_id(&mut self, owning_column_name: &'a str) {
+        let column = Cow::Owned(Column {
+            alias: "f",
+            name: owning_column_name,
+        });
+        self.columns.insert(0, column);
+        self.has_owning_column = true;
+    }
+
+    fn push(&mut self, column: ColumnRef<'a>) {
+        self.columns.push(column);
+    }
+
+    fn column_indexes(&self) -> ColumnsIndexes {
+        ColumnsIndexes {
+            has_draft_and_publish: self.has_draft_and_publish,
+            has_owning_column: self.has_owning_column,
+        }
+    }
+}
+
+impl ColumnsIndexes {
+    pub fn owning_index(&self) -> Option<usize> {
+        if self.has_owning_column { Some(0) } else { None}
+    }
+
+    pub fn document_id_index(&self) -> usize { if self.has_owning_column { 1 } else { 0 } }
+    pub fn created_index(&self) -> usize { self.document_id_index() + 1 }
+    pub fn updated_index(&self) -> usize { self.document_id_index() + 2 }
+
+    pub fn published_index(&self) -> Option<usize> {
+        if self.has_draft_and_publish { Some(self.document_id_index() + 3) } else { None }
     }
 }
 

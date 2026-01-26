@@ -27,19 +27,22 @@ impl TryFrom <(&Query<'_>, PgRow)> for ResultRow {
         use sqlx::Row;
 
         let (query, row) = value;
+        let index_map = &query.columns_indexes;
         
-        let owning_id: Option<i32> = row.try_get(0).ok();
-        let document_id: i32 = row.try_get(DOCUMENT_ID_FIELD_NAME)?;
-        let created_at: DateTime<Utc> = row.try_get(CREATED_FIELD_NAME)?;
-        let updated_at: DateTime<Utc> = row.try_get(UPDATED_FIELD_NAME)?;
+        let owning_id = match index_map.owning_index() {
+            Some(idx) => Some(row.try_get(idx)?),
+            None => None
+        };
+        let document_id: i32 = row.try_get(index_map.document_id_index())?;
+        let created_at: DateTime<Utc> = row.try_get(index_map.created_index())?;
+        let updated_at: DateTime<Utc> = row.try_get(index_map.updated_index())?;
         
         let document = query.document;
         
-        let mut published_at = None;
-        if document.has_draft_and_publish() {
-            let val: Option<DateTime<Utc>> = row.try_get(PUBLISHED_FIELD_NAME)?;
-            published_at = val
-        }
+        let published_at = match index_map.published_index() {
+            Some(idx) => Some(row.try_get(idx)?),
+            None => None
+        };
 
         let mut fields = HashMap::new();
         for (attribute_id, field) in document.fields.iter() {
