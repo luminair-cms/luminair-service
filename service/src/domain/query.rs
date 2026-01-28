@@ -1,9 +1,12 @@
+use std::fmt::{Display, Formatter};
 use std::borrow::Cow;
 
 use luminair_common::{
     CREATED_FIELD_NAME, DOCUMENT_ID_FIELD_NAME, PUBLISHED_FIELD_NAME,
     UPDATED_FIELD_NAME
 };
+use luminair_common::domain::attributes::DocumentRelation;
+use luminair_common::domain::documents::Document;
 
 /// Represents Query to Database:
 /// query to main document:
@@ -112,9 +115,7 @@ impl<'a> QueryBuilder<'a> {
     }
     
     pub fn find_by_document_id(mut self) -> Query<'a> {
-        self.conditions.push(Condition {
-            column: Cow::Borrowed(&DOCUMENT_ID_COLUMN),
-        });
+        self.conditions.push(Condition::Equals(Cow::Borrowed(&DOCUMENT_ID_COLUMN)));
         Query::from(self)
     }
     
@@ -144,13 +145,27 @@ impl<'a> QueryBuilder<'a> {
         builder
     }
 
-    pub fn with_owning_id_condition(mut self, owning_column_name: &'a str) -> Self {
-        self.conditions.push(Condition {
-            column: Cow::Owned(Column {
-                alias: "r",
-                name: owning_column_name,
-            }),
+    pub fn with_owning_id(mut self, owning_column_name: &'a str) -> Self {
+        // TODO: this column duplicated 3 times, must be only one (may be in select) and 2 refs
+        let condition_column: ColumnRef = Cow::Owned(Column {
+            alias: "r",
+            name: owning_column_name,
         });
+        self.conditions.push(Condition::Equals ( condition_column.clone()));
+        self.order.insert(0, condition_column);
+        
+        self
+    }
+
+    pub fn with_owning_id_list(mut self, owning_column_name: &'a str) -> Self {
+        // TODO: this column duplicated 3 times, must be only one (may be in select) and 2 refs
+        let condition_column: ColumnRef = Cow::Owned(Column {
+            alias: "r",
+            name: owning_column_name,
+        });
+        self.conditions.push(Condition::EqualsCollection ( condition_column.clone()));
+        self.order.insert(0, condition_column);
+
         self
     }
     
@@ -176,7 +191,7 @@ impl<'a> QueryBuilder<'a> {
             let conditions: Vec<String> = self
                 .conditions
                 .iter()
-                .map(|c| format!("{} = $1", c))
+                .map(|c| c.into())
                 .collect();
             format!(" WHERE {}", conditions.join(" AND "))
         };
@@ -223,9 +238,6 @@ pub struct ColumnsIndexes {
 }
 
 impl<'a> Select<'a> {
-    // TODO: for select add indexes of standard columns for select by ID
-    // TODO: add index for optional PUBLISHED_COLUMN
-    // TODO: add index for optional OWNING_COLUMN
 
     fn new(has_draft_and_publish: bool) -> Self {
         let mut columns = vec![
@@ -241,7 +253,7 @@ impl<'a> Select<'a> {
 
     fn insert_owning_id(&mut self, owning_column_name: &'a str) {
         let column = Cow::Owned(Column {
-            alias: "f",
+            alias: "r",
             name: owning_column_name,
         });
         self.columns.insert(0, column);
@@ -283,9 +295,15 @@ struct Column<'a> {
     pub name: &'a str,
 }
 
-impl<'a> Into<String> for &Column<'a> {
-    fn into(self) -> String {
-        format!("{}.{}", self.alias, self.name)
+impl<'a> Display for Column<'a> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}.{}", self.alias, self.name)
+    }
+}
+
+impl<'a> From<&Column<'a>> for String {
+    fn from(value: &Column<'a>) -> Self {
+        value.to_string()
     }
 }
 
@@ -295,24 +313,32 @@ struct Join<'a> {
     pub join_column_name: Cow<'a, str>
 }
 
-struct Condition<'a> {
-    pub column: ColumnRef<'a>,
+enum Condition<'a> {
+    Equals(ColumnRef<'a>),
+    EqualsCollection(ColumnRef<'a>),
 }
 
-impl<'a> Into<String> for &Condition<'a> {
-    fn into(self) -> String {
-        let column = self.column.as_ref();
-        column.into()
+impl<'a> Condition<'a> {
+    fn equals(column: ColumnRef<'a>) -> Self {
+        Self::Equals(column)
+    }
+    fn equals_collection(column: ColumnRef<'a>) -> Self {
+        Self::EqualsCollection(column)
     }
 }
-
-use std::fmt::Display;
-use luminair_common::domain::attributes::DocumentRelation;
-use luminair_common::domain::documents::Document;
 
 impl<'a> Display for Condition<'a> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let str: String = self.into();
-        f.write_str(str.as_str())
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Condition::Equals(column) => write!(f, "{} = $1", column.as_ref()),
+            Condition::EqualsCollection(column) => write!(f, "{} = ANY($1)", column.as_ref()),
+        }
     }
 }
+
+impl<'a> From<&Condition<'a>> for String {
+    fn from(value: &Condition<'a>) -> Self {
+        value.to_string()
+    }
+}
+

@@ -1,8 +1,8 @@
 use std::{collections::HashMap, io::ErrorKind};
 use serde::Serialize;
 use chrono::{DateTime, Utc};
-
-use crate::domain::{FieldValue, ResultRow};
+use luminair_common::domain::AttributeId;
+use crate::domain::{DocumentRowId, FieldValue, ResultRow};
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ManyDocumentRowsResponse {
@@ -56,9 +56,7 @@ impl TryFrom<Vec<DocumentRowResponse>> for OneDocumentRowResponse {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DocumentRowResponse {
-    #[serde(skip_serializing)]
-    pub owning_id: Option<i32>,
-    pub document_id: i32,
+    pub document_id: DocumentRowId,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub published_at: Option<DateTime<Utc>>,
@@ -67,8 +65,15 @@ pub struct DocumentRowResponse {
 }
 
 impl DocumentRowResponse {
-    pub fn add_relation(&mut self, attribute_id: String, relation: Vec<DocumentRowResponse>) {
-        self.fields.insert(attribute_id, AttributeResponse::Relation(relation));
+    pub fn with_relations(self, relations: HashMap<AttributeId,Vec<DocumentRowResponse>>) -> Self {
+        let mut fields: HashMap<String,AttributeResponse> = relations.into_iter()
+            .map(|(k,v)|(k.to_string(),AttributeResponse::Relation(v)))
+            .collect();
+        fields.extend(self.fields);
+        Self {
+            fields,
+            ..self
+        }
     }
 }
 
@@ -88,8 +93,7 @@ impl PartialEq for DocumentRowResponse {
 
 impl From<ResultRow> for DocumentRowResponse {
     fn from(value: ResultRow) -> Self {
-        let owning_id = value.owning_id;
-        let document_id = value.document_id;
+        let document_id = value.document_id.into();
         let created_at = value.created_at;
         let updated_at = value.updated_at;
         let published_at = value.published_at;
@@ -102,7 +106,6 @@ impl From<ResultRow> for DocumentRowResponse {
             .collect();
         
         Self {
-            owning_id,
             document_id,
             created_at,
             updated_at,
@@ -110,4 +113,9 @@ impl From<ResultRow> for DocumentRowResponse {
             fields
         }
     }
+}
+
+pub struct GroupedDocumentRowResponse {
+    pub owning_id: DocumentRowId,
+    pub rows: Vec<DocumentRowResponse>
 }

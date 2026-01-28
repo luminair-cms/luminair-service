@@ -1,9 +1,8 @@
-use std::collections::HashMap;
+use crate::domain::{query::Query, FieldValue, Persistence, ResultRow, ResultSet};
 use chrono::{DateTime, Utc};
 use luminair_common::infrastructure::database::Database;
 use sqlx::{postgres::PgRow, types::Json};
-use luminair_common::{CREATED_FIELD_NAME, DOCUMENT_ID_FIELD_NAME, PUBLISHED_FIELD_NAME, UPDATED_FIELD_NAME};
-use crate::domain::{FieldValue, Persistence, ResultRow, ResultSet, query::Query};
+use std::collections::HashMap;
 
 #[derive(Clone, Debug)]
 pub struct PersistenceAdapter {
@@ -30,7 +29,10 @@ impl TryFrom <(&Query<'_>, PgRow)> for ResultRow {
         let index_map = &query.columns_indexes;
         
         let owning_id = match index_map.owning_index() {
-            Some(idx) => Some(row.try_get(idx)?),
+            Some(idx) => {
+                println!("owning_index: {}", idx);
+                Some(row.try_get(idx)?)
+        },
             None => None
         };
         let document_id: i32 = row.try_get(index_map.document_id_index())?;
@@ -40,7 +42,10 @@ impl TryFrom <(&Query<'_>, PgRow)> for ResultRow {
         let document = query.document;
         
         let published_at = match index_map.published_index() {
-            Some(idx) => Some(row.try_get(idx)?),
+            Some(idx) => {
+                println!("published_index: {}", idx);
+                row.try_get(idx)?
+            },
             None => None
         };
 
@@ -94,6 +99,21 @@ impl Persistence for PersistenceAdapter {
             rows.push(result_row);
         }
         
+        Ok(ResultSetImpl { rows })
+    }
+
+    async fn select_by_id_list(&self, query: Query<'_>, ids: &[i32]) -> Result<impl ResultSet, anyhow::Error> {
+        let sql = &query.sql;
+        let mut db_rows = sqlx::query(sql).bind(ids).fetch(self.database.database_pool());
+
+        let mut rows = Vec::new();
+
+        use futures::TryStreamExt;
+        while let Some(row) = db_rows.try_next().await? {
+            let result_row = ResultRow::try_from((&query, row))?;
+            rows.push(result_row);
+        }
+
         Ok(ResultSetImpl { rows })
     }
 }

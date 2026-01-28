@@ -1,14 +1,13 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::domain::query::{Query, QueryBuilder};
-use crate::domain::{AppState, Persistence, ResultSet};
+use crate::domain::{AppState, DocumentRowId, Persistence, ResultSet};
 use crate::infrastructure::http::api::{ApiError, ApiSuccess};
-use crate::infrastructure::http::handlers::data::dto::{
-    DocumentRowResponse, ManyDocumentRowsResponse, OneDocumentRowResponse,
-};
+use crate::infrastructure::http::handlers::data::dto::{DocumentRowResponse, GroupedDocumentRowResponse, ManyDocumentRowsResponse, OneDocumentRowResponse};
 use crate::infrastructure::http::querystring::QueryString;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
+use itertools::{EitherOrBoth, Itertools};
 use luminair_common::domain::{AttributeId, DocumentId};
 use serde::Deserialize;
 
@@ -57,11 +56,11 @@ pub async fn find_document_by_id<S: AppState>(
 
             let query =
                 QueryBuilder::from_relation(document_metadata, relation, related_document_metadata)
-                    .with_owning_id_condition(&document_metadata.persistence.relation_column_name)
+                    .with_owning_id(&document_metadata.persistence.relation_column_name)
                     .into();
             let related_result_set = persistence.select_by_id(query, id).await?;
-            let related_data = result_set_into_document_response(related_result_set);
-            populated_relations.insert(attribute_id.to_string(), related_data);
+            let related_data = result_set_into_groped_document_response(related_result_set);
+            populated_relations.insert(attribute_id, related_data);
         }
 
         data = join_relations(data, populated_relations);
@@ -94,6 +93,7 @@ pub async fn find_all_documents<S: AppState>(
     let mut data = result_set_into_document_response(result_set);
 
     if let Some(relations_to_populate) = params.populate {
+        let ids: Vec<i32> = data.iter().map(|row| row.document_id.into()).collect();
         let mut populated_relations = HashMap::new();
 
         for relation_to_populate in relations_to_populate.iter() {
@@ -110,10 +110,11 @@ pub async fn find_all_documents<S: AppState>(
 
             let query =
                 QueryBuilder::from_relation(document_metadata, relation, related_document_metadata)
+                    .with_owning_id_list(&document_metadata.persistence.relation_column_name)
                     .into();
-            let related_result_set = persistence.select_all(query).await?;
-            let related_data = result_set_into_document_response(related_result_set);
-            populated_relations.insert(attribute_id.to_string(), related_data);
+            let related_result_set = persistence.select_by_id_list(query, &ids).await?;
+            let related_data = result_set_into_groped_document_response(related_result_set);
+            populated_relations.insert(attribute_id, related_data);
         }
 
         data = join_relations(data, populated_relations);
@@ -133,36 +134,69 @@ fn result_set_into_document_response(result_set: impl ResultSet) -> Vec<Document
         .collect()
 }
 
+fn result_set_into_groped_document_response(result_set: impl ResultSet) -> Vec<GroupedDocumentRowResponse> {
+    result_set
+        .into_rows()
+        .into_iter()
+        .filter_map(|row| {
+            let owning_id: DocumentRowId = row.owning_id.map(|it| it.into())?;
+            Some((owning_id, DocumentRowResponse::from(row)))
+        })
+        .chunk_by(|(owning_id, _)| owning_id.clone())
+        .into_iter()
+        .map(|(owning_id, group)| GroupedDocumentRowResponse {
+            owning_id,
+            rows: group.map(|(_, row)| row).collect(),
+        })
+        .collect()
+}
+
 // join relations to the main document response
 // relations: map from attribute_id to vector of related documents;
 // each of the related documents will be added to the main document response by its owning_id
+// both main and relations are sorted by owning DocumentRowId - document_id of main rows
 fn join_relations(
     main: Vec<DocumentRowResponse>,
-    relations: HashMap<String, Vec<DocumentRowResponse>>,
+    relations: HashMap<AttributeId, Vec<GroupedDocumentRowResponse>>,
 ) -> Vec<DocumentRowResponse> {
-    // map from: attribute_id to: map from document_id to vector of related documents
-    let mut transposed: HashMap<String, HashMap<i32, Vec<DocumentRowResponse>>> = HashMap::new();
+    let mut transposed_map: HashMap<DocumentRowId, HashMap<AttributeId, Vec<DocumentRowResponse>>> =
+        HashMap::new();
 
-    for (attribute_id, related_docs) in relations {
-        let mut grouped: HashMap<i32, Vec<DocumentRowResponse>> = HashMap::new();
-        for doc in related_docs {
-            if let Some(owning_id) = doc.owning_id {
-                grouped.entry(owning_id).or_default().push(doc);
-            }
+    for (attribute_id, grouped_rows) in relations {
+        for grouped_row in grouped_rows {
+            transposed_map
+                .entry(grouped_row.owning_id)
+                .or_default()
+                .insert(attribute_id.clone(), grouped_row.rows);
         }
-        transposed.insert(attribute_id, grouped);
     }
 
-    main.into_iter()
-        .map(|mut document_response| {
-            for (attribute_id, grouped) in &transposed {
-                if let Some(related_docs) = grouped.get(&document_response.document_id) {
-                    document_response.add_relation(attribute_id.clone(), related_docs.clone());
-                } else {
-                    document_response.add_relation(attribute_id.clone(), Vec::new());
-                }
+    let mut transposed: Vec<(
+        DocumentRowId,
+        HashMap<AttributeId, Vec<DocumentRowResponse>>,
+    )> = transposed_map.into_iter().collect();
+    transposed.sort_by(|(a, _), (b, _)| a.cmp(b));
+
+    let transposed_iter = transposed.into_iter();
+
+    let joined = main.into_iter()
+        .merge_join_by(transposed_iter, |a,(b,_)| a.document_id.cmp(b));
+
+    let mut enriched_documents = Vec::new();
+
+    for item in joined {
+        match item {
+            EitherOrBoth::Both(entity, (_id, populated)) => {
+                enriched_documents.push(entity.with_relations(populated));
             }
-            document_response
-        })
-        .collect()
+            EitherOrBoth::Left(entity) => {
+                enriched_documents.push(entity);
+            }
+            EitherOrBoth::Right((_id, populated)) => {
+                println!("Doc without entity: {:?}", populated);
+            }
+        }
+    }
+
+    enriched_documents
 }
