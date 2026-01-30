@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use crate::domain::query::{Query, QueryBuilder};
+use crate::domain::query::{Query, QueryBuilder, QueryPagination};
 use crate::domain::{AppState, DocumentRowId, Persistence, ResultSet};
 use crate::infrastructure::http::api::{ApiError, ApiSuccess};
 use crate::infrastructure::http::handlers::data::dto::{DocumentRowResponse, GroupedDocumentRowResponse, ManyDocumentRowsResponse, OneDocumentRowResponse};
@@ -16,6 +16,16 @@ mod dto;
 #[derive(Deserialize, Debug)]
 pub struct QueryParams {
     pub populate: Option<HashSet<String>>,
+    pub pagination: Option<PaginationParams>
+}
+
+#[derive(Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct PaginationParams {
+    #[serde(default)]
+    pub page: u16,
+    #[serde(default)]
+    pub page_ize: u16
 }
 
 pub async fn find_document_by_id<S: AppState>(
@@ -23,6 +33,10 @@ pub async fn find_document_by_id<S: AppState>(
     QueryString(params): QueryString<QueryParams>,
     State(state): State<S>,
 ) -> Result<ApiSuccess<OneDocumentRowResponse>, ApiError> {
+    if params.pagination.is_some() {
+        return Err(ApiError::UnprocessableEntity("Pagination param isn't eligible for find_by_id query".to_string()));
+    }
+    
     let document_id = DocumentId::try_new(document_id)
         .map_err(|err| ApiError::UnprocessableEntity(err.to_string()))?;
 
@@ -85,8 +99,14 @@ pub async fn find_all_documents<S: AppState>(
     let document_metadata = documents
         .get_document(&document_id)
         .ok_or(ApiError::NotFound)?;
+    
+    let pagination = params.pagination
+        .map_or_else(
+            || QueryPagination::default(), 
+            |it| QueryPagination::new(it.page, it.page_ize));
 
-    let query: Query = QueryBuilder::from(document_metadata).into();
+    let query: Query = QueryBuilder::from(document_metadata)
+        .with_pagination(pagination).into();
 
     let result_set = persistence.select_all(query).await?;
 

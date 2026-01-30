@@ -79,8 +79,29 @@ pub struct QueryBuilder<'a> {
     joins: Vec<Join<'a>>,
     conditions: Vec<Condition<'a>>,
     order: Vec<ColumnRef<'a>>,
+    pagination: Option<QueryPagination>
     // TODO: add group by
     // TODO: add offset and limit
+}
+
+pub struct QueryPagination {
+    pub page: u16,
+    pub page_ize: u16
+}
+
+impl Default for QueryPagination {
+    fn default() -> Self {
+        Self { page: 1, page_ize: 25 }
+    }
+}
+
+impl QueryPagination {
+    pub fn new(page: u16, page_size: u16) -> Self {
+        Self {
+            page: if page == 0 { 1 } else { page },
+            page_ize: if page_size == 0 { 25 } else { page_size }
+        }
+    }
 }
 
 impl<'a> From<&'a Document> for QueryBuilder<'a> {
@@ -110,7 +131,8 @@ impl<'a> QueryBuilder<'a> {
             select,
             joins: Vec::new(),
             conditions: Vec::new(),
-            order: vec![Cow::Borrowed(&DOCUMENT_ID_COLUMN)]
+            order: vec![Cow::Borrowed(&DOCUMENT_ID_COLUMN)],
+            pagination: None
         }
     }
     
@@ -166,6 +188,11 @@ impl<'a> QueryBuilder<'a> {
         self.conditions.push(Condition::EqualsCollection ( condition_column.clone()));
         self.order.insert(0, condition_column);
 
+        self
+    }
+    
+    pub fn with_pagination(mut self, pagination: QueryPagination) -> Self {
+        self.pagination = Some(pagination);
         self
     }
     
