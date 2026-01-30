@@ -52,7 +52,7 @@ impl Persistence for PersistenceAdapter {
         Ok(())
     }
     
-    fn datbase_schema(&self) -> &str {
+    fn database_schema(&self) -> &str {
         self.database.database_schema()
     }
 }

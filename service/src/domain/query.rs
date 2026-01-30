@@ -80,8 +80,6 @@ pub struct QueryBuilder<'a> {
     conditions: Vec<Condition<'a>>,
     order: Vec<ColumnRef<'a>>,
     pagination: Option<QueryPagination>
-    // TODO: add group by
-    // TODO: add offset and limit
 }
 
 pub struct QueryPagination {
@@ -197,6 +195,7 @@ impl<'a> QueryBuilder<'a> {
     }
     
     fn sql(&self) -> String {
+        // TODO: query params counter; expose params for different parts of query
         let from_exp: String = String::from(&self.from);
         let columns: Vec<String> = self.select.columns.iter().map(|c| c.as_ref().into()).collect();
         let joins: Vec<String> = self
@@ -230,13 +229,21 @@ impl<'a> QueryBuilder<'a> {
             format!(" ORDER BY {}", order_columns.join(","))
         };
 
+        let pagination_clause = if self.pagination.is_some() {
+            let params_offset = if self.conditions.is_empty() { 0 } else { 1 };
+            format!(" OFFSET ${} ROWS FETCH NEXT ${} ROWS ONLY", params_offset + 1, params_offset + 2)
+        } else {
+            "".to_string()
+        };
+
         format!(
-            "SELECT {} FROM {} {}{}{}",
+            "SELECT {} FROM {} {}{}{}{}",
             columns.join(","),
             from_exp,
             joins.join("\n"),
             where_clause,
-            order_by_clause
+            order_by_clause,
+            pagination_clause
         )
     }
 }

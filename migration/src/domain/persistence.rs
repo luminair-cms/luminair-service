@@ -8,5 +8,5 @@ pub trait Persistence: Send + Sync + Clone + 'static {
     /// apply migration steps to database
     fn apply_migration_steps(&self, steps: Vec<impl MigrationStep>)-> impl Future<Output = Result<(), anyhow::Error>>;
     /// extract database schema
-    fn datbase_schema(&self) -> &str;
+    fn database_schema(&self) -> &str;
 }

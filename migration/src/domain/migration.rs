@@ -53,7 +53,7 @@ impl<P: Persistence> Migration<P> {
         for table in needed_schema {
             if !actual_schema.contains(&table.name) {
                 migration_steps.push(CreateTableStep::new(
-                    self.persistence.datbase_schema(),
+                    self.persistence.database_schema(),
                     &table,
                 ));
             }

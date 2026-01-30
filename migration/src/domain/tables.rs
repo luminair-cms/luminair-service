@@ -91,7 +91,7 @@ impl Column {
     pub fn primary_key<T: Into<String>>(name: T, column_type: ColumnType, column_length: Option<usize>) -> Self {
         Self {
             name: name.into(),
-            column_type: column_type,
+            column_type,
             column_length,
             not_null: false,
             unique: false,
