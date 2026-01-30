@@ -1,3 +1,4 @@
+use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
 use anyhow::Context;
@@ -14,7 +15,7 @@ pub struct Database {
 }
 
 #[derive(Debug, Clone, Deserialize)]
-pub struct DatabaseSetings {
+pub struct DatabaseSettings {
     pub host: String,
     pub db: String,
     pub schema: String,
@@ -35,8 +36,16 @@ pub struct DatabaseCredentials {
     pub password: String,
 }
 
+static DATABASE: OnceLock<Arc<Database>> = OnceLock::new();
+
+pub async fn connect(settings: &DatabaseSettings) -> Result<&'static Database, anyhow::Error> {
+    let database = Database::new(settings).await?;
+    DATABASE.set(Arc::new(database)).expect("Failed to set database");
+    Ok(DATABASE.get().unwrap().as_ref())
+}
+
 impl Database {
-    pub async fn new(settings: &DatabaseSetings) -> Result<Self, anyhow::Error> {
+    async fn new(settings: &DatabaseSettings) -> Result<Self, anyhow::Error> {
         let credentials = &settings.credentials;
         let pg_connect_options = PgConnectOptions::new()
             .host(&settings.host)
@@ -66,7 +75,7 @@ impl Database {
         })
     }
 
-    pub async fn excute_in_transaction(
+    pub async fn execute_in_transaction(
         &self,
         queries: Vec<String>,
         ctx: &'static str,

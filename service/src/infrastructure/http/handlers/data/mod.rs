@@ -8,7 +8,7 @@ use crate::infrastructure::http::querystring::QueryString;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use itertools::{EitherOrBoth, Itertools};
-use luminair_common::domain::{AttributeId, DocumentId};
+use luminair_common::documents::{AttributeId, DocumentId};
 use serde::Deserialize;
 
 mod dto;

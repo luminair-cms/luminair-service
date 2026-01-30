@@ -5,8 +5,8 @@ use nutype::nutype;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 
-use crate::domain::attributes::{DocumentField, DocumentRelation};
-use crate::domain::{AttributeId, DocumentId};
+use crate::documents::attributes::{DocumentField, DocumentRelation};
+use crate::documents::{AttributeId, DocumentId};
 
 static VALID_LOCALIZATIONS_REGEX: LazyLock<Regex> =
     LazyLock::new(|| Regex::new("^(ru|ro|en)").unwrap());

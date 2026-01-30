@@ -5,8 +5,8 @@ use luminair_common::{
     CREATED_FIELD_NAME, DOCUMENT_ID_FIELD_NAME, PUBLISHED_FIELD_NAME,
     UPDATED_FIELD_NAME
 };
-use luminair_common::domain::attributes::DocumentRelation;
-use luminair_common::domain::documents::Document;
+use luminair_common::documents::attributes::DocumentRelation;
+use luminair_common::documents::documents::Document;
 
 /// Represents Query to Database:
 /// query to main document:

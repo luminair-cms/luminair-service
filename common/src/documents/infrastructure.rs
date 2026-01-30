@@ -2,8 +2,9 @@ use anyhow::{anyhow, Context};
 use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
-
-use crate::domain::{attributes::*, documents::*, AttributeId, DocumentId, Documents};
+use crate::documents::attributes::*;
+use crate::documents::{AttributeId, DocumentId, Documents};
+use crate::documents::documents::*;
 
 #[derive(Debug)]
 pub(crate) struct DocumentsAdapter {

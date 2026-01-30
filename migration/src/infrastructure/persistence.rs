@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use luminair_common::infrastructure::database::Database;
+use luminair_common::database::Database;
 
 use crate::domain::persistence::Persistence;
 
@@ -46,7 +46,7 @@ impl Persistence for PersistenceAdapter {
         while let Some(step) = stream.next().await {
             let ctx = step.ctx();
             let ddls = step.ddls();
-            self.database.excute_in_transaction(ddls, ctx).await?;
+            self.database.execute_in_transaction(ddls, ctx).await?;
         }
     
         Ok(())

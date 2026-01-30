@@ -3,7 +3,7 @@ use crate::infrastructure::http::api::{ApiError, ApiSuccess};
 use crate::infrastructure::http::handlers::documents::dto::{DetailedDocumentResponse, DocumentResponse};
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
-use luminair_common::domain::DocumentId;
+use luminair_common::documents::DocumentId;
 
 mod dto;
 

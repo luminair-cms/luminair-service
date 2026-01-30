@@ -1,8 +1,8 @@
-use luminair_common::domain::AttributeId;
-use luminair_common::domain::attributes::{
+use luminair_common::documents::AttributeId;
+use luminair_common::documents::attributes::{
     AttributeConstraints, AttributeType, DocumentField, DocumentRelation, RelationType,
 };
-use luminair_common::domain::documents::{Document, DocumentInfo, DocumentOptions, DocumentType};
+use luminair_common::documents::documents::{Document, DocumentInfo, DocumentOptions, DocumentType};
 use serde::Serialize;
 
 /// Response for list documents route

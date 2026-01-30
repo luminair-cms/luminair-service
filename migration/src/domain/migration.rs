@@ -1,4 +1,4 @@
-use luminair_common::domain::Documents;
+use luminair_common::documents::Documents;
 use crate::domain::DocumentTables;
 use crate::domain::tables::{Column, ColumnType, ForeignKeyConstraint, Index, Table};
 use crate::domain::persistence::Persistence;

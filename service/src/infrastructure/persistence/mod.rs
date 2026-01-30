@@ -1,6 +1,6 @@
 use crate::domain::{query::Query, FieldValue, Persistence, ResultRow, ResultSet};
 use chrono::{DateTime, Utc};
-use luminair_common::infrastructure::database::Database;
+use luminair_common::database::Database;
 use sqlx::{postgres::PgRow, types::Json};
 use std::collections::HashMap;
 

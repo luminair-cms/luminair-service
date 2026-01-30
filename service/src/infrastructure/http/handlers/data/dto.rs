@@ -1,7 +1,7 @@
 use std::{collections::HashMap, io::ErrorKind};
 use serde::Serialize;
 use chrono::{DateTime, Utc};
-use luminair_common::domain::AttributeId;
+use luminair_common::documents::AttributeId;
 use crate::domain::{DocumentRowId, FieldValue, ResultRow};
 
 #[derive(Debug, Clone, Serialize)]

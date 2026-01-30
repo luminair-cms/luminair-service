@@ -1,5 +1,5 @@
-use crate::domain::{AttributeId, DocumentId};
 use serde::{Deserialize, Serialize};
+use crate::documents::{AttributeId, DocumentId};
 
 /// A uniquely identifiable document Field.
 #[derive(Debug)]

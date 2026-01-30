@@ -3,13 +3,13 @@ use std::env;
 use anyhow::Context;
 use config::{Config, Environment, File};
 use dotenvy::dotenv;
-use luminair_common::infrastructure::database::DatabaseSetings;
+use luminair_common::database::DatabaseSettings;
 use serde::Deserialize;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct Settings {
     pub schema_config_path: String,
-    pub database: DatabaseSetings,
+    pub database: DatabaseSettings,
 }
 
 impl Settings {

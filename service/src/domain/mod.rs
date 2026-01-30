@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use chrono::{DateTime, Utc};
 use serde::Serialize;
-use luminair_common::domain::Documents;
+use luminair_common::documents::Documents;
 
 use crate::domain::query::Query;
 

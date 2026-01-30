@@ -3,8 +3,8 @@ use crate::{
     infrastructure::persistence::PersistenceAdapter,
 };
 use anyhow::anyhow;
-use luminair_common::domain::Documents;
-use luminair_common::infrastructure::database::Database;
+use luminair_common::documents::Documents;
+use luminair_common::database::Database;
 
 pub mod http;
 pub mod persistence;

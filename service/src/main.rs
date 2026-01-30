@@ -1,4 +1,4 @@
-use luminair_common::{connect_to_database, load_documents};
+use luminair_common::{database, documents};
 use crate::infrastructure::persistence::PersistenceAdapter;
 use crate::infrastructure::{AppStateImpl, HelloServiceAdapter};
 use crate::infrastructure::http::{HttpServer, HttpServerConfig};
@@ -21,10 +21,10 @@ async fn main() -> anyhow::Result<()> {
         .with(tracing_subscriber::fmt::layer())
         .init();
 
-    let documents = load_documents(&settings.schema_config_path)?;
+    let documents = documents::load(&settings.schema_config_path)?;
     tracing::debug!("Configuration loaded");
 
-    let database = connect_to_database(&settings.database).await?;
+    let database = database::connect(&settings.database).await?;
     tracing::debug!("Connected to DB");
 
     let hello_service = HelloServiceAdapter::new(&database);
