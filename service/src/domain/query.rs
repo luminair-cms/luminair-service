@@ -18,15 +18,15 @@ use luminair_common::documents::documents::Document;
 /// FROM main_table m
 /// WHERE m.document_id = ?1
 /// ORDER BY m.document_id
+/// 
 /// query for populate:
 /// SELECT
 ///     r.owning_column_name,
 ///     m.document_id,
 //      m.created_at, m.updated_at, m.published_at,
-///     m.field_1,..., m.field_N,
-///     l.field_1, ... , l.field_N
+///     m.field_1,..., m.field_N
 /// FROM relation_table r
-/// JOIN populated_table m ON l.document_id = r.populated_column_name
+/// JOIN populated_table m ON m.document_id = r.populated_column_name
 /// WHERE r.main_column_name = ?1
 /// ORDER BY m.document_id
 /// if relation.is_owning then:
