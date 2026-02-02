@@ -8,7 +8,7 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 mod domain;
 mod infrastructure;
-mod documents;
+mod persistence;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {

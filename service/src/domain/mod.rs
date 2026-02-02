@@ -73,7 +73,7 @@ impl From<i32> for DocumentRowId {
     }
 }
 
-impl Into<i32> for DocumentRowId {
+impl Into<i32> for &DocumentRowId {
     fn into(self) -> i32 {
         self.0
     }
