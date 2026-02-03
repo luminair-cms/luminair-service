@@ -1,11 +1,12 @@
-use luminair_common::documents::Documents;
+use luminair_common::DocumentTypesRegistry;
+
 use crate::domain::DocumentTables;
 use crate::domain::tables::{Column, ColumnType, ForeignKeyConstraint, Index, Table};
 use crate::domain::persistence::Persistence;
 
 #[derive(Clone)]
 pub struct Migration<P: Persistence> {
-    documents: &'static dyn Documents,
+    documents: &'static dyn DocumentTypesRegistry,
     persistence: P,
 }
 
@@ -36,7 +37,7 @@ impl MigrationStep for CreateTableStep {
 }
 
 impl<P: Persistence> Migration<P> {
-    pub fn new(documents: &'static dyn Documents, persistence: P) -> Self {
+    pub fn new(documents: &'static dyn DocumentTypesRegistry, persistence: P) -> Self {
         Self {
             documents,
             persistence,
@@ -154,11 +155,11 @@ fn create_index_ddl(schema: &str, index: &Index) -> String {
 }
 
 // returns database persistence for given documents schema, sorted conform dependency order
-fn documents_into_tables(documents: &dyn Documents) -> Vec<Table> {
+fn documents_into_tables(documents: &dyn DocumentTypesRegistry) -> Vec<Table> {
     let mut tables = Vec::new();
     let mut relation_tables = Vec::new();
 
-    for d in documents.documents() {
+    for d in documents.iterate() {
         let d = DocumentTables::new(d, documents);
         tables.push(d.main_table);
         relation_tables.extend(d.relation_tables);

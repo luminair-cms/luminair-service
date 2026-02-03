@@ -1,29 +1,39 @@
-use anyhow::{anyhow, Context};
+use std::{collections::{HashMap, HashSet}, path::Path, sync::{Arc, OnceLock}};
+
+use anyhow::{*, Context};
 use serde::Deserialize;
-use std::collections::{HashMap, HashSet};
-use std::path::Path;
-use crate::documents::attributes::*;
-use crate::documents::{AttributeId, DocumentId, Documents};
-use crate::documents::documents::*;
+
+use crate::{AttributeId, domain::{DocumentType, DocumentTypeId, DocumentTypesRegistry}, entities::{AttributeConstraints, AttributeType, DocumentField, DocumentKind, DocumentRelation, DocumentTitle, DocumentTypeInfo, DocumentTypeOptions, LocalizationId, LocalizationIdError, RelationType}};
+
+pub fn load(schema_config_path: &str) -> Result<&'static dyn DocumentTypesRegistry, anyhow::Error> {
+    let loaded = DocumentTypesRegistryAdapter::load(schema_config_path)?;
+    // store loaded documents in static variable
+   DOCUMENTS_REGISTRY.set(Arc::new(loaded)).expect("Failed to set documents");
+    // get reference to Documents trait with static lifetime
+    let documents: &'static dyn DocumentTypesRegistry = DOCUMENTS_REGISTRY.get().unwrap().as_ref();
+    Ok(documents)
+}
+
+static DOCUMENTS_REGISTRY: OnceLock<Arc<dyn DocumentTypesRegistry>> = OnceLock::new();
 
 #[derive(Debug)]
-pub(crate) struct DocumentsAdapter {
-    documents: HashSet<&'static Document>,
+struct DocumentTypesRegistryAdapter {
+    types: HashSet<&'static DocumentType>,
 }
 
-impl Documents for DocumentsAdapter {
-    fn documents(&self) -> Box<dyn Iterator<Item = &'static Document> + '_> {
-        Box::new(self.documents.iter().copied())
+impl DocumentTypesRegistry for DocumentTypesRegistryAdapter {
+    fn iterate(&self) -> Box<dyn Iterator<Item = &'static DocumentType> + '_> {
+        Box::new(self.types.iter().copied())
     }
 
-    fn get_document(&self, id: &DocumentId) -> Option<&'static Document> {
-        self.documents
+    fn get(&self, id: &DocumentTypeId) -> Option<&'static DocumentType> {
+        self.types
             .get(id)
-            .and_then(|idx| self.documents.get(*idx).copied())
+            .and_then(|idx| self.types.get(*idx).copied())
     }
 }
 
-impl DocumentsAdapter {
+impl DocumentTypesRegistryAdapter {
     pub fn load(schema_config_path: &str) -> Result<Self, anyhow::Error> {
         use std::fs;
         use std::path::Path;
@@ -39,24 +49,24 @@ impl DocumentsAdapter {
             )
         })?;
 
-        let mut documents = HashSet::new();
+        let mut types = HashSet::new();
         for entry_res in entries {
             let entry =
                 entry_res.map_err(|e| anyhow!("failed to read a directory entry: {}", e))?;
             let path = entry.path();
             if path.is_file() && is_json(&path) {
                 let document = load_document(&path)?;
-                let static_ref: &'static Document = Box::leak(Box::new(document));
-                documents.insert(static_ref);
+                let static_ref: &'static DocumentType = Box::leak(Box::new(document));
+                types.insert(static_ref);
             }
         }
 
-        Ok(Self { documents })
+        Ok(Self { types })
     }
 }
 
 // Use DeserializeOwned so the deserialized value owns its data and does not borrow from `content`.
-fn load_document(path: &Path) -> Result<Document, anyhow::Error> {
+fn load_document(path: &Path) -> Result<DocumentType, anyhow::Error> {
     use std::fs;
 
     let path_str = path.to_string_lossy().into_owned();
@@ -81,7 +91,7 @@ fn is_json(path: &Path) -> bool {
 struct DocumentRecord<'a> {
     id: &'a str,
     #[serde(alias = "type")]
-    document_type: DocumentType,
+    kind: DocumentKind,
     info: DocumentInfoRecord<'a>,
     options: Option<DocumentOptionsRecord<'a>>,
     attributes: HashMap<&'a str, AttributeRecord<'a>>,
@@ -91,7 +101,7 @@ struct DocumentRecord<'a> {
 #[serde(rename_all = "camelCase")]
 struct DocumentInfoRecord<'a> {
     title: &'a str,
-    description: &'a str,
+    description: Option<&'a str>,
     singular_name: &'a str,
     plural_name: &'a str,
 }
@@ -139,19 +149,14 @@ struct AttributeConstraintsRecord<'a> {
 
 // conversion into document model
 
-impl<'a> TryFrom<DocumentRecord<'a>> for Document {
+impl<'a> TryFrom<DocumentRecord<'a>> for DocumentType {
     type Error = anyhow::Error;
 
     fn try_from(value: DocumentRecord<'a>) -> Result<Self, Self::Error> {
-        let id = DocumentId::try_new(value.id)?;
-        let document_type = value.document_type;
-        let info = DocumentInfo::try_from(value.info)?;
-        let options = value.options.map(DocumentOptions::try_from).transpose()?;
-
-        let persistence = DocumentPersistence {
-            main_table_name: id.normalized(),
-            relation_column_name: format!("{}_id", info.singular_name.normalized()),
-        };
+        let id = DocumentTypeId::try_new(value.id)?;
+        let kind = value.kind;
+        let info = DocumentTypeInfo::try_from(value.info)?;
+        let options = value.options.map(DocumentTypeOptions::try_from).transpose()?;
 
         let mut fields = HashMap::new();
         let mut relations = HashMap::new();
@@ -175,7 +180,6 @@ impl<'a> TryFrom<DocumentRecord<'a>> for Document {
                         required,
                         localized,
                         constraints,
-                        table_column_name,
                     };
                     fields.insert(id, field);
                 }
@@ -184,14 +188,12 @@ impl<'a> TryFrom<DocumentRecord<'a>> for Document {
                     target,
                     ordering,
                 } => {
-                    let target = DocumentId::try_new(target)?;
-                    let relation_table_name =
-                        format!("{}_{}_relation", &persistence.main_table_name, id.normalized());
+                    let target = DocumentTypeId::try_new(target)?;
+                    
                     let relation = DocumentRelation {
                         relation_type,
                         target,
-                        ordering,
-                        relation_table_name,
+                        ordering
                     };
                     relations.insert(id, relation);
                 }
@@ -200,17 +202,16 @@ impl<'a> TryFrom<DocumentRecord<'a>> for Document {
 
         Ok(Self {
             id,
-            document_type,
+            kind,
             info,
             options,
-            persistence,
             fields,
             relations,
         })
     }
 }
 
-impl<'a> TryFrom<DocumentOptionsRecord<'a>> for DocumentOptions {
+impl<'a> TryFrom<DocumentOptionsRecord<'a>> for DocumentTypeOptions {
     type Error = anyhow::Error;
 
     fn try_from(value: DocumentOptionsRecord<'a>) -> Result<Self, Self::Error> {
@@ -227,14 +228,14 @@ impl<'a> TryFrom<DocumentOptionsRecord<'a>> for DocumentOptions {
     }
 }
 
-impl<'a> TryFrom<DocumentInfoRecord<'a>> for DocumentInfo {
+impl<'a> TryFrom<DocumentInfoRecord<'a>> for DocumentTypeInfo {
     type Error = anyhow::Error;
 
     fn try_from(value: DocumentInfoRecord<'a>) -> Result<Self, Self::Error> {
         let title = DocumentTitle::try_new(value.title)?;
-        let description = DocumentDescription::try_new(value.description)?;
-        let singular_name = DocumentId::try_new(value.singular_name)?;
-        let plural_name = DocumentId::try_new(value.plural_name)?;
+        let description = value.description.map(String::from);
+        let singular_name = DocumentTypeId::try_new(value.singular_name)?;
+        let plural_name = DocumentTypeId::try_new(value.plural_name)?;
 
         Ok(Self {
             title,

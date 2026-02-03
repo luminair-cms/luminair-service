@@ -1,31 +1,18 @@
 use std::fmt::Debug;
-use std::sync::{Arc, LazyLock, OnceLock};
+use std::sync::LazyLock;
+
 use nutype::nutype;
 use regex::Regex;
-use crate::documents::documents::Document;
-use crate::documents::infrastructure::DocumentsAdapter;
 
-pub mod attributes;
-pub mod documents;
-mod infrastructure;
+pub use crate::domain::entities::DocumentType;
 
-static DOCUMENTS: OnceLock<Arc<dyn Documents>> = OnceLock::new();
+pub mod entities;
 
-pub fn load(schema_config_path: &str) -> Result<&'static dyn Documents, anyhow::Error> {
-    let loaded = DocumentsAdapter::load(schema_config_path)?;
-    // store loaded documents in static variable
-   DOCUMENTS.set(Arc::new(loaded)).expect("Failed to set documents");
-    // get reference to Documents trait with static lifetime
-    let documents: &'static dyn Documents = DOCUMENTS.get().unwrap().as_ref();
-
-    Ok(documents)
-}
-
-pub trait Documents: Send + Sync + Debug + 'static {
+pub trait DocumentTypesRegistry: Send + Sync + Debug + 'static {
     /// iterate all documents metadata
-    fn documents(&self) -> Box<dyn Iterator<Item = &'static Document> + '_>;
+    fn iterate(&self) -> Box<dyn Iterator<Item = &'static DocumentType> + '_>;
     /// find document metadata by its id
-    fn get_document(&self, id: &DocumentId) -> Option<&'static Document>;
+    fn get(&self, id: &DocumentTypeId) -> Option<&'static DocumentType>;
 }
 
 // A regex for IDs/names that may contain only ASCII letters, digits, and underscore.
@@ -56,9 +43,9 @@ fn is_eligible_id(id: &str) -> bool {
         Hash,
         Serialize)
 )]
-pub struct DocumentId(String);
+pub struct DocumentTypeId(String);
 
-impl DocumentId {
+impl DocumentTypeId {
     pub fn normalized(&self) -> String {
         self.as_ref().replace("-", "_")
     }

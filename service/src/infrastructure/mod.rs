@@ -7,6 +7,7 @@ use luminair_common::documents::Documents;
 use luminair_common::database::Database;
 
 pub mod http;
+pub mod repository;
 pub mod persistence;
 pub mod settings;
 

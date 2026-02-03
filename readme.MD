@@ -1,3 +1,5 @@
+Luminair is a Schema Driven CMS platform
+
 # Backend part of the Luminair CMS
 
 This is a work in progress at a very early stage.
@@ -5,6 +7,20 @@ This is a work in progress at a very early stage.
 Currently, the main goal of project - learning or Rust and investigate its possibilities.
 
 Project is based on Strapi ideas but focused on Speed and Reliability.
+
+### Crates:
+
+*Common*
+
+Contains Documents schema and database infrastructure
+
+*Migration*
+
+Migration cli, uses Schema Registry for tables creation, deletion etc. Need DB pribilegies for DDL
+
+*Service*
+
+Microservice, uses Schema Registry, provide dynamic api for Schama Metadata and Documents manipulation. Need privileges only for DML
 
 ## Main principles
 

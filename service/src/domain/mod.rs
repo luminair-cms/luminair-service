@@ -1,11 +1,14 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 use chrono::{DateTime, Utc};
+use luminair_common::DocumentTypesRegistry;
 use serde::Serialize;
-use luminair_common::documents::Documents;
 
-use crate::domain::query::Query;
 
+use crate::domain::{query::Query, repository::DocumentInstanceRepository};
+
+pub mod document;
 pub mod query;
+pub mod repository;
 
 /// This trait used only for testing purposes.
 pub trait HelloService: Send + Sync + 'static {
@@ -55,12 +58,25 @@ pub enum FieldValue {
 }
 
 //// The global application state shared between all request handlers.
-pub trait AppState: Clone + Send + Sync + 'static {
-    type H: HelloService;
-    type P: Persistence;
-    fn hello_service(&self) -> &Self::H;
-    fn documents(&self) -> &'static dyn Documents;
-    fn persistence(&self) -> &Self::P;
+#[derive(Clone)]
+pub struct AppState {
+    pub hello_service: Box<dyn HelloService>,
+    pub schema_registry: &'static dyn DocumentTypesRegistry,
+    pub repository: Arc<dyn DocumentInstanceRepository>,
+}
+
+impl AppState {
+    pub fn new(
+        hello_service: dyn HelloService + 'static,
+        schema_registry: &'static dyn DocumentTypesRegistry,
+        repository: dyn DocumentInstanceRepository + 'static,
+    ) -> Self {
+        Self {
+            hello_service: Box::new(hello_service),
+            schema_registry,
+            repository: Arc::new(repository),
+        }
+    }
 }
 
 /// Represents id of document's roe
@@ -73,8 +89,14 @@ impl From<i32> for DocumentRowId {
     }
 }
 
-impl Into<i32> for &DocumentRowId {
-    fn into(self) -> i32 {
-        self.0
+impl From<DocumentRowId> for i32 {
+    fn from(value: DocumentRowId) -> Self {
+        value.0
+    }
+}
+
+impl From<&DocumentRowId> for i32 {
+    fn from(value: &DocumentRowId) -> Self {
+        value.0
     }
 }

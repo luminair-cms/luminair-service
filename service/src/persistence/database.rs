@@ -35,7 +35,7 @@ impl <'a> DatabaseQuery<'a> {
     }
     
     pub fn condition(&mut self, column: ColumnRef<'a>, condition: Condition) {
-        self.condition = Some(ConditionExpression { column, condition });
+        self.condition = Some(ConditionExpression { column, condition, index: 1 });
     }
     
     pub fn pagination(&mut self, offset: u16, next: u16) {
@@ -58,7 +58,7 @@ impl <'a> DatabaseQuery<'a> {
 
         let where_clause = if let Some(ref condition) = self.condition {
             params_counter += 1;
-            format!(" WHERE {} {}{}", condition.column, condition.condition, params_counter)
+            format!(" WHERE {}", condition)
         } else {
             "".to_string()
         };
@@ -169,6 +169,7 @@ impl<'a> From<&Column<'a>> for String {
 
 struct ConditionExpression<'a> {
     column: ColumnRef<'a>,
+    index: i32,
     condition: Condition,
 }
 
@@ -177,11 +178,12 @@ pub enum Condition {
     InCollection(Vec<i32>),
 }
 
-impl <'a> Display for Condition {
+impl <'a> Display for ConditionExpression<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Condition::Equals(_) => write!(f, " = "),
-            Condition::InCollection(_) => write!(f, " IN")
+        write!(f, "{}", self.column.as_ref());
+        match self.condition {
+            Condition::Equals(_) => write!(f, " = ${}", self.index),
+            Condition::InCollection(_) => write!(f, " = ANY({})", self.index)
         }
     }
 }
