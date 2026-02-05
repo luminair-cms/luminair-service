@@ -4,6 +4,10 @@ use luminair_common::database::Database;
 use sqlx::{postgres::PgRow, types::Json};
 use std::collections::HashMap;
 
+pub mod repository;
+mod query;
+mod schema;
+
 #[derive(Clone, Debug)]
 pub struct PersistenceAdapter {
     database: &'static Database,

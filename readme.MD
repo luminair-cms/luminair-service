@@ -55,6 +55,9 @@ https://www.sea-ql.org/blog/2026-01-12-sea-orm-2.0/
 ### Initial document with
 
 id, document_type, info, options, attributes
+id of document is taken from file-name and used in normalized form for table generation
+
+*TODO: think about singular and plural names as part of API*
 
 ### Persisted document with
 

@@ -77,7 +77,11 @@ fn load_document(path: &Path) -> Result<DocumentType, anyhow::Error> {
     let document_record = serde_json::from_str::<DocumentRecord>(&content)
         .with_context(|| format!("failed to parse JSON entity config '{}'", path_str))?;
 
-    document_record.try_into()
+    let id = path
+        .file_stem()
+        .and_then(|os_str| os_str.to_str())
+        .ok_or_else(|| anyhow!("failed to get file stem for path '{}'", path_str))?;
+    (id,document_record).try_into()
 }
 
 fn is_json(path: &Path) -> bool {
@@ -87,9 +91,9 @@ fn is_json(path: &Path) -> bool {
 // internal structs for Deserializing
 
 #[derive(Clone, Debug, Deserialize)]
+#[serde(bound = "'de: 'a")]
 #[serde(rename_all = "camelCase")]
 struct DocumentRecord<'a> {
-    id: &'a str,
     #[serde(alias = "type")]
     kind: DocumentKind,
     info: DocumentInfoRecord<'a>,
@@ -98,6 +102,7 @@ struct DocumentRecord<'a> {
 }
 
 #[derive(Clone, Debug, Deserialize)]
+#[serde(bound = "'de: 'a")]
 #[serde(rename_all = "camelCase")]
 struct DocumentInfoRecord<'a> {
     title: &'a str,
@@ -117,6 +122,7 @@ struct DocumentOptionsRecord<'a> {
 }
 
 #[derive(Clone, Debug, Deserialize)]
+#[serde(bound = "'de: 'a")]
 #[serde(rename_all = "camelCase", untagged)]
 enum AttributeRecord<'a> {
     Field {
@@ -140,6 +146,7 @@ enum AttributeRecord<'a> {
 }
 
 #[derive(Clone, Debug, Deserialize)]
+#[serde(bound = "'de: 'a")]
 #[serde(rename_all = "camelCase")]
 struct AttributeConstraintsRecord<'a> {
     pattern: Option<&'a str>,
@@ -149,22 +156,24 @@ struct AttributeConstraintsRecord<'a> {
 
 // conversion into document model
 
-impl<'a> TryFrom<DocumentRecord<'a>> for DocumentType {
+impl<'a> TryFrom<(&'a str, DocumentRecord<'a>)> for DocumentType {
     type Error = anyhow::Error;
 
-    fn try_from(value: DocumentRecord<'a>) -> Result<Self, Self::Error> {
-        let id = DocumentTypeId::try_new(value.id)?;
-        let kind = value.kind;
-        let info = DocumentTypeInfo::try_from(value.info)?;
-        let options = value.options.map(DocumentTypeOptions::try_from).transpose()?;
+    fn try_from(value: (&'a str, DocumentRecord<'a>)) -> Result<Self, Self::Error> {
+        let id = DocumentTypeId::try_new(value.0)?;
+        let record = &value.1;
+        let kind = record.kind;
+        let info = DocumentTypeInfo::try_from(&record.info)?;
+        let options = record.options.as_ref().map(DocumentTypeOptions::try_from).transpose()?;
 
         let mut fields = HashMap::new();
         let mut relations = HashMap::new();
 
-        for attribute in value.attributes.into_iter() {
-            let id = AttributeId::try_new(attribute.0)?;
+        for attribute in record.attributes.iter() {
+            let id = AttributeId::try_new(*attribute.0)?;
+            let record = attribute.1;
 
-            match attribute.1 {
+            match record {
                 AttributeRecord::Field {
                     attribute_type,
                     unique,
@@ -172,13 +181,12 @@ impl<'a> TryFrom<DocumentRecord<'a>> for DocumentType {
                     localized,
                     constraints,
                 } => {
-                    let constraints = constraints.map(AttributeConstraints::from);
-                    let table_column_name = id.normalized();
+                    let constraints = constraints.as_ref().map(AttributeConstraints::from);
                     let field = DocumentField {
-                        attribute_type,
-                        unique,
-                        required,
-                        localized,
+                        attribute_type: *attribute_type,
+                        unique: *unique,
+                        required: *required,
+                        localized: *localized,
                         constraints,
                     };
                     fields.insert(id, field);
@@ -188,12 +196,12 @@ impl<'a> TryFrom<DocumentRecord<'a>> for DocumentType {
                     target,
                     ordering,
                 } => {
-                    let target = DocumentTypeId::try_new(target)?;
+                    let target = DocumentTypeId::try_new(target.to_owned())?;
                     
                     let relation = DocumentRelation {
-                        relation_type,
+                        relation_type: *relation_type,
                         target,
-                        ordering
+                        ordering: *ordering,
                     };
                     relations.insert(id, relation);
                 }
@@ -211,15 +219,15 @@ impl<'a> TryFrom<DocumentRecord<'a>> for DocumentType {
     }
 }
 
-impl<'a> TryFrom<DocumentOptionsRecord<'a>> for DocumentTypeOptions {
+impl<'a> TryFrom<&DocumentOptionsRecord<'a>> for DocumentTypeOptions {
     type Error = anyhow::Error;
 
-    fn try_from(value: DocumentOptionsRecord<'a>) -> Result<Self, Self::Error> {
+    fn try_from(value: &DocumentOptionsRecord<'a>) -> Result<Self, Self::Error> {
         let draft_and_publish = value.draft_and_publish;
         let localizations: Result<Vec<LocalizationId>, LocalizationIdError> = value
             .localizations
-            .into_iter()
-            .map(LocalizationId::try_new)
+            .iter()
+            .map(|localization| LocalizationId::try_new(localization.to_owned()))
             .collect();
         Ok(Self {
             draft_and_publish,
@@ -228,10 +236,10 @@ impl<'a> TryFrom<DocumentOptionsRecord<'a>> for DocumentTypeOptions {
     }
 }
 
-impl<'a> TryFrom<DocumentInfoRecord<'a>> for DocumentTypeInfo {
+impl<'a> TryFrom<&DocumentInfoRecord<'a>> for DocumentTypeInfo {
     type Error = anyhow::Error;
 
-    fn try_from(value: DocumentInfoRecord<'a>) -> Result<Self, Self::Error> {
+    fn try_from(value: &DocumentInfoRecord<'a>) -> Result<Self, Self::Error> {
         let title = DocumentTitle::try_new(value.title)?;
         let description = value.description.map(String::from);
         let singular_name = DocumentTypeId::try_new(value.singular_name)?;
@@ -246,8 +254,8 @@ impl<'a> TryFrom<DocumentInfoRecord<'a>> for DocumentTypeInfo {
     }
 }
 
-impl<'a> From<AttributeConstraintsRecord<'a>> for AttributeConstraints {
-    fn from(value: AttributeConstraintsRecord<'a>) -> Self {
+impl<'a> From<&AttributeConstraintsRecord<'a>> for AttributeConstraints {
+    fn from(value: &AttributeConstraintsRecord<'a>) -> Self {
         Self {
             pattern: value.pattern.map(String::from),
             minimal_length: value.minimal_length,

@@ -29,7 +29,7 @@ pub struct HttpServer {
 
 impl HttpServer {
     /// Returns a new HTTP server bound to the port specified in `config`.
-    pub async fn new(state: impl AppState, config: HttpServerConfig<'_>) -> anyhow::Result<Self> {
+    pub async fn new(state: AppState, config: HttpServerConfig<'_>) -> anyhow::Result<Self> {
         let trace_layer = tower_http::trace::TraceLayer::new_for_http().make_span_with(
             |request: &axum::extract::Request<_>| {
                 let uri = request.uri().to_string();
@@ -71,11 +71,11 @@ impl HttpServer {
     }
 }
 
-fn api_routes<S: AppState>() -> Router<S> {
+fn api_routes() -> Router<AppState> {
     Router::new()
-        .route("/hello", get(hello_world_handler::<S>))
-        .route("/meta/documents", get(documents_metadata::<S>))
-        .route("/meta/documents/{id}", get(one_document_metadata::<S>))
-        .route("/data/documents/{document_id}", get(find_all_documents::<S>))
-        .route("/data/documents/{document_id}/{id}", get(find_document_by_id::<S>))
+        .route("/hello", get(hello_world_handler))
+        .route("/meta/documents", get(documents_metadata))
+        .route("/meta/documents/{id}", get(one_document_metadata))
+        .route("/data/documents/{document_id}", get(find_all_documents))
+        .route("/data/documents/{document_id}/{id}", get(find_document_by_id))
 }
