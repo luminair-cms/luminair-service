@@ -1,13 +1,12 @@
 use crate::{
     domain::{AppState, HelloService},
-    infrastructure::persistence::PersistenceAdapter,
+    infrastructure::persistence::{PersistenceAdapter, repository::PostgresDocumentRepository},
 };
 use anyhow::anyhow;
-use luminair_common::documents::Documents;
+use luminair_common::{DocumentTypesRegistry, documents::Documents};
 use luminair_common::database::Database;
 
 pub mod http;
-pub mod repository;
 pub mod persistence;
 pub mod settings;
 
@@ -33,28 +32,29 @@ impl HelloService for HelloServiceAdapter {
 
 #[derive(Clone)]
 pub struct AppStateImpl {
-    hello: HelloServiceAdapter,
-    documents: &'static dyn Documents,
-    persistence: PersistenceAdapter,
+    hello_service: HelloServiceAdapter,
+    schema_registry: &'static dyn DocumentTypesRegistry,
+    repository: PostgresDocumentRepository,
 }
 
 impl AppStateImpl {
     pub fn new(
-        hello: HelloServiceAdapter,
-        documents: &'static dyn Documents,
-        persistence: PersistenceAdapter,
+        hello_service: HelloServiceAdapter,
+        schema_registry: &'static dyn DocumentTypesRegistry,
+        repository: PostgresDocumentRepository,
     ) -> Self {
         Self {
-            hello,
-            documents,
-            persistence,
+            hello_service,
+            schema_registry,
+            repository,
         }
     }
 }
 
 impl AppState for AppStateImpl {
     type H = HelloServiceAdapter;
-    type P = PersistenceAdapter;
+    type S = DocumentTypesRegistry;
+    type R = PostgresDocumentRepository;
 
     fn hello_service(&self) -> &Self::H {
         &self.hello

@@ -2,12 +2,20 @@ use std::borrow::Cow;
 
 use futures::future::ok;
 use luminair_common::{
-    CREATED_FIELD_NAME, DOCUMENT_ID_FIELD_NAME, DocumentType, DocumentTypeId, DocumentTypesRegistry, PUBLISHED_FIELD_NAME, UPDATED_FIELD_NAME, database::Database, entities::AttributeType
+    CREATED_FIELD_NAME, DOCUMENT_ID_FIELD_NAME, DocumentType, DocumentTypeId,
+    DocumentTypesRegistry, PUBLISHED_FIELD_NAME, UPDATED_FIELD_NAME, database::Database,
+    entities::AttributeType,
 };
 use sqlx::types::uuid;
 
 use crate::{
-    domain::{document::{DocumentContent, DocumentInstance, DocumentInstanceId, content::{AuditTrail, ContentValue, DomainValue}}, repository::{DocumentInstanceRepository, RepositoryError}},
+    domain::{
+        document::{
+            DocumentContent, DocumentInstance, DocumentInstanceId,
+            content::{AuditTrail, ContentValue, DomainValue, PublicationState},
+        },
+        repository::{DocumentInstanceRepository, RepositoryError},
+    },
     infrastructure::persistence::{
         query::{Condition, ConditionValue, QueryBuilder},
         schema::{Column, ColumnRef, Table},
@@ -16,7 +24,7 @@ use crate::{
 
 #[derive(Clone)]
 pub struct PostgresDocumentRepository {
-    pub schema_registry: &'static dyn DocumentTypesRegistry,
+    schema_registry: &'static dyn DocumentTypesRegistry,
     database: &'static Database,
 }
 
@@ -188,10 +196,7 @@ impl DocumentInstanceRepository for PostgresDocumentRepository {
         todo!()
     }
 
-    async fn count(
-        &self,
-        document_type_id: DocumentTypeId,
-    ) -> Result<i64, RepositoryError> {
+    async fn count(&self, document_type_id: DocumentTypeId) -> Result<i64, RepositoryError> {
         let sql = format!(
             "SELECT COUNT(*) as count FROM \"{}\"",
             document_type_id.normalized()
@@ -206,8 +211,17 @@ impl DocumentInstanceRepository for PostgresDocumentRepository {
     }
 }
 
-
 impl PostgresDocumentRepository {
+    pub fn new(
+        schema_registry: &'static dyn DocumentTypesRegistry,
+        database: &'static Database,
+    ) -> Self {
+        Self {
+            schema_registry,
+            database,
+        }
+    }
+
     fn row_to_document(
         &self,
         row: &sqlx::postgres::PgRow,
@@ -238,14 +252,14 @@ impl PostgresDocumentRepository {
                 })?;
 
             match published_at {
-                Some(pub_at) => crate::domain::document::content::PublicationState::Published {
+                Some(pub_at) => PublicationState::Published {
                     revision: 1,
                     published_at: pub_at,
                 },
-                None => crate::domain::document::content::PublicationState::Draft { revision: 1 },
+                None => PublicationState::Draft { revision: 1 },
             }
         } else {
-            crate::domain::document::content::PublicationState::Published {
+            PublicationState::Published {
                 revision: 1,
                 published_at: created_at,
             }
@@ -378,4 +392,3 @@ impl PostgresDocumentRepository {
         })
     }
 }
-

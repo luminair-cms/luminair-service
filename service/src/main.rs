@@ -1,5 +1,9 @@
+use std::sync::Arc;
+
 use luminair_common::{database, load_documents};
+use crate::domain::{AppState, HelloService};
 use crate::infrastructure::persistence::PersistenceAdapter;
+use crate::infrastructure::persistence::repository::PostgresDocumentRepository;
 use crate::infrastructure::{AppStateImpl, HelloServiceAdapter};
 use crate::infrastructure::http::{HttpServer, HttpServerConfig};
 use crate::infrastructure::settings::Settings;
@@ -8,7 +12,6 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 mod domain;
 mod infrastructure;
-mod persistence;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -22,16 +25,15 @@ async fn main() -> anyhow::Result<()> {
         .with(tracing_subscriber::fmt::layer())
         .init();
 
-    let document_types = load_documents(&settings.schema_config_path)?;
+    let registry = load_documents(&settings.schema_config_path)?;
     tracing::debug!("Configuration loaded");
 
     let database = database::connect(&settings.database).await?;
     tracing::debug!("Connected to DB");
 
-    let hello_service = HelloServiceAdapter::new(&database);
-    let persistence = PersistenceAdapter::new(&database);
-
-    let state = AppStateImpl::new(hello_service, document_types, persistence);
+    let hello_service = Arc::new(HelloServiceAdapter::new(database));
+    let repository = PostgresDocumentRepository::new(registry, database);
+    let state = AppState::new(hello_service, registry, repository);
 
     let server_config = HttpServerConfig {
         port: &settings.server_port,

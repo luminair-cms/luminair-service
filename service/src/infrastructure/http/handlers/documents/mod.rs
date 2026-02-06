@@ -3,32 +3,32 @@ use crate::infrastructure::http::api::{ApiError, ApiSuccess};
 use crate::infrastructure::http::handlers::documents::dto::{DetailedDocumentResponse, DocumentResponse};
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
-use luminair_common::documents::DocumentId;
+use luminair_common::DocumentTypeId;
 
 mod dto;
 
-pub async fn documents_metadata<S: AppState>(
-    State(state): State<S>,
+pub async fn documents_metadata(
+    State(state): State<AppState>,
 ) -> Result<ApiSuccess<Vec<DocumentResponse>>, ApiError> {
     let result = state
-        .documents()
-        .documents()
+        .schema_registry
+        .iterate()
         .map(DocumentResponse::from)
         .collect::<Vec<_>>();
 
     Ok(ApiSuccess::new(StatusCode::OK, result))
 }
 
-pub async fn one_document_metadata<S: AppState>(
+pub async fn one_document_metadata(
     Path(id): Path<String>,
-    State(state): State<S>,
+    State(state): State<AppState>,
 ) -> Result<ApiSuccess<DetailedDocumentResponse>, ApiError> {
     let document_id =
-        DocumentId::try_new(id).map_err(|err| ApiError::UnprocessableEntity(err.to_string()))?;
+        DocumentTypeId::try_new(id).map_err(|err| ApiError::UnprocessableEntity(err.to_string()))?;
 
     let result = state
-        .documents()
-        .get_document(&document_id)
+        .schema_registry
+        .get(&document_id)
         .map(DetailedDocumentResponse::from);
 
     if let Some(document) = result {

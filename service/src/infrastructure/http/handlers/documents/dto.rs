@@ -1,8 +1,4 @@
-use luminair_common::documents::AttributeId;
-use luminair_common::documents::attributes::{
-    AttributeConstraints, AttributeType, DocumentField, DocumentRelation, RelationType,
-};
-use luminair_common::documents::documents::{Document, DocumentInfo, DocumentOptions, DocumentType};
+use luminair_common::{AttributeId, DocumentType, entities::{AttributeConstraints, AttributeType, DocumentField, DocumentKind, DocumentRelation, DocumentTypeInfo, DocumentTypeOptions, RelationType}};
 use serde::Serialize;
 
 /// Response for list documents route
@@ -10,8 +6,9 @@ use serde::Serialize;
 pub struct DocumentResponse {
     id: String,
     title: String,
-    document_type: DocumentType,
-    description: String,
+    #[serde(alias = "type")]
+    kind: DocumentKind,
+    description: Option<String>,
 }
 
 impl PartialEq for DocumentResponse {
@@ -20,13 +17,13 @@ impl PartialEq for DocumentResponse {
     }
 }
 
-impl From<&Document> for DocumentResponse {
-    fn from(value: &Document) -> Self {
+impl From<&DocumentType> for DocumentResponse {
+    fn from(value: &DocumentType) -> Self {
         Self {
             id: value.id.as_ref().to_string(),
             title: value.info.title.as_ref().to_string(),
-            document_type: value.document_type.clone(),
-            description: value.info.description.as_ref().to_string(),
+            kind: value.kind.clone(),
+            description: value.info.description,
         }
     }
 }
@@ -37,7 +34,8 @@ impl From<&Document> for DocumentResponse {
 pub struct DetailedDocumentResponse {
     id: String,
     title: String,
-    document_type: DocumentType,
+    #[serde(alias = "type")]
+    kind: DocumentKind,
     info: DocumentInfoResponse,
     options: Option<DocumentOptionsResponse>,
     attributes: Vec<AttributeResponse>,
@@ -48,7 +46,7 @@ pub struct DetailedDocumentResponse {
 #[serde(rename_all = "camelCase")]
 pub struct DocumentInfoResponse {
     title: String,
-    description: String,
+    description: Option<String>,
     singular_name: String,
     plural_name: String,
 }
@@ -96,8 +94,8 @@ impl PartialEq for DetailedDocumentResponse {
     }
 }
 
-impl From<&Document> for DetailedDocumentResponse {
-    fn from(value: &Document) -> Self {
+impl From<&DocumentType> for DetailedDocumentResponse {
+    fn from(value: &DocumentType) -> Self {
         let mut attributes = Vec::with_capacity(value.fields.len() + value.relations.len());
         
         for f in value.fields.iter() {
@@ -111,7 +109,7 @@ impl From<&Document> for DetailedDocumentResponse {
         Self {
             id: value.id.to_string(),
             title: value.info.title.to_string(),
-            document_type: value.document_type.clone(),
+            kind: value.kind.clone(),
             info: (&value.info).into(),
             options: value.options.as_ref().map(DocumentOptionsResponse::from),
             attributes
@@ -119,8 +117,8 @@ impl From<&Document> for DetailedDocumentResponse {
     }
 }
 
-impl From<&DocumentInfo> for DocumentInfoResponse {
-    fn from(value: &DocumentInfo) -> Self {
+impl From<&DocumentTypeInfo> for DocumentInfoResponse {
+    fn from(value: &DocumentTypeInfo) -> Self {
         Self {
             title: value.title.to_string(),
             description: value.description.to_string(),
@@ -130,8 +128,8 @@ impl From<&DocumentInfo> for DocumentInfoResponse {
     }
 }
 
-impl From<&DocumentOptions> for DocumentOptionsResponse {
-    fn from(value: &DocumentOptions) -> Self {
+impl From<&DocumentTypeOptions> for DocumentOptionsResponse {
+    fn from(value: &DocumentTypeOptions) -> Self {
         Self {
             draft_and_publish: value.draft_and_publish,
             localizations: value.localizations.iter().map(|l| l.to_string()).collect(),
