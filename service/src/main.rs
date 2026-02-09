@@ -1,8 +1,4 @@
-use std::sync::Arc;
-
 use luminair_common::{database, load_documents};
-use crate::domain::{AppState, HelloService};
-use crate::infrastructure::persistence::PersistenceAdapter;
 use crate::infrastructure::persistence::repository::PostgresDocumentRepository;
 use crate::infrastructure::{AppStateImpl, HelloServiceAdapter};
 use crate::infrastructure::http::{HttpServer, HttpServerConfig};
@@ -31,9 +27,9 @@ async fn main() -> anyhow::Result<()> {
     let database = database::connect(&settings.database).await?;
     tracing::debug!("Connected to DB");
 
-    let hello_service = Arc::new(HelloServiceAdapter::new(database));
+    let hello_service = HelloServiceAdapter::new(database);
     let repository = PostgresDocumentRepository::new(registry, database);
-    let state = AppState::new(hello_service, registry, repository);
+    let state = AppStateImpl::new(hello_service, registry, repository);
 
     let server_config = HttpServerConfig {
         port: &settings.server_port,

@@ -12,8 +12,8 @@ pub async fn health_check() -> StatusCode {
 }
 
 // hello world from db
-pub async fn hello_world_handler(
-    State(state): State<AppState>,
+pub async fn hello_world_handler<S: AppState>(
+    State(state): State<S>,
 ) -> Result<ApiSuccess<String>, ApiError> {
     state
         .hello_service()

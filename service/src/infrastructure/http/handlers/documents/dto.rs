@@ -23,7 +23,7 @@ impl From<&DocumentType> for DocumentResponse {
             id: value.id.as_ref().to_string(),
             title: value.info.title.as_ref().to_string(),
             kind: value.kind.clone(),
-            description: value.info.description,
+            description: value.info.description.clone(),
         }
     }
 }
@@ -121,7 +121,7 @@ impl From<&DocumentTypeInfo> for DocumentInfoResponse {
     fn from(value: &DocumentTypeInfo) -> Self {
         Self {
             title: value.title.to_string(),
-            description: value.description.to_string(),
+            description: value.description.clone(),
             singular_name: value.singular_name.to_string(),
             plural_name: value.plural_name.to_string(),
         }

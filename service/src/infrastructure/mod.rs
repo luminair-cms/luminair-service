@@ -1,9 +1,9 @@
 use crate::{
     domain::{AppState, HelloService},
-    infrastructure::persistence::{PersistenceAdapter, repository::PostgresDocumentRepository},
+    infrastructure::persistence::repository::PostgresDocumentRepository,
 };
 use anyhow::anyhow;
-use luminair_common::{DocumentTypesRegistry, documents::Documents};
+use luminair_common::DocumentTypesRegistry;
 use luminair_common::database::Database;
 
 pub mod http;
@@ -33,38 +33,37 @@ impl HelloService for HelloServiceAdapter {
 #[derive(Clone)]
 pub struct AppStateImpl {
     hello_service: HelloServiceAdapter,
-    schema_registry: &'static dyn DocumentTypesRegistry,
-    repository: PostgresDocumentRepository,
+    document_types_registry: &'static dyn DocumentTypesRegistry,
+    documents_instance_repository: PostgresDocumentRepository,
 }
 
 impl AppStateImpl {
     pub fn new(
         hello_service: HelloServiceAdapter,
-        schema_registry: &'static dyn DocumentTypesRegistry,
-        repository: PostgresDocumentRepository,
+        document_types_registry: &'static dyn DocumentTypesRegistry,
+        documents_instance_repository: PostgresDocumentRepository,
     ) -> Self {
         Self {
             hello_service,
-            schema_registry,
-            repository,
+            document_types_registry,
+            documents_instance_repository,
         }
     }
 }
 
 impl AppState for AppStateImpl {
     type H = HelloServiceAdapter;
-    type S = DocumentTypesRegistry;
     type R = PostgresDocumentRepository;
 
     fn hello_service(&self) -> &Self::H {
-        &self.hello
+        &self.hello_service
     }
 
-    fn documents(&self) -> &'static dyn Documents {
-        self.documents
+    fn document_types_registry(&self) -> &'static dyn DocumentTypesRegistry {
+        self.document_types_registry
     }
 
-    fn persistence(&self) -> &Self::P {
-        &self.persistence
+    fn documents_instance_repository(&self) -> &Self::R {
+        &self.documents_instance_repository
     }
 }

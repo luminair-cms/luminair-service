@@ -4,21 +4,18 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::types::uuid;
 
-use crate::domain::document::DocumentInstanceId;
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub enum ContentValue {
     /// Simple scalar: text, number, boolean
     Scalar(DomainValue),
 
     /// Localized text: map of locale → text
     LocalizedText(HashMap<String, String>),
-    
-    /// Reference to another document
-    Reference(DocumentInstanceId),
-    
-    /// References to multiple documents
-    References(Vec<DocumentInstanceId>),
+    // Reference to another document
+    // Reference(DocumentInstanceId),
+
+    // References to multiple documents
+    // References(Vec<DocumentInstanceId>),
 }
 
 /// The actual domain value types your content can have
@@ -27,38 +24,37 @@ pub enum ContentValue {
 pub enum DomainValue {
     /// Text field
     Text(String),
-    
+
     /// Integer field
     Integer(i64),
-    
+
     /// Decimal/float field
     Decimal(f64),
-    
+
     /// Boolean field
     Boolean(bool),
-    
+
     /// Date field (YYYY-MM-DD)
     Date(chrono::NaiveDate),
-    
+
     /// DateTime field
     DateTime(chrono::DateTime<chrono::Utc>),
-    
+
     /// Email (validated)
     Email(Email),
-    
+
     /// URL (validated)
     Url(Url),
-    
+
     /// UUID
     Uuid(uuid::Uuid),
-    
+
     /// JSON blob (still needed sometimes, but wrapped)
     Json(JsonBlob),
-    
+
     /// Null value
     Null,
 }
-
 
 /// Newtype wrapper for email - enforces validation at domain level
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -73,7 +69,7 @@ impl Email {
             Err(EmailError::InvalidFormat)
         }
     }
-    
+
     pub fn as_str(&self) -> &str {
         &self.0
     }
@@ -91,7 +87,7 @@ impl Url {
             Err(UrlError::InvalidScheme)
         }
     }
-    
+
     pub fn as_str(&self) -> &str {
         &self.0
     }
@@ -108,7 +104,7 @@ impl JsonBlob {
         // Validate JSON structure if needed
         Ok(JsonBlob { inner: value })
     }
-    
+
     pub fn as_value(&self) -> &serde_json::Value {
         &self.inner
     }
@@ -133,9 +129,9 @@ pub enum JsonError {
 pub enum PublicationState {
     /// Still being edited
     Draft { revision: i32 },
-    
+
     /// Published, changes create new revision
-    Published { 
+    Published {
         revision: i32,
         published_at: DateTime<Utc>,
     },
@@ -143,19 +139,19 @@ pub enum PublicationState {
 
 /// System metadata: WHO did WHAT WHEN
 /// This is infrastructure/audit concern, not domain logic
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct AuditTrail {
     pub created_at: DateTime<Utc>,
     pub created_by: Option<UserId>,
-    
+
     pub updated_at: DateTime<Utc>,
     pub updated_by: Option<UserId>,
-    
+
     pub published_at: Option<DateTime<Utc>>,
     pub published_by: Option<UserId>,
-    
+
     pub version: i32,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, Hash, Eq, PartialEq)]
+#[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
 pub struct UserId(pub uuid::Uuid);

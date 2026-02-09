@@ -1,14 +1,16 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 
-use crate::domain::query::{Query, QueryBuilder, QueryPagination};
-use crate::domain::{AppState, DocumentRowId, Persistence, ResultSet};
+use crate::domain::AppState;
+use crate::domain::document::DocumentInstanceId;
+use crate::domain::repository::DocumentInstanceRepository;
+use crate::domain::repository::query::DocumentInstanceQuery;
 use crate::infrastructure::http::api::{ApiError, ApiSuccess};
-use crate::infrastructure::http::handlers::data::dto::{DocumentRowResponse, GroupedDocumentRowResponse, ManyDocumentRowsResponse, OneDocumentRowResponse};
+use crate::infrastructure::http::handlers::data::dto::{ManyDocumentsResponse, OneDocumentResponse};
 use crate::infrastructure::http::querystring::QueryString;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
-use itertools::{EitherOrBoth, Itertools};
-use luminair_common::documents::{AttributeId, DocumentId};
+use axum::response::{IntoResponse, Response};
+use luminair_common::DocumentTypeId;
 use serde::Deserialize;
 
 mod dto;
@@ -16,7 +18,7 @@ mod dto;
 #[derive(Deserialize, Debug)]
 pub struct QueryParams {
     pub populate: Option<HashSet<String>>,
-    pub pagination: Option<PaginationParams>
+    pub pagination: Option<PaginationParams>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -25,127 +27,64 @@ pub struct PaginationParams {
     #[serde(default)]
     pub page: u16,
     #[serde(default)]
-    pub page_ize: u16
+    pub page_size: u16,
 }
 
 pub async fn find_document_by_id<S: AppState>(
-    Path((document_id, id)): Path<(String, i32)>,
-    QueryString(params): QueryString<QueryParams>,
     State(state): State<S>,
-) -> Result<ApiSuccess<OneDocumentRowResponse>, ApiError> {
+    Path((document_id, id)): Path<(String, i64)>,
+    QueryString(params): QueryString<QueryParams>,
+) -> Result<ApiSuccess<OneDocumentResponse>, ApiError> {
     if params.pagination.is_some() {
-        return Err(ApiError::UnprocessableEntity("Pagination param isn't eligible for find_by_id query".to_string()));
+        return Err(ApiError::UnprocessableEntity(
+            "Pagination param isn't eligible for find_by_id query".to_string(),
+        ));
     }
-    
-    let document_id = DocumentId::try_new(document_id)
+    let document_type_id = DocumentTypeId::try_new(document_id)
         .map_err(|err| ApiError::UnprocessableEntity(err.to_string()))?;
 
-    let documents = state.documents();
-    let persistence = state.persistence();
+    let repository = state.documents_instance_repository();
 
-    let document_metadata = documents
-        .get_document(&document_id)
-        .ok_or(ApiError::NotFound)?;
+    let result = repository
+        .find_by_id(document_type_id, DocumentInstanceId::from(id))
+        .await
+        .map_err(|err| ApiError::from(err))?;
 
-    let query = QueryBuilder::from(document_metadata).find_by_document_id();
-    let result_set = persistence.select_by_id(query, id).await?;
-
-    let mut data = result_set_into_document_response(result_set);
-
-    if let Some(relations_to_populate) = params.populate {
-        // map from attribute_id to vector of related documents
-        let mut populated_relations = HashMap::new();
-
-        for relation_to_populate in relations_to_populate.iter() {
-            let attribute_id = AttributeId::try_new(relation_to_populate)
-                .map_err(|err| ApiError::UnprocessableEntity(err.to_string()))?;
-
-            let relation = document_metadata.relations.get(&attribute_id).ok_or(
-                ApiError::UnprocessableEntity(format!(
-                    "Attribute {} to populate doesn't exist",
-                    relation_to_populate
-                )),
-            )?;
-            let related_document_metadata = documents.get_document(&relation.target).unwrap();
-
-            let query =
-                QueryBuilder::from_relation(document_metadata, relation, related_document_metadata)
-                    .with_owning_id(&document_metadata.persistence.relation_column_name)
-                    .into();
-            let related_result_set = persistence.select_by_id(query, id).await?;
-            let related_data = result_set_into_groped_document_response(related_result_set);
-            populated_relations.insert(attribute_id, related_data);
-        }
-
-        data = join_relations(data, populated_relations);
-    }
-
-    OneDocumentRowResponse::try_from(data)
+    OneDocumentResponse::try_from(result)
         .map(|result| ApiSuccess::new(StatusCode::OK, result))
         .map_err(|_| ApiError::NotFound)
 }
 
 pub async fn find_all_documents<S: AppState>(
+    State(state): State<S>,
     Path(document_id): Path<String>,
     QueryString(params): QueryString<QueryParams>,
-    State(state): State<S>,
-) -> Result<ApiSuccess<ManyDocumentRowsResponse>, ApiError> {
-    let document_id = DocumentId::try_new(document_id)
+) -> Result<ApiSuccess<ManyDocumentsResponse>, ApiError> {
+    let document_type_id = DocumentTypeId::try_new(document_id)
         .map_err(|err| ApiError::UnprocessableEntity(err.to_string()))?;
 
-    let documents = state.documents();
-    let persistence = state.persistence();
+    let repository = state.documents_instance_repository();
 
-    let document_metadata = documents
-        .get_document(&document_id)
-        .ok_or(ApiError::NotFound)?;
-    
-    let pagination = params.pagination
-        .map_or_else(
-            || QueryPagination::default(), 
-            |it| QueryPagination::new(it.page, it.page_ize));
+    // Extract pagination params with defaults
+    let (page, page_size) = params
+        .pagination
+        .map(|p| (p.page, p.page_size))
+        .unwrap_or((1, 25));
 
-    let query: Query = QueryBuilder::from(document_metadata)
-        .with_pagination(pagination).into();
+    // Build query using builder pattern - pagination guards are enforced by the query
+    let query = DocumentInstanceQuery::new(document_type_id).paginate(page, page_size);
 
-    let result_set = persistence.select_all(query).await?;
-
-    let mut data = result_set_into_document_response(result_set);
-
-    if let Some(relations_to_populate) = params.populate {
-        let ids: Vec<i32> = data.iter().map(|row| row.document_id.into()).collect();
-        let mut populated_relations = HashMap::new();
-
-        for relation_to_populate in relations_to_populate.iter() {
-            let attribute_id = AttributeId::try_new(relation_to_populate)
-                .map_err(|err| ApiError::UnprocessableEntity(err.to_string()))?;
-
-            let relation = document_metadata.relations.get(&attribute_id).ok_or(
-                ApiError::UnprocessableEntity(format!(
-                    "Attribute {} to populate doesn't exist",
-                    relation_to_populate
-                )),
-            )?;
-            let related_document_metadata = documents.get_document(&relation.target).unwrap();
-
-            let query =
-                QueryBuilder::from_relation(document_metadata, relation, related_document_metadata)
-                    .with_owning_id_list(&document_metadata.persistence.relation_column_name)
-                    .into();
-            let related_result_set = persistence.select_by_id_list(query, &ids).await?;
-            let related_data = result_set_into_groped_document_response(related_result_set);
-            populated_relations.insert(attribute_id, related_data);
-        }
-
-        data = join_relations(data, populated_relations);
-    }
+    let result = crate::domain::repository::DocumentInstanceRepository::find(repository, query)
+        .await
+        .map_err(|err| ApiError::from(err))?;
 
     Ok(ApiSuccess::new(
         StatusCode::OK,
-        ManyDocumentRowsResponse::from(data),
+        ManyDocumentsResponse::from(result),
     ))
 }
 
+/*
 fn result_set_into_document_response(result_set: impl ResultSet) -> Vec<DocumentRowResponse> {
     result_set
         .into_rows()
@@ -220,3 +159,4 @@ fn join_relations(
 
     enriched_documents
 }
+ */

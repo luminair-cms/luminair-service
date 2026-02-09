@@ -2,7 +2,7 @@ use crate::infrastructure::persistence::schema::{ColumnRef, Table};
 
 /// High-level, composable query builder
 /// Similar to jOOQ, but with Rust's type system
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct QueryBuilder<'a> {
     from_table: Table<'a>,
     select: Vec<ColumnRef<'a>>,
@@ -14,7 +14,7 @@ pub struct QueryBuilder<'a> {
 }
 
 /// A where condition that will be AND'ed together
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub enum Condition<'a> {
     /// field = value
     Equals {
@@ -107,8 +107,8 @@ pub enum JoinType {
     Right,
 }
 
-impl From<Table<'_>> for QueryBuilder<'_> {
-    fn from(value: Table<'_>) -> Self {
+impl <'a> From<Table<'a>> for QueryBuilder<'a> {
+    fn from(value: Table<'a>) -> Self {
         QueryBuilder {
             from_table: value,
             select: vec![],
@@ -121,15 +121,15 @@ impl From<Table<'_>> for QueryBuilder<'_> {
     }
 }
 
-impl QueryBuilder<'_> {
+impl <'a> QueryBuilder<'a> {
     /// Select specified columns
-    pub fn select(mut self, columns: Vec<ColumnRef<'_>>) -> Self {
+    pub fn select(mut self, columns: Vec<ColumnRef<'a>>) -> Self {
         self.select = columns;
         self
     }
 
     /// Add where condition
-    pub fn where_condition(mut self, condition: Condition<'_>) -> Self {
+    pub fn where_condition(mut self, condition: Condition<'a>) -> Self {
         self.where_conditions.push(condition);
         self
     }
@@ -200,7 +200,6 @@ impl QueryBuilder<'_> {
     /// Generate WHERE conditions
     fn generate_where_conditions(
         conditions: &[Condition],
-        table_alias: &str,
         param_counter: &mut usize,
     ) -> (String, Vec<SqlParameter>) {
         let mut where_sql = Vec::new();

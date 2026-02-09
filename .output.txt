@@ -1,0 +1,563 @@
+    Checking service v0.1.0 (/Users/dmitri.astafiev/luminair/luminair-service/service)
+warning: unused imports: `IntoResponse` and `Response`
+  --> service/src/infrastructure/http/handlers/data/mod.rs:12:22
+   |
+12 | use axum::response::{IntoResponse, Response};
+   |                      ^^^^^^^^^^^^  ^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+warning: unused import: `json`
+ --> service/src/infrastructure/http/handlers/data/dto.rs:4:38
+  |
+4 | use serde_json::{Value as JsonValue, json};
+  |                                      ^^^^
+error[E0609]: no field `pool` on type `&PostgresDocumentRepository`
+  --> service/src/infrastructure/persistence/repository.rs:90:25
+   |
+90 |             .fetch(self.pool.as_ref())
+   |                         ^^^^ unknown field
+   |
+   = note: available fields are: `schema_registry`, `database`
+error[E0277]: `dyn Stream<Item = ...> + Send` is not a future
+  --> service/src/infrastructure/persistence/repository.rs:91:14
+   |
+91 |             .await
+   |              ^^^^^ `dyn Stream<Item = ...> + Send` is not a future
+   |
+   = help: the trait `futures::Future` is not implemented for `dyn Stream<Item = ...> + Send`
+   = note: required for `Pin<Box<dyn Stream<Item = ...> + Send>>` to implement `futures::Future`
+   = note: required for `Pin<Box<dyn Stream<Item = ...> + Send>>` to implement `std::future::IntoFuture`
+   = note: the full name for the type has been written to '/Users/dmitri.astafiev/luminair/luminair-service/target/debug/deps/service-9e57d16c4c6e5fcb.long-type-5332830086753818562.txt'
+   = note: consider using `--verbose` to print the full type name to the console
+help: remove the `.await`
+   |
+91 -             .await
+   |
+error[E0282]: type annotations needed
+  --> service/src/infrastructure/persistence/repository.rs:89:24
+   |
+89 |           let mut rows = query_object
+   |  ________________________^
+90 | |             .fetch(self.pool.as_ref())
+91 | |             .await
+   | |__________________^ cannot infer type
+error[E0282]: type annotations needed
+  --> service/src/infrastructure/persistence/repository.rs:92:23
+   |
+92 |             .map_err(|e| RepositoryError::DatabaseError(e.to_string()))?;
+   |                       ^                                 - type must be known at this point
+   |
+help: consider giving this closure parameter an explicit type
+   |
+92 |             .map_err(|e: /* Type */| RepositoryError::DatabaseError(e.to_string()))?;
+   |                        ++++++++++++
+error[E0308]: mismatched types
+   --> service/src/infrastructure/persistence/repository.rs:102:9
+    |
+ 54 | ... -> Result<Vec<crate::domain::document::DocumentInstance>, RepositoryError> {
+    |        ----------------------------------------------------------------------- expected `Result<Vec<DocumentInstance>, RepositoryError>` because of return type
+...
+102 | ...   documents
+    |       ^^^^^^^^^ expected `Result<Vec<DocumentInstance>, ...>`, found `Vec<DocumentInstance>`
+    |
+    = note: expected enum `Result<Vec<_>, RepositoryError>`
+             found struct `Vec<_>`
+help: try wrapping the expression in `Ok`
+    |
+102 |         Ok(documents)
+    |         +++         +
+error[E0609]: no field `pool` on type `&PostgresDocumentRepository`
+   --> service/src/infrastructure/persistence/repository.rs:151:34
+    |
+151 |             .fetch_optional(self.pool.as_ref())
+    |                                  ^^^^ unknown field
+    |
+    = note: available fields are: `schema_registry`, `database`
+error[E0282]: type annotations needed
+   --> service/src/infrastructure/persistence/repository.rs:150:19
+    |
+150 |           let row = query_object
+    |  ___________________^
+151 | |             .fetch_optional(self.pool.as_ref())
+152 | |             .await
+    | |__________________^ cannot infer type
+error[E0282]: type annotations needed
+   --> service/src/infrastructure/persistence/repository.rs:153:23
+    |
+153 |             .map_err(|e| RepositoryError::DatabaseError(e.to_string()))?;
+    |                       ^                                 - type must be known at this point
+    |
+help: consider giving this closure parameter an explicit type
+    |
+153 |             .map_err(|e: /* Type */| RepositoryError::DatabaseError(e.to_string()))?;
+    |                        ++++++++++++
+error[E0609]: no field `pool` on type `&PostgresDocumentRepository`
+   --> service/src/infrastructure/persistence/repository.rs:209:29
+    |
+209 |             .fetch_one(self.pool.as_ref())
+    |                             ^^^^ unknown field
+    |
+    = note: available fields are: `schema_registry`, `database`
+error[E0282]: type annotations needed
+   --> service/src/infrastructure/persistence/repository.rs:208:24
+    |
+208 |           let (count,) = sqlx::query_as::<_, (i64,)>(&sql)
+    |  ________________________^
+209 | |             .fetch_one(self.pool.as_ref())
+210 | |             .await
+    | |__________________^ cannot infer type
+error[E0282]: type annotations needed
+   --> service/src/infrastructure/persistence/repository.rs:211:23
+    |
+211 |             .map_err(|e| RepositoryError::DatabaseError(e.to_string()))?;
+    |                       ^                                 - type must be known at this point
+    |
+help: consider giving this closure parameter an explicit type
+    |
+211 |             .map_err(|e: /* Type */| RepositoryError::DatabaseError(e.to_string()))?;
+    |                        ++++++++++++
+error[E0053]: method `count` has an incompatible type for trait
+   --> service/src/infrastructure/persistence/repository.rs:202:45
+    |
+202 | ...pe_id: DocumentTypeId) -> Result<i64, RepositoryError> {
+    |           ^^^^^^^^^^^^^^ expected `&str`, found `DocumentTypeId`
+    |
+note: type in trait
+   --> service/src/domain/repository/mod.rs:60:42
+    |
+ 60 |     async fn count(&self, collection_id: &str) -> Result<i64, Repositor...
+    |                                          ^^^^
+    = note: expected signature `fn(&PostgresDocumentRepository, &str) -> _`
+               found signature `fn(&PostgresDocumentRepository, DocumentTypeId) -> _`
+help: change the parameter type to match the trait
+    |
+202 -     async fn count(&self, document_type_id: DocumentTypeId) -> Result<i64, RepositoryError> {
+202 +     async fn count(&self, document_type_id: &str) -> Result<i64, RepositoryError> {
+    |
+error[E0277]: the trait bound `fn(..., ..., ...) -> ... {find_all_documents::<...>}: Handler<_, _>` is not satisfied
+    --> service/src/infrastructure/http/mod.rs:81:53
+     |
+  81 | ...t_id}", get(find_all_documents::<S>))
+     |            --- ^^^^^^^^^^^^^^^^^^^^^^^ unsatisfied trait bound
+     |            |
+     |            required by a bound introduced by this call
+     |
+     = help: the trait `Handler<_, _>` is not implemented for fn item `fn(..., ..., ...) -> ... {find_all_documents::<...>}`
+     = note: Consider using `#[axum::debug_handler]` to improve the error message
+help: the following other types implement trait `Handler<T, S>`
+    --> /Users/dmitri.astafiev/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/axum-0.8.8/src/routing/method_routing.rs:1309:1
+     |
+1309 | / impl<S> Handler<(), S> for MethodRouter<S>
+1310 | | where
+1311 | |     S: Clone + 'static,
+     | |_______________________^ `MethodRouter<S>` implements `Handler<(), S>`
+     |
+    ::: /Users/dmitri.astafiev/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/axum-0.8.8/src/handler/mod.rs:313:1
+     |
+ 313 | / impl<H, S, T, L> Handler<T, S> for Layered<L, H, T, S>
+ 314 | | where
+ 315 | |     L: Layer<HandlerService<H, T, S>> + Clone + Send + Sync + 'static,
+ 316 | |     H: Handler<T, S>,
+...    |
+ 320 | |     T: 'static,
+ 321 | |     S: 'static,
+     | |_______________^ `axum::handler::Layered<L, H, T, S>` implements `Handler<T, S>`
+note: required by a bound in `axum::routing::get`
+    --> /Users/dmitri.astafiev/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/axum-0.8.8/src/routing/method_routing.rs:441:1
+     |
+ 441 | top_level_handler_fn!(get, GET);
+     | ^^^^^^^^^^^^^^^^^^^^^^---^^^^^^
+     | |                     |
+     | |                     required by a bound in this function
+     | required by this bound in `get`
+     = note: the full name for the type has been written to '/Users/dmitri.astafiev/luminair/luminair-service/target/debug/deps/service-9e57d16c4c6e5fcb.long-type-7074333523185516385.txt'
+     = note: consider using `--verbose` to print the full type name to the console
+     = note: this error originates in the macro `top_level_handler_fn` (in Nightly builds, run with -Z macro-backtrace for more info)
+error[E0277]: the trait bound `fn(..., ..., ...) -> ... {find_document_by_id::<...>}: Handler<_, _>` is not satisfied
+    --> service/src/infrastructure/http/mod.rs:82:58
+     |
+  82 | ...{id}", get(find_document_by_id::<S>))
+     |           --- ^^^^^^^^^^^^^^^^^^^^^^^^ unsatisfied trait bound
+     |           |
+     |           required by a bound introduced by this call
+     |
+     = help: the trait `Handler<_, _>` is not implemented for fn item `fn(..., ..., ...) -> ... {find_document_by_id::<...>}`
+     = note: Consider using `#[axum::debug_handler]` to improve the error message
+help: the following other types implement trait `Handler<T, S>`
+    --> /Users/dmitri.astafiev/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/axum-0.8.8/src/routing/method_routing.rs:1309:1
+     |
+1309 | / impl<S> Handler<(), S> for MethodRouter<S>
+1310 | | where
+1311 | |     S: Clone + 'static,
+     | |_______________________^ `MethodRouter<S>` implements `Handler<(), S>`
+     |
+    ::: /Users/dmitri.astafiev/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/axum-0.8.8/src/handler/mod.rs:313:1
+     |
+ 313 | / impl<H, S, T, L> Handler<T, S> for Layered<L, H, T, S>
+ 314 | | where
+ 315 | |     L: Layer<HandlerService<H, T, S>> + Clone + Send + Sync + 'static,
+ 316 | |     H: Handler<T, S>,
+...    |
+ 320 | |     T: 'static,
+ 321 | |     S: 'static,
+     | |_______________^ `axum::handler::Layered<L, H, T, S>` implements `Handler<T, S>`
+note: required by a bound in `axum::routing::get`
+    --> /Users/dmitri.astafiev/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/axum-0.8.8/src/routing/method_routing.rs:441:1
+     |
+ 441 | top_level_handler_fn!(get, GET);
+     | ^^^^^^^^^^^^^^^^^^^^^^---^^^^^^
+     | |                     |
+     | |                     required by a bound in this function
+     | required by this bound in `get`
+     = note: the full name for the type has been written to '/Users/dmitri.astafiev/luminair/luminair-service/target/debug/deps/service-9e57d16c4c6e5fcb.long-type-14928326592564860699.txt'
+     = note: consider using `--verbose` to print the full type name to the console
+     = note: this error originates in the macro `top_level_handler_fn` (in Nightly builds, run with -Z macro-backtrace for more info)
+error[E0283]: type annotations needed for `&_`
+   --> service/src/infrastructure/persistence/repository.rs:275:17
+    |
+275 |             let column_name = normalized_name.as_ref();
+    |                 ^^^^^^^^^^^                   ------ type must be known at this point
+    |
+    = note: multiple `impl`s satisfying `std::string::String: AsRef<_>` found in the following crates: `alloc`, `std`:
+            - impl AsRef<OsStr> for std::string::String;
+            - impl AsRef<[u8]> for std::string::String;
+            - impl AsRef<std::path::Path> for std::string::String;
+            - impl AsRef<str> for std::string::String;
+help: consider giving `column_name` an explicit type, where the type for type parameter `T` is specified
+    |
+275 |             let column_name: &T = normalized_name.as_ref();
+    |                            ++++
+error[E0283]: type annotations needed
+   --> service/src/infrastructure/persistence/repository.rs:279:58
+    |
+279 | ...ue: Option<String> = row.try_get(column_name).map_err(|e| {
+    |                             ^^^^^^^ cannot infer type of the type parameter `I` declared on the method `try_get`
+    |
+    = note: multiple `impl`s satisfying `&_: ColumnIndex<PgRow>` found in the following crates: `sqlx_core`, `sqlx_postgres`:
+            - impl ColumnIndex<PgRow> for &str;
+            - impl<T, I> ColumnIndex<T> for &I
+              where I: ColumnIndex<T>, T: ?Sized, I: ?Sized;
+note: required by a bound in `try_get`
+   --> /Users/dmitri.astafiev/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/sqlx-core-0.8.6/src/row.rs:113:12
+    |
+111 |     fn try_get<'r, T, I>(&'r self, index: I) -> Result<T, Error>
+    |        ------- required by a bound in this associated function
+112 |     where
+113 |         I: ColumnIndex<Self>,
+    |            ^^^^^^^^^^^^^^^^^ required by this bound in `Row::try_get`
+help: consider specifying the generic arguments
+    |
+279 |                     let text_value: Option<String> = row.try_get::<std::option::Option<std::string::String>, &T>(column_name).map_err(|e| {
+    |                                                                 ++++++++++++++++++++++++++++++++++++++++++++++++
+error[E0283]: type annotations needed
+   --> service/src/infrastructure/persistence/repository.rs:291:54
+    |
+291 | ...value: Option<i64> = row.try_get(column_name).map_err(|e| {
+    |                             ^^^^^^^ cannot infer type of the type parameter `I` declared on the method `try_get`
+    |
+    = note: multiple `impl`s satisfying `&_: ColumnIndex<PgRow>` found in the following crates: `sqlx_core`, `sqlx_postgres`:
+            - impl ColumnIndex<PgRow> for &str;
+            - impl<T, I> ColumnIndex<T> for &I
+              where I: ColumnIndex<T>, T: ?Sized, I: ?Sized;
+note: required by a bound in `try_get`
+   --> /Users/dmitri.astafiev/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/sqlx-core-0.8.6/src/row.rs:113:12
+    |
+111 |     fn try_get<'r, T, I>(&'r self, index: I) -> Result<T, Error>
+    |        ------- required by a bound in this associated function
+112 |     where
+113 |         I: ColumnIndex<Self>,
+    |            ^^^^^^^^^^^^^^^^^ required by this bound in `Row::try_get`
+help: consider specifying the generic arguments
+    |
+291 |                     let int_value: Option<i64> = row.try_get::<std::option::Option<i64>, &T>(column_name).map_err(|e| {
+    |                                                             ++++++++++++++++++++++++++++++++
+error[E0283]: type annotations needed
+   --> service/src/infrastructure/persistence/repository.rs:303:54
+    |
+303 | ...value: Option<f64> = row.try_get(column_name).map_err(|e| {
+    |                             ^^^^^^^ cannot infer type of the type parameter `I` declared on the method `try_get`
+    |
+    = note: multiple `impl`s satisfying `&_: ColumnIndex<PgRow>` found in the following crates: `sqlx_core`, `sqlx_postgres`:
+            - impl ColumnIndex<PgRow> for &str;
+            - impl<T, I> ColumnIndex<T> for &I
+              where I: ColumnIndex<T>, T: ?Sized, I: ?Sized;
+note: required by a bound in `try_get`
+   --> /Users/dmitri.astafiev/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/sqlx-core-0.8.6/src/row.rs:113:12
+    |
+111 |     fn try_get<'r, T, I>(&'r self, index: I) -> Result<T, Error>
+    |        ------- required by a bound in this associated function
+112 |     where
+113 |         I: ColumnIndex<Self>,
+    |            ^^^^^^^^^^^^^^^^^ required by this bound in `Row::try_get`
+help: consider specifying the generic arguments
+    |
+303 |                     let dec_value: Option<f64> = row.try_get::<std::option::Option<f64>, &T>(column_name).map_err(|e| {
+    |                                                             ++++++++++++++++++++++++++++++++
+error[E0283]: type annotations needed
+   --> service/src/infrastructure/persistence/repository.rs:315:56
+    |
+315 | ...alue: Option<bool> = row.try_get(column_name).map_err(|e| {
+    |                             ^^^^^^^ cannot infer type of the type parameter `I` declared on the method `try_get`
+    |
+    = note: multiple `impl`s satisfying `&_: ColumnIndex<PgRow>` found in the following crates: `sqlx_core`, `sqlx_postgres`:
+            - impl ColumnIndex<PgRow> for &str;
+            - impl<T, I> ColumnIndex<T> for &I
+              where I: ColumnIndex<T>, T: ?Sized, I: ?Sized;
+note: required by a bound in `try_get`
+   --> /Users/dmitri.astafiev/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/sqlx-core-0.8.6/src/row.rs:113:12
+    |
+111 |     fn try_get<'r, T, I>(&'r self, index: I) -> Result<T, Error>
+    |        ------- required by a bound in this associated function
+112 |     where
+113 |         I: ColumnIndex<Self>,
+    |            ^^^^^^^^^^^^^^^^^ required by this bound in `Row::try_get`
+help: consider specifying the generic arguments
+    |
+315 |                     let bool_value: Option<bool> = row.try_get::<std::option::Option<bool>, &T>(column_name).map_err(|e| {
+    |                                                               +++++++++++++++++++++++++++++++++
+error[E0283]: type annotations needed
+   --> service/src/infrastructure/persistence/repository.rs:328:29
+    |
+328 |                         row.try_get(column_name).map_err(|e| {
+    |                             ^^^^^^^ cannot infer type of the type parameter `I` declared on the method `try_get`
+    |
+    = note: multiple `impl`s satisfying `&_: ColumnIndex<PgRow>` found in the following crates: `sqlx_core`, `sqlx_postgres`:
+            - impl ColumnIndex<PgRow> for &str;
+            - impl<T, I> ColumnIndex<T> for &I
+              where I: ColumnIndex<T>, T: ?Sized, I: ?Sized;
+note: required by a bound in `try_get`
+   --> /Users/dmitri.astafiev/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/sqlx-core-0.8.6/src/row.rs:113:12
+    |
+111 |     fn try_get<'r, T, I>(&'r self, index: I) -> Result<T, Error>
+    |        ------- required by a bound in this associated function
+112 |     where
+113 |         I: ColumnIndex<Self>,
+    |            ^^^^^^^^^^^^^^^^^ required by this bound in `Row::try_get`
+help: consider specifying the generic arguments
+    |
+328 |                         row.try_get::<std::option::Option<NaiveDate>, &T>(column_name).map_err(|e| {
+    |                                    ++++++++++++++++++++++++++++++++++++++
+error[E0283]: type annotations needed
+   --> service/src/infrastructure/persistence/repository.rs:341:29
+    |
+341 |                         row.try_get(column_name).map_err(|e| {
+    |                             ^^^^^^^ cannot infer type of the type parameter `I` declared on the method `try_get`
+    |
+    = note: multiple `impl`s satisfying `&_: ColumnIndex<PgRow>` found in the following crates: `sqlx_core`, `sqlx_postgres`:
+            - impl ColumnIndex<PgRow> for &str;
+            - impl<T, I> ColumnIndex<T> for &I
+              where I: ColumnIndex<T>, T: ?Sized, I: ?Sized;
+note: required by a bound in `try_get`
+   --> /Users/dmitri.astafiev/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/sqlx-core-0.8.6/src/row.rs:113:12
+    |
+111 |     fn try_get<'r, T, I>(&'r self, index: I) -> Result<T, Error>
+    |        ------- required by a bound in this associated function
+112 |     where
+113 |         I: ColumnIndex<Self>,
+    |            ^^^^^^^^^^^^^^^^^ required by this bound in `Row::try_get`
+help: consider specifying the generic arguments
+    |
+341 |                         row.try_get::<std::option::Option<chrono::DateTime<Utc>>, &T>(column_name).map_err(|e| {
+    |                                    ++++++++++++++++++++++++++++++++++++++++++++++++++
+error[E0283]: type annotations needed
+   --> service/src/infrastructure/persistence/repository.rs:353:62
+    |
+353 | ...Option<uuid::Uuid> = row.try_get(column_name).map_err(|e| {
+    |                             ^^^^^^^ cannot infer type of the type parameter `I` declared on the method `try_get`
+    |
+    = note: multiple `impl`s satisfying `&_: ColumnIndex<PgRow>` found in the following crates: `sqlx_core`, `sqlx_postgres`:
+            - impl ColumnIndex<PgRow> for &str;
+            - impl<T, I> ColumnIndex<T> for &I
+              where I: ColumnIndex<T>, T: ?Sized, I: ?Sized;
+note: required by a bound in `try_get`
+   --> /Users/dmitri.astafiev/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/sqlx-core-0.8.6/src/row.rs:113:12
+    |
+111 |     fn try_get<'r, T, I>(&'r self, index: I) -> Result<T, Error>
+    |        ------- required by a bound in this associated function
+112 |     where
+113 |         I: ColumnIndex<Self>,
+    |            ^^^^^^^^^^^^^^^^^ required by this bound in `Row::try_get`
+help: consider specifying the generic arguments
+    |
+353 |                     let uuid_value: Option<uuid::Uuid> = row.try_get::<std::option::Option<sqlx::types::Uuid>, &T>(column_name).map_err(|e| {
+    |                                                                     ++++++++++++++++++++++++++++++++++++++++++++++
+error[E0277]: the trait bound `schema::Table<'_>: Clone` is not satisfied
+  --> service/src/infrastructure/persistence/query.rs:98:5
+   |
+95 | #[derive(Debug, Clone)]
+   |                 ----- in this derive macro expansion
+...
+98 |     pub target_table: Table<'a>,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^ the trait `Clone` is not implemented for `schema::Table<'_>`
+   |
+help: consider annotating `schema::Table<'_>` with `#[derive(Clone)]`
+  --> service/src/infrastructure/persistence/schema.rs:7:1
+   |
+ 7 + #[derive(Clone)]
+ 8 | pub struct Table<'a> {
+   |
+error[E0282]: type annotations needed
+   --> service/src/infrastructure/persistence/query.rs:145:13
+    |
+145 |         let columns = self.select.iter()
+    |             ^^^^^^^
+...
+148 |         sql.push_str(&columns.join(", "));
+    |                       ------- type must be known at this point
+    |
+help: consider giving `columns` an explicit type
+    |
+145 |         let columns: Vec<_> = self.select.iter()
+    |                    ++++++++
+error[E0609]: no field `target_column` on type `&persistence::query::Join<'a>`
+   --> service/src/infrastructure/persistence/query.rs:160:141
+    |
+160 | ...n.qualified(), join.target_column.qualified()));
+    |                        ^^^^^^^^^^^^^ unknown field
+    |
+help: a field with a similar name exists
+    |
+160 |             sql.push_str(&format!("\n{} \"{}\" ON {} = {}", join_keyword, join.target_table.qualified(), join.main_column.qualified(), join.target_coliumn.qualified()));
+    |                                                                                                                                                       +
+error[E0061]: this function takes 2 arguments but 3 arguments were supplied
+   --> service/src/infrastructure/persistence/query.rs:166:48
+    |
+166 | ... = Self::generate_where_conditions(&self.where_conditions, &self.from_table.alias, &...
+    |       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^                         ---------------------- unexpected argument #2 of type `&&'static str`
+    |
+note: associated function defined here
+   --> service/src/infrastructure/persistence/query.rs:201:8
+    |
+201 |     fn generate_where_conditions(
+    |        ^^^^^^^^^^^^^^^^^^^^^^^^^
+help: remove the extra argument
+    |
+166 -             let (where_clause, where_params) = Self::generate_where_conditions(&self.where_conditions, &self.from_table.alias, &mut param_counter);
+166 +             let (where_clause, where_params) = Self::generate_where_conditions(&self.where_conditions, &mut param_counter);
+    |
+error[E0277]: the trait bound `SqlParameter: From<&i64>` is not satisfied
+   --> service/src/infrastructure/persistence/query.rs:231:34
+    |
+231 |                 (sql, vec![value.into()])
+    |                                  ^^^^ unsatisfied trait bound
+    |
+help: the trait `From<&i64>` is not implemented for `SqlParameter`
+      but trait `From<&ConditionValue>` is implemented for it
+   --> service/src/infrastructure/persistence/query.rs:297:1
+    |
+297 | impl From<&ConditionValue> for SqlParameter {
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    = help: for that trait implementation, expected `ConditionValue`, found `i64`
+    = note: required for `&i64` to implement `Into<SqlParameter>`
+error[E0277]: the trait bound `SqlParameter: From<&i64>` is not satisfied
+   --> service/src/infrastructure/persistence/query.rs:237:34
+    |
+237 |                 (sql, vec![value.into()])
+    |                                  ^^^^ unsatisfied trait bound
+    |
+help: the trait `From<&i64>` is not implemented for `SqlParameter`
+      but trait `From<&ConditionValue>` is implemented for it
+   --> service/src/infrastructure/persistence/query.rs:297:1
+    |
+297 | impl From<&ConditionValue> for SqlParameter {
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    = help: for that trait implementation, expected `ConditionValue`, found `i64`
+    = note: required for `&i64` to implement `Into<SqlParameter>`
+error[E0277]: the trait bound `SqlParameter: From<&i64>` is not satisfied
+   --> service/src/infrastructure/persistence/query.rs:243:34
+    |
+243 |                 (sql, vec![value.into()])
+    |                                  ^^^^ unsatisfied trait bound
+    |
+help: the trait `From<&i64>` is not implemented for `SqlParameter`
+      but trait `From<&ConditionValue>` is implemented for it
+   --> service/src/infrastructure/persistence/query.rs:297:1
+    |
+297 | impl From<&ConditionValue> for SqlParameter {
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    = help: for that trait implementation, expected `ConditionValue`, found `i64`
+    = note: required for `&i64` to implement `Into<SqlParameter>`
+error[E0277]: the trait bound `SqlParameter: From<&i64>` is not satisfied
+   --> service/src/infrastructure/persistence/query.rs:249:34
+    |
+249 |                 (sql, vec![value.into()])
+    |                                  ^^^^ unsatisfied trait bound
+    |
+help: the trait `From<&i64>` is not implemented for `SqlParameter`
+      but trait `From<&ConditionValue>` is implemented for it
+   --> service/src/infrastructure/persistence/query.rs:297:1
+    |
+297 | impl From<&ConditionValue> for SqlParameter {
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    = help: for that trait implementation, expected `ConditionValue`, found `i64`
+    = note: required for `&i64` to implement `Into<SqlParameter>`
+warning: unused variable: `document_type_id`
+   --> service/src/infrastructure/persistence/repository.rs:160:9
+    |
+160 |         document_type_id: DocumentTypeId,
+    |         ^^^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_document_type_id`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+warning: unused variable: `content`
+   --> service/src/infrastructure/persistence/repository.rs:161:9
+    |
+161 |         content: DocumentContent,
+    |         ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_content`
+warning: unused variable: `user_id`
+   --> service/src/infrastructure/persistence/repository.rs:162:9
+    |
+162 |         user_id: Option<crate::domain::document::content::UserId>,
+    |         ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_user_id`
+warning: unused variable: `id`
+   --> service/src/infrastructure/persistence/repository.rs:169:9
+    |
+169 |         id: crate::domain::document::DocumentInstanceId,
+    |         ^^ help: if this is intentional, prefix it with an underscore: `_id`
+warning: unused variable: `content_updates`
+   --> service/src/infrastructure/persistence/repository.rs:170:9
+    |
+170 |         content_updates: std::collections::HashMap<
+    |         ^^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_content_updates`
+warning: unused variable: `user_id`
+   --> service/src/infrastructure/persistence/repository.rs:174:9
+    |
+174 |         user_id: Option<crate::domain::document::content::UserId>,
+    |         ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_user_id`
+warning: unused variable: `document_type_id`
+   --> service/src/infrastructure/persistence/repository.rs:181:9
+    |
+181 |         document_type_id: luminair_common::DocumentTypeId,
+    |         ^^^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_document_type_id`
+warning: unused variable: `id`
+   --> service/src/infrastructure/persistence/repository.rs:182:9
+    |
+182 |         id: crate::domain::document::DocumentInstanceId,
+    |         ^^ help: if this is intentional, prefix it with an underscore: `_id`
+warning: unused variable: `id`
+   --> service/src/infrastructure/persistence/repository.rs:189:9
+    |
+189 |         id: crate::domain::document::DocumentInstanceId,
+    |         ^^ help: if this is intentional, prefix it with an underscore: `_id`
+warning: unused variable: `user_id`
+   --> service/src/infrastructure/persistence/repository.rs:190:9
+    |
+190 |         user_id: Option<crate::domain::document::content::UserId>,
+    |         ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_user_id`
+warning: unused variable: `id`
+   --> service/src/infrastructure/persistence/repository.rs:197:9
+    |
+197 |         id: crate::domain::document::DocumentInstanceId,
+    |         ^^ help: if this is intentional, prefix it with an underscore: `_id`
+error[E0515]: cannot return value referencing temporary value
+  --> service/src/infrastructure/persistence/schema.rs:21:9
+   |
+21 | /         Table {
+22 | |             name: value.normalized().as_str(),
+   | |                   ------------------ temporary value created here
+23 | |             alias: "m",
+24 | |         }
+   | |_________^ returns a value referencing data owned by the current function
+Some errors have detailed explanations: E0053, E0061, E0277, E0282, E0283, E0308, E0515, E0609.
+For more information about an error, try `rustc --explain E0053`.
+warning: `service` (bin "service") generated 13 warnings
+error: could not compile `service` (bin "service") due to 31 previous errors; 13 warnings emitted

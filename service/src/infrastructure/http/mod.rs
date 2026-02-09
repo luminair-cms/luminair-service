@@ -1,15 +1,18 @@
 use anyhow::Context;
 use axum::http::StatusCode;
-use axum::{Extension, Router};
 use axum::routing::get;
+use axum::{Extension, Router};
 use axum_prometheus::PrometheusMetricLayer;
 
+use crate::infrastructure::http::handlers::{health_check, hello_world_handler};
+use crate::infrastructure::http::querystring::QueryStringConfig;
+use crate::infrastructure::{
+    AppState,
+    http::handlers::data::{find_all_documents, find_document_by_id},
+};
+use handlers::documents::{documents_metadata, one_document_metadata};
 use serde_querystring::ParseMode;
 use tokio::net;
-use crate::infrastructure::http::querystring::QueryStringConfig;
-use crate::infrastructure::{AppState, http::handlers::data::{find_all_documents, find_document_by_id}};
-use handlers::documents::{documents_metadata, one_document_metadata};
-use crate::infrastructure::http::handlers::{health_check, hello_world_handler};
 
 mod api;
 mod handlers;
@@ -29,7 +32,7 @@ pub struct HttpServer {
 
 impl HttpServer {
     /// Returns a new HTTP server bound to the port specified in `config`.
-    pub async fn new(state: AppState, config: HttpServerConfig<'_>) -> anyhow::Result<Self> {
+    pub async fn new<S: AppState>(state: S, config: HttpServerConfig<'_>) -> anyhow::Result<Self> {
         let trace_layer = tower_http::trace::TraceLayer::new_for_http().make_span_with(
             |request: &axum::extract::Request<_>| {
                 let uri = request.uri().to_string();
@@ -45,10 +48,9 @@ impl HttpServer {
             .nest("/api", api_routes())
             .route("/metrics", get(|| async move { metric_handle.render() }))
             .layer(Extension(
-                QueryStringConfig::new(ParseMode::Brackets)
-                    .ehandler(|err| {
-                             (StatusCode::BAD_REQUEST, err.to_string()) // return type should impl IntoResponse
-                         }),
+                QueryStringConfig::new(ParseMode::Brackets).ehandler(|err| {
+                    (StatusCode::BAD_REQUEST, err.to_string()) // return type should impl IntoResponse
+                }),
             ))
             .layer(trace_layer)
             .layer(prometheus_layer)
@@ -71,11 +73,11 @@ impl HttpServer {
     }
 }
 
-fn api_routes() -> Router<AppState> {
+fn api_routes<S: AppState>() -> Router<S> {
     Router::new()
-        .route("/hello", get(hello_world_handler))
-        .route("/meta/documents", get(documents_metadata))
-        .route("/meta/documents/{id}", get(one_document_metadata))
-        .route("/data/documents/{document_id}", get(find_all_documents))
-        .route("/data/documents/{document_id}/{id}", get(find_document_by_id))
+        .route("/hello", get(hello_world_handler::<S>))
+        .route("/meta/documents", get(documents_metadata::<S>))
+        .route("/meta/documents/{id}", get(one_document_metadata::<S>))
+        .route("/data/documents/{document_id}", get(find_all_documents::<S>))
+        .route("/data/documents/{document_id}/{id}", get(find_document_by_id::<S>))
 }

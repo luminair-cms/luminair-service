@@ -86,15 +86,18 @@ impl DocumentInstanceRepository for PostgresDocumentRepository {
             query_object = param.bind_to_query(query_object);
         }
 
-        let rows = query_object
-            .fetch_all(self.pool.as_ref())
+        let mut rows = query_object
+            .fetch(self.pool.as_ref())
             .await
             .map_err(|e| RepositoryError::DatabaseError(e.to_string()))?;
-
-        let documents: Result<Vec<_>, _> = rows
-            .into_iter()
-            .map(|row| self.row_to_document(&row, &schema))
-            .collect();
+        
+        let mut documents = Vec::new();
+        use futures::TryStreamExt;
+        
+        while let Some(row) = rows.try_next().await? {
+            let document = self.row_to_document(&row, &schema)?;
+            documents.push(document);
+        }
 
         documents
     }

@@ -3,27 +3,20 @@ use axum::Json;
 use axum::response::{IntoResponse, Response};
 use serde::Serialize;
 
+use crate::domain::repository::RepositoryError;
+
 // ApiSucess is a wrapper around a response that includes a status code.
 
 #[derive(Debug, Clone)]
-pub struct ApiSuccess<T: Serialize + PartialEq>(StatusCode, Json<T>);
+pub struct ApiSuccess<T: Serialize>(StatusCode, Json<T>);
 
-impl<T> PartialEq for ApiSuccess<T>
-where
-    T: Serialize + PartialEq,
-{
-    fn eq(&self, other: &Self) -> bool {
-        self.0 == other.0 && self.1 .0 == other.1 .0
-    }
-}
-
-impl<T: Serialize + PartialEq> ApiSuccess<T> {
+impl<T: Serialize> ApiSuccess<T> {
     pub(crate) fn new(status: StatusCode, data: T) -> Self {
         ApiSuccess(status, Json(data))
     }
 }
 
-impl<T: Serialize + PartialEq> IntoResponse for ApiSuccess<T> {
+impl<T: Serialize> IntoResponse for ApiSuccess<T> {
     fn into_response(self) -> Response {
         (self.0, self.1).into_response()
     }
@@ -35,12 +28,33 @@ impl<T: Serialize + PartialEq> IntoResponse for ApiSuccess<T> {
 pub enum ApiError {
     InternalServerError(String),
     UnprocessableEntity(String),
+    ConflictWithServerState(String),
     NotFound
 }
 
 impl From<anyhow::Error> for ApiError {
     fn from(e: anyhow::Error) -> Self {
         Self::InternalServerError(e.to_string())
+    }
+}
+
+impl From<RepositoryError> for ApiError {
+    fn from(value: RepositoryError) -> Self {
+        match value {
+            RepositoryError::NotFound => {
+                Self::NotFound
+            }
+            RepositoryError::ValidationFailed(cause) => {
+                Self::UnprocessableEntity(cause)
+            }
+            RepositoryError::UniqueViolation(cause) => {
+                Self::ConflictWithServerState(cause)
+            }
+            RepositoryError::DatabaseError(cause) => {
+                tracing::error!("{:?}", cause);
+                Self::InternalServerError("Database server error".to_string())
+            }
+        }
     }
 }
 
@@ -89,6 +103,14 @@ impl IntoResponse for ApiError {
                     StatusCode::UNPROCESSABLE_ENTITY,
                     message,
                 )),
+            )
+                .into_response(),
+            ConflictWithServerState(message) => (
+                StatusCode::CONFLICT,
+                Json(ApiResponseBody::new_error(
+                    StatusCode::CONFLICT, 
+                    message
+                ))
             )
                 .into_response(),
             NotFound => StatusCode::NOT_FOUND.into_response(),

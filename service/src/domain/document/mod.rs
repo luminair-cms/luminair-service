@@ -13,7 +13,7 @@ use crate::domain::document::{content::{AuditTrail, ContentValue, PublicationSta
 /// A DocumentInstance: one actual row of data
 /// An instance of a DocumentType
 /// Example: One specific Partner (with idno "1234567890123")
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct DocumentInstance {
     /// Primary key: unique within this DocumentType
     pub id: DocumentInstanceId,
@@ -32,8 +32,14 @@ pub struct DocumentInstance {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct DocumentInstanceId(pub i64);
 
+impl From<i64> for DocumentInstanceId {
+    fn from(value: i64) -> Self {
+        Self (value)
+    }
+}
+
 /// The actual data payload of a document
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct DocumentContent {
     /// All fields with their values
     pub fields: HashMap<String, ContentValue>,

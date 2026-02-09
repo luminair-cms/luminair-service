@@ -3,6 +3,7 @@ use std::borrow::Cow;
 use luminair_common::DocumentTypeId;
 
 // Represents a table in database
+#[derive(Debug)]
 pub struct Table<'a> {
     pub name: &'a str,
     pub alias: &'static str,
@@ -25,7 +26,7 @@ impl From<&DocumentTypeId> for Table<'_> {
 }
 
 /// Represents one column in the database table
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Column<'a> {
     pub qualifier: &'static str,
     pub name: &'a str,
