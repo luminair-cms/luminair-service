@@ -7,6 +7,7 @@ use regex::Regex;
 pub use crate::domain::entities::DocumentType;
 
 pub mod entities;
+pub mod persistence;
 
 pub trait DocumentTypesRegistry: Send + Sync + Debug + 'static {
     /// iterate all documents metadata

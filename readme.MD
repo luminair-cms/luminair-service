@@ -57,15 +57,67 @@ https://www.sea-ql.org/blog/2026-01-12-sea-orm-2.0/
 id, document_type, info, options, attributes
 id of document is taken from file-name and used in normalized form for table generation
 
-*TODO: think about singular and plural names as part of API*
+For document_type_id in rest api used plural name in case of collection and singular name in case of singleton
 
 ### Persisted document with
 
-- document_ref (&'static) and persistence details
-- main table details, needed for migration and mapping
-- localization table details (Optional), needed for migration and mapping
-- hashmap of fields, each field has needed attribute and persistence details
-- hashmap of relations, each relation has ref to PersistedDocument and persistence details
+For table-name used singular name. Fields of table:
+| id           | id of database row, serial, rimary key
+| document_id  | id of document instance, UUID
+| field 1 .. field N | fields of document, 
+| published_at | timestamp of publication, in case of draft_and_publish enabled
+| revision     |
+| created_at   |
+| updated_at   |
+| version      |
+
+## How `PublicationState` and `AuditTrail` Work Together**
+
+### **Two Separate Concerns**
+
+1. **`PublicationState`** (in `DocumentContent`) - **Domain Logic**
+   - Tracks the **content's publication workflow** (Draft vs Published)
+   - Stores the `revision` number tied to **this specific publication state**
+   - Includes `published_at` as part of the **publication record** (when this state was achieved)
+
+2. **`AuditTrail`** (in `DocumentInstance`) - **Infrastructure/System Metadata**
+   - Tracks **WHO did WHAT WHEN** across all operations
+   - Stores the `version` number for **overall document lifecycle tracking**
+   - Includes `published_at` as part of **system audit records**
+
+---
+
+### **Relationship Between `revision` and `version`**
+
+| Aspect | `revision` (in PublicationState) | `version` (in AuditTrail) |
+|--------|----------------------------------|--------------------------|
+| **Purpose** | Tracks publication cycle iteration | Tracks overall change history |
+| **Scope** | Only for published versions | Every state change (edit, publish, unpublish) |
+| **When Updated** | When transitioning Draft → Published | Every operation that modifies the document |
+| **Example** | Publishing creates revision 1, 2, 3... | Increments with edits AND publishes |
+
+**Concrete Example:**
+```
+1. Create document → version: 1, state: Draft { revision: 1 }
+2. Edit content  → version: 2, state: Draft { revision: 1 }  (revision stays same)
+3. Edit again    → version: 3, state: Draft { revision: 1 }  (revision stays same)
+4. Publish       → version: 4, state: Published { revision: 1, published_at: T1 }
+5. Edit          → version: 5, state: Draft { revision: 2 }   (revision increments!)
+6. Publish       → version: 6, state: Published { revision: 2, published_at: T2 }
+```
+
+---
+
+### **Why `published_at` Exists in BOTH Structures**
+
+| Where | Why | Concern |
+|-------|-----|---------|
+| **`PublicationState::Published`** | Records **when this publication revision was created** | **Domain**: Part of the publication state definition |
+| **`AuditTrail.published_at`** | Records **when the last publish action occurred** | **Infrastructure**: System audit trail for compliance |
+
+**Key Difference:**
+- If you unpublish then republish, `AuditTrail.published_at` updates to the latest publish time
+- But `PublicationState.Published { published_at }` would be from a **different revision**, each with its own timestamp
 
 ### Associations
 

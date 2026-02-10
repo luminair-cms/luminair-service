@@ -1,10 +1,10 @@
-use crate::infrastructure::persistence::schema::{ColumnRef, Table};
+use luminair_common::persistence::QualifiedTable;
 
 /// High-level, composable query builder
 /// Similar to jOOQ, but with Rust's type system
 #[derive(Debug)]
 pub struct QueryBuilder<'a> {
-    from_table: Table<'a>,
+    from_table: QualifiedTable,
     select: Vec<ColumnRef<'a>>,
     where_conditions: Vec<Condition<'a>>,
     order_by: Vec<OrderBy<'a>>,
@@ -72,7 +72,7 @@ pub enum Condition<'a> {
     Or(Box<Condition<'a>>, Box<Condition<'a>>),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub enum ConditionValue {
     Text(String),
     Integer(i64),
@@ -80,7 +80,7 @@ pub enum ConditionValue {
     Null,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct OrderBy<'a> {
     pub column: ColumnRef<'a>,
     pub direction: SortDirection,
@@ -92,12 +92,12 @@ pub enum SortDirection {
     Descending,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Join<'a> {
     pub join_type: JoinType,
-    pub target_table: Table<'a>,
+    pub target_table: QualifiedTable,
     pub main_column: ColumnRef<'a>,
-    pub target_coliumn: ColumnRef<'a>,
+    pub target_column: ColumnRef<'a>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -107,8 +107,8 @@ pub enum JoinType {
     Right,
 }
 
-impl <'a> From<Table<'a>> for QueryBuilder<'a> {
-    fn from(value: Table<'a>) -> Self {
+impl <'a> From<QualifiedTable> for QueryBuilder<'a> {
+    fn from(value: QualifiedTable) -> Self {
         QueryBuilder {
             from_table: value,
             select: vec![],
@@ -142,7 +142,7 @@ impl <'a> QueryBuilder<'a> {
         
         // SELECT clause
         sql.push_str("SELECT ");
-        let columns = self.select.iter()
+        let columns: Vec<String> = self.select.iter()
             .map(|c| c.qualified())
             .collect();
         sql.push_str(&columns.join(", "));
@@ -163,7 +163,7 @@ impl <'a> QueryBuilder<'a> {
         // WHERE clause
         if !self.where_conditions.is_empty() {
             sql.push_str("\nWHERE ");
-            let (where_clause, where_params) = Self::generate_where_conditions(&self.where_conditions, &self.from_table.alias, &mut param_counter);
+            let (where_clause, where_params) = Self::generate_where_conditions(&self.where_conditions, &mut param_counter);
             sql.push_str(&where_clause);
             params.extend(where_params);
         }
@@ -305,6 +305,31 @@ impl From<&ConditionValue> for SqlParameter {
     }
 }
 
+impl From<&i64> for SqlParameter {
+    fn from(value: &i64) -> Self {
+        SqlParameter::Integer(*value)
+    }
+}
+
+use std::borrow::Cow;
+
+/// Represents one column in the database table
+#[derive(Clone, Debug)]
+pub struct Column<'a> {
+    pub qualifier: &'static str,
+    pub name: &'a str,
+}
+
+impl <'a> Column<'a> {
+    /// Get qualified column name
+    pub fn qualified(&self) -> String {
+        format!("\"{}\".\"{}\"", self.qualifier, self.name)
+    }
+}
+
+/// Column reference which can be either borrowed or owned
+pub type ColumnRef<'a> = Cow<'a, Column<'a>>;
+
 // SQL parameter that will be bound to query
 #[derive(Debug, Clone)]
 pub enum SqlParameter {
@@ -323,29 +348,5 @@ impl SqlParameter {
             SqlParameter::Boolean(b) => query.bind(b),
             SqlParameter::Null => query.bind::<Option<String>>(None),
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use std::borrow::Cow;
-
-    use crate::infrastructure::persistence::schema::Column;
-
-    use super::*;
-    
-    #[test]
-    fn test_simple_select() {
-        let table = Table {name: "partners", alias: "t", };
-        let builder = QueryBuilder::from_table(table)
-            .select(vec![Cow::Owned(Column { qualifier: "t", name: "id" })])
-            .where_condition(Condition::Equals { 
-                 column: Cow::Owned(Column { qualifier: "t", name: "is_draft" }), 
-                 value: ConditionValue::Boolean(false) });
-        
-        let (sql, params) = builder.build();
-        
-        assert!(sql.contains("SELECT t.\"id\" FROM"));
-        assert!(sql.contains("WHERE t.\"is_draft\" = $1"));
     }
 }

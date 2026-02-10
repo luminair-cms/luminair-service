@@ -57,7 +57,7 @@ pub trait DocumentInstanceRepository: Send + Sync + 'static {
     ) -> impl Future<Output = Result<DocumentInstance, RepositoryError>> + Send;
 
     /// Get total count of documents
-    fn count(&self, collection_id: &str) -> impl Future<Output = Result<i64, RepositoryError>> + Send;
+    fn count(&self, document_type_id: DocumentTypeId) -> impl Future<Output = Result<i64, RepositoryError>> + Send;
 }
 
 #[derive(Debug)]

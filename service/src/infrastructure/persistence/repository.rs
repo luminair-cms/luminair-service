@@ -4,7 +4,7 @@ use futures::future::ok;
 use luminair_common::{
     CREATED_FIELD_NAME, DOCUMENT_ID_FIELD_NAME, DocumentType, DocumentTypeId,
     DocumentTypesRegistry, PUBLISHED_FIELD_NAME, UPDATED_FIELD_NAME, database::Database,
-    entities::AttributeType,
+    entities::AttributeType, persistence::QualifiedTable,
 };
 use sqlx::types::uuid;
 
@@ -16,9 +16,8 @@ use crate::{
         },
         repository::{DocumentInstanceRepository, RepositoryError},
     },
-    infrastructure::persistence::{
-        query::{Condition, ConditionValue, QueryBuilder},
-        schema::{Column, ColumnRef, Table},
+    infrastructure::persistence::query::{
+        Column, ColumnRef, Condition, ConditionValue, QueryBuilder,
     },
 };
 
@@ -51,14 +50,14 @@ impl DocumentInstanceRepository for PostgresDocumentRepository {
     async fn find(
         &self,
         query: crate::domain::repository::query::DocumentInstanceQuery,
-    ) -> Result<Vec<crate::domain::document::DocumentInstance>, RepositoryError> {
+    ) -> Result<Vec<DocumentInstance>, RepositoryError> {
         let document_type_id = &query.document_type_id;
         let schema = self
             .schema_registry
             .get(document_type_id)
             .ok_or(RepositoryError::NotFound)?;
 
-        let table = Table::from(document_type_id);
+        let table = QualifiedTable::from(schema);
         let mut columns: Vec<ColumnRef<'_>> = vec![
             Cow::Borrowed(&DOCUMENT_ID_COLUMN),
             Cow::Borrowed(&CREATED_COLUMN),
@@ -90,10 +89,10 @@ impl DocumentInstanceRepository for PostgresDocumentRepository {
             .fetch(self.pool.as_ref())
             .await
             .map_err(|e| RepositoryError::DatabaseError(e.to_string()))?;
-        
+
         let mut documents = Vec::new();
         use futures::TryStreamExt;
-        
+
         while let Some(row) = rows.try_next().await? {
             let document = self.row_to_document(&row, &schema)?;
             documents.push(document);
@@ -112,7 +111,7 @@ impl DocumentInstanceRepository for PostgresDocumentRepository {
             .get(&document_type_id)
             .ok_or(RepositoryError::NotFound)?;
 
-        let table = Table::from(&document_type_id);
+        let table = QualifiedTable::from(schema);
         let mut columns: Vec<ColumnRef<'_>> = vec![
             Cow::Borrowed(&DOCUMENT_ID_COLUMN),
             Cow::Borrowed(&CREATED_COLUMN),
@@ -272,7 +271,7 @@ impl PostgresDocumentRepository {
         let mut fields = std::collections::HashMap::new();
         for (field_id, field) in schema.fields.iter() {
             let normalized_name = field_id.normalized();
-            let column_name = normalized_name.as_ref();
+            let column_name: &str = normalized_name.as_ref();
 
             let value = match field.attribute_type {
                 AttributeType::Text => {
