@@ -61,15 +61,21 @@ For document_type_id in rest api used plural name in case of collection and sing
 
 ### Persisted document with
 
-For table-name used singular name. Fields of table:
-| id           | id of database row, serial, rimary key
-| document_id  | id of document instance, UUID
-| field 1 .. field N | fields of document, 
-| published_at | timestamp of publication, in case of draft_and_publish enabled
-| revision     |
-| created_at   |
-| updated_at   |
-| version      |
+For table-name used singular name. 
+Fields of table:
+| field         | description |
+|---------------|-------------|
+| id            | id of database row, serial, rimary key |
+| document_id   | id of document instance, UUID          |
+| field 1 .. field N | fields of document               |
+| published_at  | timestamp of publication, in case of draft_and_publish enabled |
+| published_by_id | user_id who performed publish
+| revision      |
+| created_at    |
+| updated_at    |
+| created_by_id | integer
+| updated_by_id | integer
+| version       | integer
 
 ## How `PublicationState` and `AuditTrail` Work Together**
 
@@ -121,36 +127,29 @@ For table-name used singular name. Fields of table:
 
 ### Associations
 
-- One way: collection A has one row of collection B
-- One to one: collection A has one row of collection B, and collection B has one row of collection A
-- One to many: collection A has many rows of collection B
-- Many to one: collection B has many rows of collection A
-- Many to many: collection A has many rows of collection B, and collection B has many rows of collection A
-- Many way: collection A has many rows of collection B
+- HasOne: collection A has one row of collection B
+- HasMany: collection A has many rows of collection B
+- BelongsToOne: collection B belongs to one row of collection A
+- BelongsToMany: collection B belongs to many rows of Collection B
 
-### mappedBy and inversedBy
+*The following general rules apply*
 
-- mappedBy and inversedBy are used to define the relationship between the owning and inverse sides of a bidirectional association.
-- mappedBy: This attribute is used on the inverse side of the relationship. It specifies the property name on the owning entity that holds the association. In a Many-to-Many relationship, the inverse side does not manage the foreign keys in the join table directly. Instead, it relies on the owning side to define and manage the relationship.
-- inversedBy: This attribute is used on the owning side of the relationship. It specifies the property name on the inverse entity that holds the association. The owning side is responsible for managing the join table and the foreign keys that establish the Many-to-Many relationship.
-
-### The following general rules apply:
+- HasOne & HasMany are attributes of owning side, collection that own this relation
+- BelongsToOne & BelongsToMany are attributes of inverse side
 
 - Relationships may be bidirectional or unidirectional.
 - A bidirectional relationship has both an owning side and an inverse side
 - A unidirectional relationship only has an owning side.
-- Doctrine will only check the owning side of an association for changes.
 
-## Bidirectional Associations
+*Persistence of associations*
 
-### The following rules apply to bidirectional associations:
-
-- The inverse side has to have the mappedBy attribute of the OneToOne, OneToMany, or ManyToMany mapping declaration. The mappedBy attribute contains the name of the association-field on the owning side.
-- The owning side has to have the inversedBy attribute of the OneToOne, ManyToOne, or ManyToMany mapping declaration. The inversedBy attribute contains the name of the association-field on the inverse-side.
-- ManyToOne is always the owning side of a bidirectional association.
-- OneToMany is always the inverse side of a bidirectional association.
-- The owning side of a OneToOne association is the entity with the table containing the foreign key.
-- You can pick the owning side of a many-to-many association yourself.
+For owning table-name used singular name underscore-concatenated with attribute-name underscore-concatenated with "relation" suffix. 
+Fields of table:
+| field        | description |
+|--------------|-------------|
+| id           | id of database row, serial, rimary key |
+| owning-table-name-id | owning table-name underscore-concatenated with "id" suffix |
+| inverse-table-name-id | inverse table-name underscore-concatenated with "id" suffix |
 
 ## Rest API
 
@@ -190,9 +189,10 @@ These values are defined when creating a content-type in the Content-Type Builde
 {
   "data": [
     {
-      "document_id": 2,
-      "Name": "BMK Paris Bamako",
-      "Description": {
+      "id": 2,
+      "documentId": "8d0ef031-2a9a-4ea3-980f-e2a7f4803e95",
+      "name": "BMK Paris Bamako",
+      "description": {
         "en": "Description on English language",
         "ro": "Descriptie la limba Romaina",
         "ru": "Описание на Русском языке"
@@ -203,10 +203,10 @@ These values are defined when creating a content-type in the Content-Type Builde
       }
     },
     {
-      "document_id": 4,
-      "documentId": "znrlzntu9ei5onjvwfaalu2v",
-      "Name": "Biscotte Restaurant",
-      "Description": [
+      "id": 4,
+      "documentId": "791620a6-1099-4a41-ad74-21c5a25ce9b2",
+      "name": "Biscotte Restaurant",
+      "description": [
         {
           "type": "paragraph",
           "children": [
@@ -239,9 +239,10 @@ These values are defined when creating a content-type in the Content-Type Builde
 ```json
 {
   "data": {
-    "document_id": 6,
-    "Name": "Biscotte Restaurant",
-    "Description": [
+    "id": 6,
+    "documentId": "791620a6-1099-4a41-ad74-21c5a25ce9b2"
+    "name": "Biscotte Restaurant",
+    "description": [
       {
         "type": "paragraph",
         "children": [

@@ -1,8 +1,9 @@
 use crate::domain::tables::{Column, ColumnType, ForeignKeyConstraint, Index, Table};
 
 use luminair_common::{
-    AttributeId, CREATED_FIELD_NAME, DOCUMENT_ID_FIELD_NAME, DocumentType, DocumentTypesRegistry,
-    PUBLISHED_FIELD_NAME, RELATION_ID_FIELD_NAME, UPDATED_FIELD_NAME,
+    AttributeId, CREATED_BY_FIELD_NAME, CREATED_FIELD_NAME, DOCUMENT_ID_FIELD_NAME, DocumentType,
+    DocumentTypesRegistry, ID_FIELD_NAME, PUBLISHED_BY_FIELD_NAME, PUBLISHED_FIELD_NAME,
+    RELATION_ID_FIELD_NAME, REVISION_FIELD_NAME, UPDATED_BY_FIELD_NAME, UPDATED_FIELD_NAME,
     entities::{AttributeType, DocumentRelation},
 };
 
@@ -54,11 +55,17 @@ impl MainTableBuilder {
     fn new(document: &DocumentType) -> Self {
         let table_name = document.id.normalized();
         let has_draft_and_publish = document.has_draft_and_publish();
-        let columns = vec![Column::primary_key(
-            DOCUMENT_ID_FIELD_NAME,
-            ColumnType::Serial,
-            None,
-        )];
+        let columns = vec![
+            Column::primary_key(ID_FIELD_NAME, ColumnType::Serial, None),
+            Column::new(
+                DOCUMENT_ID_FIELD_NAME,
+                ColumnType::Uuid,
+                None,
+                true,
+                false,
+                None,
+            ),
+        ];
         Self {
             table_name,
             has_draft_and_publish,
@@ -71,34 +78,69 @@ impl MainTableBuilder {
     }
 
     fn into(mut self) -> Table {
-        self.columns.push(Column::new(
-            CREATED_FIELD_NAME,
-            ColumnType::TimestampTZ,
-            None,
-            true,
-            false,
-            Some("now()"),
-        ));
-        self.columns.push(Column::new(
-            UPDATED_FIELD_NAME,
-            ColumnType::TimestampTZ,
-            None,
-            false,
-            false,
-            None,
-        ));
-        if self.has_draft_and_publish {
-            self.columns.push(Column::new(
-                PUBLISHED_FIELD_NAME,
+        self.columns.extend(vec![
+            Column::new(
+                CREATED_FIELD_NAME,
+                ColumnType::TimestampTZ,
+                None,
+                true,
+                false,
+                Some("now()"),
+            ),
+            Column::new(
+                UPDATED_FIELD_NAME,
                 ColumnType::TimestampTZ,
                 None,
                 false,
                 false,
                 None,
-            ));
-        }
+            ),
+            Column::new(
+                CREATED_BY_FIELD_NAME,
+                ColumnType::Integer,
+                None,
+                false,
+                false,
+                None,
+            ),
+            Column::new(
+                UPDATED_BY_FIELD_NAME,
+                ColumnType::Integer,
+                None,
+                false,
+                false,
+                None,
+            ),
+        ]);
 
-        // TODO: add created_by_id, updated_by_id columns
+        if self.has_draft_and_publish {
+            self.columns.extend(vec![
+                Column::new(
+                    PUBLISHED_FIELD_NAME,
+                    ColumnType::TimestampTZ,
+                    None,
+                    false,
+                    false,
+                    None,
+                ),
+                Column::new(
+                    PUBLISHED_BY_FIELD_NAME,
+                    ColumnType::Integer,
+                    None,
+                    false,
+                    false,
+                    None,
+                ),
+                Column::new(
+                    REVISION_FIELD_NAME,
+                    ColumnType::Integer,
+                    None,
+                    false,
+                    false,
+                    None,
+                ),
+            ]);
+        }
 
         Table::new(self.table_name, self.columns, Vec::new(), Vec::new())
     }
@@ -128,7 +170,7 @@ impl RelationTablesBuilder {
         let relation_table_name = format!("{}_{}_relation", self.main_table_name, id.normalized());
         let inverse_column_name = format!("{}_id", target_table_name);
 
-        let mut columns = vec![
+        let columns = vec![
             Column::primary_key(RELATION_ID_FIELD_NAME, ColumnType::Serial, None),
             Column::new(
                 &self.owning_column_name as &str,
@@ -147,17 +189,6 @@ impl RelationTablesBuilder {
                 None,
             ),
         ];
-        if relation.ordering {
-            let ordering_column_name = format!("{}_order", &inverse_column_name as &str);
-            columns.push(Column::new(
-                &ordering_column_name as &str,
-                ColumnType::Integer,
-                None,
-                true,
-                false,
-                None,
-            ));
-        }
 
         let foreign_keys = vec![
             ForeignKeyConstraint::new(

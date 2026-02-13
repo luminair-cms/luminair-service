@@ -102,8 +102,7 @@ pub struct DocumentField {
 #[derive(Debug, Serialize)]
 pub struct DocumentRelation {
     pub relation_type: RelationType,
-    pub target: DocumentTypeId,
-    pub ordering: bool
+    pub target: DocumentTypeId
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]

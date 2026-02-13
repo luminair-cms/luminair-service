@@ -140,8 +140,6 @@ enum AttributeRecord<'a> {
         #[serde(alias = "relation")]
         relation_type: RelationType,
         target: &'a str,
-        #[serde(default)]
-        ordering: bool,
     },
 }
 
@@ -193,15 +191,13 @@ impl<'a> TryFrom<(&'a str, DocumentRecord<'a>)> for DocumentType {
                 }
                 AttributeRecord::Relation {
                     relation_type,
-                    target,
-                    ordering,
+                    target
                 } => {
                     let target = DocumentTypeId::try_new(target.to_owned())?;
                     
                     let relation = DocumentRelation {
                         relation_type: *relation_type,
-                        target,
-                        ordering: *ordering,
+                        target
                     };
                     relations.insert(id, relation);
                 }

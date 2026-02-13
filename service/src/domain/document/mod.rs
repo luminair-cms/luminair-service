@@ -1,6 +1,6 @@
-pub mod audit;
 pub mod content;
 pub mod error;
+pub mod lifecycle;
 
 use std::collections::HashMap;
 
@@ -8,7 +8,11 @@ use chrono::Utc;
 use luminair_common::DocumentTypeId;
 use serde::{Deserialize, Serialize};
 
-use crate::domain::document::{content::{AuditTrail, ContentValue, PublicationState, UserId}, error::DocumentError};
+use crate::domain::document::{
+    content::ContentValue,
+    error::DocumentError,
+    lifecycle::{AuditTrail, PublicationState, UserId},
+};
 
 /// A DocumentInstance: one actual row of data
 /// An instance of a DocumentType
@@ -17,13 +21,13 @@ use crate::domain::document::{content::{AuditTrail, ContentValue, PublicationSta
 pub struct DocumentInstance {
     /// Primary key: unique within this DocumentType
     pub id: DocumentInstanceId,
-    
+
     /// Which DocumentType does this instance conform to?
     pub document_type_id: DocumentTypeId,
-    
+
     /// The actual field values: field_name → value
     pub content: DocumentContent,
-    
+
     /// System/infrastructure metadata about this instance
     pub audit: AuditTrail,
 }
@@ -34,7 +38,7 @@ pub struct DocumentInstanceId(pub i64);
 
 impl From<i64> for DocumentInstanceId {
     fn from(value: i64) -> Self {
-        Self (value)
+        Self(value)
     }
 }
 
@@ -43,7 +47,7 @@ impl From<i64> for DocumentInstanceId {
 pub struct DocumentContent {
     /// All fields with their values
     pub fields: HashMap<String, ContentValue>,
-    
+
     /// Publishing state (if draft_and_publish is enabled)
     pub publication_state: PublicationState,
 }
@@ -63,13 +67,11 @@ impl DocumentInstance {
                 created_by: None,
                 updated_at: Utc::now(),
                 updated_by: None,
-                published_at: None,
-                published_by: None,
                 version: 1,
             },
         }
     }
-    
+
     /// Domain invariant: validate instance against its type
     /*
     pub fn validate(&self, document_type: &DocumentType) -> Result<(), DocumentError> {
@@ -87,7 +89,6 @@ impl DocumentInstance {
     }
     */
 
-    
     /// Publish a draft
     pub fn publish(&mut self, user_id: Option<UserId>) -> Result<(), DocumentError> {
         match &self.content.publication_state {
@@ -96,17 +97,14 @@ impl DocumentInstance {
                     revision: self.audit.version,
                     published_at: Utc::now(),
                 };
-                self.audit.published_at = Some(Utc::now());
-                self.audit.published_by = user_id;
+                self.audit.updated_by = user_id;
                 self.audit.version += 1;
                 Ok(())
             }
-            PublicationState::Published { .. } => {
-                Err(DocumentError::AlreadyPublished)
-            }
+            PublicationState::Published { .. } => Err(DocumentError::AlreadyPublished),
         }
     }
-    
+
     /// Unpublish back to draft
     pub fn unpublish(&mut self) -> Result<(), DocumentError> {
         match &self.content.publication_state {
@@ -117,9 +115,7 @@ impl DocumentInstance {
                 self.audit.version += 1;
                 Ok(())
             }
-            PublicationState::Draft { .. } => {
-                Err(DocumentError::AlreadyDraft)
-            }
+            PublicationState::Draft { .. } => Err(DocumentError::AlreadyDraft),
         }
     }
 }
