@@ -422,7 +422,7 @@ impl PostgresDocumentRepository {
         name: Cow::Borrowed(REVISION_FIELD_NAME),
     };
 
-    fn query_builder_from_schema(schema: &DocumentType) -> QueryBuilder {
+    fn query_builder_from_schema(schema: &DocumentType) -> QueryBuilder<'_> {
         let table = QualifiedTable::from(schema);
         let mut columns: Vec<ColumnRef<'_>> = vec![
             Cow::Borrowed(&ID_COLUMN),
