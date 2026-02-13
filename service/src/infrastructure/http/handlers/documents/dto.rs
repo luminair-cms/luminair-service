@@ -1,4 +1,10 @@
-use luminair_common::{AttributeId, DocumentType, entities::{AttributeConstraints, AttributeType, DocumentField, DocumentKind, DocumentRelation, DocumentTypeInfo, DocumentTypeOptions, RelationType}};
+use luminair_common::{
+    AttributeId, DocumentType,
+    entities::{
+        AttributeConstraints, AttributeType, DocumentField, DocumentKind, DocumentRelation,
+        DocumentTypeInfo, DocumentTypeOptions, RelationType,
+    },
+};
 use serde::Serialize;
 
 /// Response for list documents route
@@ -83,8 +89,6 @@ pub enum AttribteBodyResponse {
         #[serde(alias = "relation")]
         relation_type: RelationType,
         target: String,
-        #[serde(default)]
-        ordering: bool,
     },
 }
 
@@ -97,22 +101,22 @@ impl PartialEq for DetailedDocumentResponse {
 impl From<&DocumentType> for DetailedDocumentResponse {
     fn from(value: &DocumentType) -> Self {
         let mut attributes = Vec::with_capacity(value.fields.len() + value.relations.len());
-        
+
         for f in value.fields.iter() {
             attributes.push(f.into())
-        };
-        
+        }
+
         for r in value.relations.iter() {
             attributes.push(r.into());
         }
-        
+
         Self {
             id: value.id.to_string(),
             title: value.info.title.to_string(),
             kind: value.kind.clone(),
             info: (&value.info).into(),
             options: value.options.as_ref().map(DocumentOptionsResponse::from),
-            attributes
+            attributes,
         }
     }
 }
@@ -137,8 +141,8 @@ impl From<&DocumentTypeOptions> for DocumentOptionsResponse {
     }
 }
 
-impl From<(&AttributeId,&DocumentField)> for AttributeResponse {
-    fn from(value: (&AttributeId,&DocumentField)) -> Self {
+impl From<(&AttributeId, &DocumentField)> for AttributeResponse {
+    fn from(value: (&AttributeId, &DocumentField)) -> Self {
         let id = value.0.to_string();
         let body = value.1;
         let constraints = body.constraints.as_ref().map(|c| c.clone());
@@ -153,15 +157,14 @@ impl From<(&AttributeId,&DocumentField)> for AttributeResponse {
     }
 }
 
-impl From<(&AttributeId,&DocumentRelation)> for AttributeResponse {
-    fn from(value: (&AttributeId,&DocumentRelation)) -> Self {
+impl From<(&AttributeId, &DocumentRelation)> for AttributeResponse {
+    fn from(value: (&AttributeId, &DocumentRelation)) -> Self {
         let id = value.0.to_string();
         let body = value.1;
         let target = body.target.to_string();
         let body = AttribteBodyResponse::Relation {
             relation_type: body.relation_type.clone(),
             target,
-            ordering: body.ordering,
         };
         Self { id, body }
     }

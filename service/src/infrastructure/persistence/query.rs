@@ -4,7 +4,7 @@ use luminair_common::persistence::QualifiedTable;
 /// Similar to jOOQ, but with Rust's type system
 #[derive(Debug)]
 pub struct QueryBuilder<'a> {
-    from_table: QualifiedTable,
+    from_table: QualifiedTable<'a>,
     select: Vec<ColumnRef<'a>>,
     where_conditions: Vec<Condition<'a>>,
     order_by: Vec<OrderBy<'a>>,
@@ -77,6 +77,7 @@ pub enum ConditionValue {
     Text(String),
     Integer(i64),
     Boolean(bool),
+    Uuid(Uuid),
     Null,
 }
 
@@ -95,7 +96,7 @@ pub enum SortDirection {
 #[derive(Debug)]
 pub struct Join<'a> {
     pub join_type: JoinType,
-    pub target_table: QualifiedTable,
+    pub target_table: QualifiedTable<'a>,
     pub main_column: ColumnRef<'a>,
     pub target_column: ColumnRef<'a>,
 }
@@ -107,8 +108,8 @@ pub enum JoinType {
     Right,
 }
 
-impl <'a> From<QualifiedTable> for QueryBuilder<'a> {
-    fn from(value: QualifiedTable) -> Self {
+impl <'a> From<QualifiedTable<'a>> for QueryBuilder<'a> {
+    fn from(value: QualifiedTable<'a>) -> Self {
         QueryBuilder {
             from_table: value,
             select: vec![],
@@ -300,6 +301,7 @@ impl From<&ConditionValue> for SqlParameter {
             ConditionValue::Text(s) => SqlParameter::Text(s.clone()),
             ConditionValue::Integer(i) => SqlParameter::Integer(*i),
             ConditionValue::Boolean(b) => SqlParameter::Boolean(*b),
+            ConditionValue::Uuid(u) => SqlParameter::Uuid(*u), 
             ConditionValue::Null => SqlParameter::Null,
         }
     }
@@ -312,12 +314,13 @@ impl From<&i64> for SqlParameter {
 }
 
 use std::borrow::Cow;
+use sqlx::types::Uuid;
 
 /// Represents one column in the database table
 #[derive(Clone, Debug)]
 pub struct Column<'a> {
     pub qualifier: &'static str,
-    pub name: &'a str,
+    pub name: Cow<'a, str>,
 }
 
 impl <'a> Column<'a> {
@@ -336,16 +339,18 @@ pub enum SqlParameter {
     Text(String),
     Integer(i64),
     Boolean(bool),
+    Uuid(Uuid),
     Null,
 }
 
 impl SqlParameter {
     /// Bind to sqlx query
-    pub fn bind_to_query<'q>(self, query: sqlx::query::Query<'q, sqlx::Postgres, sqlx::postgres::PgArguments>) -> sqlx::query::Query<'q, sqlx::Postgres, sqlx::postgres::PgArguments> {
+    pub fn bind_to_query(self, query: sqlx::query::Query<sqlx::Postgres, sqlx::postgres::PgArguments>) -> sqlx::query::Query<sqlx::Postgres, sqlx::postgres::PgArguments> {
         match self {
             SqlParameter::Text(s) => query.bind(s),
             SqlParameter::Integer(i) => query.bind(i),
             SqlParameter::Boolean(b) => query.bind(b),
+            SqlParameter::Uuid(u) => query.bind(u),
             SqlParameter::Null => query.bind::<Option<String>>(None),
         }
     }

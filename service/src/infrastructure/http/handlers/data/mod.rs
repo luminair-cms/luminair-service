@@ -32,7 +32,7 @@ pub struct PaginationParams {
 
 pub async fn find_document_by_id<S: AppState>(
     State(state): State<S>,
-    Path((document_id, id)): Path<(String, i64)>,
+    Path((document_id, id)): Path<(String, String)>,
     QueryString(params): QueryString<QueryParams>,
 ) -> Result<ApiSuccess<OneDocumentResponse>, ApiError> {
     if params.pagination.is_some() {
@@ -42,11 +42,12 @@ pub async fn find_document_by_id<S: AppState>(
     }
     let document_type_id = DocumentTypeId::try_new(document_id)
         .map_err(|err| ApiError::UnprocessableEntity(err.to_string()))?;
+    let document_instance_id = DocumentInstanceId::try_from(&id)?;
 
     let repository = state.documents_instance_repository();
 
     let result = repository
-        .find_by_id(document_type_id, DocumentInstanceId::from(id))
+        .find_by_id(document_type_id, document_instance_id)
         .await
         .map_err(|err| ApiError::from(err))?;
 

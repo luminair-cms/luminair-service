@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub enum PublicationState {
     /// Still being edited
     Draft { revision: i32 },
@@ -10,6 +10,7 @@ pub enum PublicationState {
     Published {
         revision: i32,
         published_at: DateTime<Utc>,
+        published_by: Option<UserId>,
     },
 }
 
@@ -26,5 +27,23 @@ pub struct AuditTrail {
     pub version: i32,
 }
 
-#[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
-pub struct UserId(pub i32);
+#[derive(Debug, Clone, Hash, Eq, PartialEq)]
+pub struct UserId(pub String);
+
+impl From<String> for UserId {
+    fn from(value: String) -> Self {
+        Self(value)
+    }
+}
+
+impl From<&str> for UserId {
+    fn from(value: &str) -> Self {
+        Self(value.to_string())
+    }
+}
+
+impl From<UserId> for String {
+    fn from(value: UserId) -> Self {
+        value.0
+    }
+}

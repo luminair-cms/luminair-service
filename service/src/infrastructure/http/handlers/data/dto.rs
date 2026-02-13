@@ -8,6 +8,7 @@ use crate::domain::document::{
     DocumentInstance, DocumentInstanceId,
     content::{ContentValue, DomainValue},
 };
+use crate::domain::document::lifecycle::PublicationState;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ManyDocumentsResponse {
@@ -51,12 +52,32 @@ impl TryFrom<Option<DocumentInstance>> for OneDocumentResponse {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DocumentInstanceResponse {
-    pub document_id: DocumentInstanceId,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
-    pub published_at: Option<DateTime<Utc>>,
+    pub id: i64,
+    pub document_id: String,
+    #[serde(flatten)]
+    pub audit: DocumentInstanceAudit,
+    #[serde(flatten)]
+    pub published: Option<DocumentInstancePublicationState>,
     #[serde(flatten)]
     fields: HashMap<String, AttributeResponse>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DocumentInstanceAudit {
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub created_by: Option<String>,
+    pub updated_by: Option<String>,
+    pub version: i32,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DocumentInstancePublicationState {
+    pub published_at: DateTime<Utc>,
+    pub published_by: Option<String>,
+    pub revision: i32,
 }
 
 impl DocumentInstanceResponse {
@@ -109,12 +130,31 @@ impl From<DomainValue> for JsonValue {
 
 impl From<DocumentInstance> for DocumentInstanceResponse {
     fn from(value: DocumentInstance) -> Self {
-        let document_id = value.id.into();
+        let id = value.id.0;
+        let document_id = value.document_id.into();
 
         let audit = value.audit;
         let created_at = audit.created_at;
         let updated_at = audit.updated_at;
-        let published_at = audit.published_at;
+        
+        let audit = DocumentInstanceAudit {
+            created_at,
+            updated_at,
+            created_by: audit.created_by.map(String::from),
+            updated_by: audit.updated_by.map(String::from),
+            version: audit.version,
+        };
+        
+        let published = match value.content.publication_state {
+            PublicationState::Draft { revision } => None,
+            PublicationState::Published { revision, published_at, published_by } => {
+                Some(DocumentInstancePublicationState {
+                    revision,
+                    published_at,
+                    published_by: published_by.map(String::from),
+                })
+            }
+        };
 
         let fields: HashMap<String, AttributeResponse> = value
             .content
@@ -136,10 +176,10 @@ impl From<DocumentInstance> for DocumentInstanceResponse {
             .collect();
 
         Self {
+            id,
             document_id,
-            created_at,
-            updated_at,
-            published_at,
+            audit,
+            published,
             fields,
         }
     }

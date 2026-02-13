@@ -97,7 +97,7 @@ impl MainTableBuilder {
             ),
             Column::new(
                 CREATED_BY_FIELD_NAME,
-                ColumnType::Integer,
+                ColumnType::Text,
                 None,
                 false,
                 false,
@@ -105,7 +105,7 @@ impl MainTableBuilder {
             ),
             Column::new(
                 UPDATED_BY_FIELD_NAME,
-                ColumnType::Integer,
+                ColumnType::Text,
                 None,
                 false,
                 false,
@@ -125,7 +125,7 @@ impl MainTableBuilder {
                 ),
                 Column::new(
                     PUBLISHED_BY_FIELD_NAME,
-                    ColumnType::Integer,
+                    ColumnType::Text,
                     None,
                     false,
                     false,

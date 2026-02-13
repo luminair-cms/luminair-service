@@ -1,23 +1,23 @@
 use crate::{AttributeId, DocumentType};
 
 #[derive(Debug)]
-pub struct QualifiedTable {
-    pub name: TableNameProvider,
+pub struct QualifiedTable<'a> {
+    pub name: TableNameProvider<'a>,
     pub alias: &'static str,
 }
 
 #[derive(Debug)]
-pub enum TableNameProvider {
+pub enum TableNameProvider<'a> {
     MainTable {
-        document: &'static DocumentType,
+        document: &'a DocumentType,
     },
     RelationTable {
-        document: &'static DocumentType,
-        relation: &'static AttributeId,
+        document: &'a DocumentType,
+        relation: &'a AttributeId,
     },
 }
 
-impl TableNameProvider {
+impl<'a> TableNameProvider<'a> {
     pub fn table_name(&self) -> String {
         match self {
             Self::MainTable { document } => format!("{}", document.info.singular_name.normalized()),
@@ -30,8 +30,8 @@ impl TableNameProvider {
     }
 }
 
-impl QualifiedTable {
-    /// Get qualified table name with alias
+impl<'a> QualifiedTable<'a> {
+    /// Get a qualified table name with alias
     pub fn qualified(&self) -> String {
         match self.name {
             TableNameProvider::MainTable { document } => format!(
@@ -49,8 +49,8 @@ impl QualifiedTable {
     }
 }
 
-impl From<&'static DocumentType> for QualifiedTable {
-    fn from(document: &'static DocumentType) -> Self {
+impl<'a> From<&'a DocumentType> for QualifiedTable<'a> {
+    fn from(document: &'a DocumentType) -> Self {
         Self {
             name: TableNameProvider::MainTable { document },
             alias: "m",
@@ -58,8 +58,8 @@ impl From<&'static DocumentType> for QualifiedTable {
     }
 }
 
-impl From<(&'static DocumentType, &'static AttributeId)> for QualifiedTable {
-    fn from(value: (&'static DocumentType, &'static AttributeId)) -> Self {
+impl<'a> From<(&'a DocumentType, &'a AttributeId)> for QualifiedTable<'a> {
+    fn from(value: (&'a DocumentType, &'a AttributeId)) -> Self {
         let document = value.0;
         let relation = value.1;
         Self {
