@@ -1,6 +1,7 @@
-use std::{collections::HashMap, fmt::Debug};
+use std::{collections::HashMap, fmt::Debug, future::Future};
 
 use luminair_common::DocumentTypeId;
+
 
 use crate::domain::{
     document::{
@@ -67,6 +68,22 @@ pub trait DocumentInstanceRepository: Send + Sync + 'static {
         &self,
         document_type_id: DocumentTypeId,
     ) -> impl Future<Output = Result<i64, RepositoryError>> + Send;
+
+    /// Fetch relations for a single document instance
+    fn fetch_relations_for_instance(
+        &self,
+        document_type_id: &DocumentTypeId,
+        instance_id: DocumentInstanceId,
+        relation_fields: &[luminair_common::AttributeId],
+    ) -> impl Future<Output = Result<HashMap<luminair_common::AttributeId, Vec<DocumentInstance>>, RepositoryError>> + Send;
+
+    /// Fetch relations in batch for multiple document instances
+    fn fetch_relations_batch_for_all(
+        &self,
+        document_type_id: &DocumentTypeId,
+        instance_ids: &[DocumentInstanceId],
+        relation_fields: &[luminair_common::AttributeId],
+    ) -> impl Future<Output = Result<HashMap<luminair_common::AttributeId, HashMap<DocumentInstanceId, Vec<DocumentInstance>>>, RepositoryError>> + Send;
 }
 
 #[derive(Debug)]

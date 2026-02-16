@@ -17,7 +17,10 @@ mod dto;
 
 #[derive(Deserialize, Debug)]
 pub struct QueryParams {
+    /// A set of attribute IDs to populate in the response. If not provided, no relations will be populated.
     pub populate: Option<HashSet<String>>,
+    /// Pagination parameters. Only eligible for find_all_documents query, not for find_by_id query.
+    /// If not provided, defaults to page=1 and page_size=25.
     pub pagination: Option<PaginationParams>,
 }
 
@@ -47,17 +50,51 @@ pub async fn find_document_by_id<S: AppState>(
         .ok_or(ApiError::NotFound)?;
 
     let document_instance_id = DocumentInstanceId::try_from(&id)?;
-
     let repository = state.documents_instance_repository();
 
-    let result = repository
-        .find_by_id(document_type_id, document_instance_id)
+    let mut document_response: dto::DocumentInstanceResponse = repository
+        .find_by_id(document_type_id.clone(), document_instance_id)
         .await
-        .map_err(|err| ApiError::from(err))?;
+        .map_err(|err| ApiError::from(err))?
+        .ok_or(ApiError::NotFound)?
+        .into();
 
-    OneDocumentResponse::try_from(result)
-        .map(|result| ApiSuccess::new(StatusCode::OK, result))
-        .map_err(|_| ApiError::NotFound)
+    // Apply populate if requested
+    if let Some(populate_fields) = params.populate {
+        // validate each attribute id
+        let mut attr_ids = Vec::with_capacity(populate_fields.len());
+        for name in populate_fields {
+            let attr = luminair_common::AttributeId::try_new(&name)
+                .map_err(|_| ApiError::UnprocessableEntity(format!("Invalid populate field: {}", name)))?;
+            attr_ids.push(attr);
+        }
+        let relations_raw = repository
+            .fetch_relations_for_instance(&document_type_id, document_instance_id, &attr_ids)
+            .await
+            .map_err(|err| ApiError::from(err))?;
+
+        // Convert relation instances to responses
+        let relations_mapped: std::collections::HashMap<
+            luminair_common::AttributeId,
+            Vec<dto::DocumentInstanceResponse>,
+        > = relations_raw
+            .into_iter()
+            .map(|(attr_id, instances)| {
+                let responses: Vec<dto::DocumentInstanceResponse> =
+                    instances.into_iter().map(Into::into).collect();
+                (attr_id, responses)
+            })
+            .collect();
+
+        document_response = document_response.with_relations(relations_mapped);
+    }
+
+    Ok(ApiSuccess::new(
+        StatusCode::OK,
+        OneDocumentResponse {
+            data: document_response,
+        },
+    ))
 }
 
 pub async fn find_all_documents<S: AppState>(
@@ -79,91 +116,71 @@ pub async fn find_all_documents<S: AppState>(
         .unwrap_or((1, 25));
 
     // Build query using builder pattern - pagination guards are enforced by the query
-    let query = DocumentInstanceQuery::new(document_type_id).paginate(page, page_size);
+    let query = DocumentInstanceQuery::new(document_type_id.clone()).paginate(page, page_size);
 
-    let result = crate::domain::repository::DocumentInstanceRepository::find(repository, query)
+    let mut documents: Vec<dto::DocumentInstanceResponse> = repository
+        .find(query)
         .await
-        .map_err(|err| ApiError::from(err))?;
+        .map_err(|err| ApiError::from(err))?
+        .into_iter()
+        .map(Into::into)
+        .collect();
 
+    // Apply populate if requested
+    if !documents.is_empty() {
+        if let Some(populate_fields) = params.populate {
+            // convert and validate attribute IDs
+            let mut attr_ids = Vec::with_capacity(populate_fields.len());
+            for name in populate_fields {
+                let attr = luminair_common::AttributeId::try_new(&name)
+                    .map_err(|_| ApiError::UnprocessableEntity(format!("Invalid populate field: {}", name)))?;
+                attr_ids.push(attr);
+            }
+
+            // Collect all instance IDs for batch fetching
+            let instance_ids: Vec<DocumentInstanceId> = documents
+                .iter()
+                .map(|doc| DocumentInstanceId::try_from(doc.document_id.as_str()).unwrap())
+                .collect();
+
+            // Fetch all relations for this batch of documents
+            let all_relations_raw = repository
+                .fetch_relations_batch_for_all(&document_type_id, &instance_ids, &attr_ids)
+                .await
+                .map_err(|err| ApiError::from(err))?;
+
+        // Apply relations to each document response
+        for doc_response in &mut documents {
+            let doc_id =
+                DocumentInstanceId::try_from(doc_response.document_id.as_str()).map_err(|_| {
+                    ApiError::InternalServerError("Failed to parse document ID".to_string())
+                })?;
+
+            let doc_relations: std::collections::HashMap<
+                luminair_common::AttributeId,
+                Vec<dto::DocumentInstanceResponse>,
+            > = all_relations_raw
+                .iter()
+                .filter_map(|(attr_id, related_docs_by_id)| {
+                    let related_responses: Vec<dto::DocumentInstanceResponse> = related_docs_by_id
+                        .get(&doc_id)
+                        .map(|instances| instances.iter().cloned().map(Into::into).collect())
+                        .unwrap_or_default();
+                    Some((attr_id.clone(), related_responses))
+                })
+                .collect();
+
+            *doc_response = doc_response.clone().with_relations(doc_relations);
+        }
+        }
+    }
+
+    let total = documents.len();
     Ok(ApiSuccess::new(
         StatusCode::OK,
-        ManyDocumentsResponse::from(result),
+        ManyDocumentsResponse {
+            data: documents,
+            meta: dto::MetadataResponse { total },
+        },
     ))
 }
-
-/*
-fn result_set_into_document_response(result_set: impl ResultSet) -> Vec<DocumentRowResponse> {
-    result_set
-        .into_rows()
-        .into_iter()
-        .map(DocumentRowResponse::from)
-        .collect()
-}
-
-fn result_set_into_groped_document_response(result_set: impl ResultSet) -> Vec<GroupedDocumentRowResponse> {
-    result_set
-        .into_rows()
-        .into_iter()
-        .filter_map(|row| {
-            let owning_id: DocumentRowId = row.owning_id.map(|it| it.into())?;
-            Some((owning_id, DocumentRowResponse::from(row)))
-        })
-        .chunk_by(|(owning_id, _)| owning_id.clone())
-        .into_iter()
-        .map(|(owning_id, group)| GroupedDocumentRowResponse {
-            owning_id,
-            rows: group.map(|(_, row)| row).collect(),
-        })
-        .collect()
-}
-
-// join relations to the main document response
-// relations: map from attribute_id to vector of related documents;
-// each of the related documents will be added to the main document response by its owning_id
-// both main and relations are sorted by owning DocumentRowId - document_id of main rows
-fn join_relations(
-    main: Vec<DocumentRowResponse>,
-    relations: HashMap<AttributeId, Vec<GroupedDocumentRowResponse>>,
-) -> Vec<DocumentRowResponse> {
-    let mut transposed_map: HashMap<DocumentRowId, HashMap<AttributeId, Vec<DocumentRowResponse>>> =
-        HashMap::new();
-
-    for (attribute_id, grouped_rows) in relations {
-        for grouped_row in grouped_rows {
-            transposed_map
-                .entry(grouped_row.owning_id)
-                .or_default()
-                .insert(attribute_id.clone(), grouped_row.rows);
-        }
-    }
-
-    let mut transposed: Vec<(
-        DocumentRowId,
-        HashMap<AttributeId, Vec<DocumentRowResponse>>,
-    )> = transposed_map.into_iter().collect();
-    transposed.sort_by(|(a, _), (b, _)| a.cmp(b));
-
-    let transposed_iter = transposed.into_iter();
-
-    let joined = main.into_iter()
-        .merge_join_by(transposed_iter, |a,(b,_)| a.document_id.cmp(b));
-
-    let mut enriched_documents = Vec::new();
-
-    for item in joined {
-        match item {
-            EitherOrBoth::Both(entity, (_id, populated)) => {
-                enriched_documents.push(entity.with_relations(populated));
-            }
-            EitherOrBoth::Left(entity) => {
-                enriched_documents.push(entity);
-            }
-            EitherOrBoth::Right((_id, populated)) => {
-                println!("Doc without entity: {:?}", populated);
-            }
-        }
-    }
-
-    enriched_documents
-}
- */

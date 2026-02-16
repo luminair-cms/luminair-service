@@ -1,10 +1,4 @@
-use std::borrow::Cow;
-use chrono::{DateTime, Utc};
-use sqlx::postgres::PgRow;
-use sqlx::Row;
-use luminair_common::{CREATED_FIELD_NAME, DOCUMENT_ID_FIELD_NAME, DocumentTypeId, DocumentTypesRegistry, ID_FIELD_NAME, PUBLISHED_FIELD_NAME, UPDATED_FIELD_NAME, database::Database, persistence::QualifiedTable, DocumentType, CREATED_BY_FIELD_NAME, UPDATED_BY_FIELD_NAME, PUBLISHED_BY_FIELD_NAME, VERSION_FIELD_NAME, REVISION_FIELD_NAME};
-use sqlx::types::{uuid, Uuid};
-use luminair_common::entities::{AttributeType, DocumentField};
+use crate::domain::document::DatabaseRowId;
 use crate::{
     domain::{
         document::{
@@ -18,7 +12,19 @@ use crate::{
         Column, ColumnRef, Condition, ConditionValue, QueryBuilder,
     },
 };
-use crate::domain::document::DatabaseRowId;
+use chrono::{DateTime, Utc};
+use luminair_common::AttributeId;
+use luminair_common::entities::{AttributeType, DocumentField};
+use luminair_common::{
+    CREATED_BY_FIELD_NAME, CREATED_FIELD_NAME, DOCUMENT_ID_FIELD_NAME, DocumentType,
+    DocumentTypeId, DocumentTypesRegistry, ID_FIELD_NAME, PUBLISHED_BY_FIELD_NAME,
+    PUBLISHED_FIELD_NAME, REVISION_FIELD_NAME, UPDATED_BY_FIELD_NAME, UPDATED_FIELD_NAME,
+    VERSION_FIELD_NAME, database::Database, persistence::QualifiedTable,
+};
+use sqlx::Row;
+use sqlx::postgres::PgRow;
+use sqlx::types::{Uuid, uuid};
+use std::{borrow::Cow, collections::HashMap};
 
 #[derive(Clone)]
 pub struct PostgresDocumentRepository {
@@ -84,11 +90,11 @@ impl DocumentInstanceRepository for PostgresDocumentRepository {
             .get(&document_type_id)
             .ok_or(RepositoryError::NotFound)?;
 
-        let query_builder = Self::query_builder_from_schema(schema)
-                .where_condition(Condition::Equals {
-                    column: Cow::Borrowed(&DOCUMENT_ID_COLUMN),
-                    value: ConditionValue::Uuid(id.0),
-                });
+        let query_builder =
+            Self::query_builder_from_schema(schema).where_condition(Condition::Equals {
+                column: Cow::Borrowed(&DOCUMENT_ID_COLUMN),
+                value: ConditionValue::Uuid(id.0),
+            });
 
         let (sql, params) = query_builder.build();
         println!("Generated SQL: {}", sql);
@@ -107,7 +113,7 @@ impl DocumentInstanceRepository for PostgresDocumentRepository {
             Some(row) => {
                 let document = self.row_to_document(&row, &schema)?;
                 Some(document)
-            },
+            }
             None => None,
         };
 
@@ -126,10 +132,7 @@ impl DocumentInstanceRepository for PostgresDocumentRepository {
     async fn update(
         &self,
         _id: DocumentInstanceId,
-        _content_updates: std::collections::HashMap<
-            String,
-            ContentValue,
-        >,
+        _content_updates: std::collections::HashMap<String, ContentValue>,
         _user_id: Option<UserId>,
     ) -> Result<DocumentInstance, RepositoryError> {
         todo!()
@@ -170,6 +173,101 @@ impl DocumentInstanceRepository for PostgresDocumentRepository {
             .map_err(|e| RepositoryError::DatabaseError(e.to_string()))?;
 
         Ok(row.0)
+    }
+
+    async fn fetch_relations_for_instance(
+        &self,
+        document_type_id: &DocumentTypeId,
+        instance_id: DocumentInstanceId,
+        relation_fields: &[AttributeId],
+    ) -> Result<HashMap<AttributeId, Vec<DocumentInstance>>, RepositoryError> {
+        let schema = self
+            .schema_registry
+            .get(document_type_id)
+            .ok_or(RepositoryError::NotFound)?;
+
+        let mut result = HashMap::new();
+
+        for attr_id in relation_fields {
+            // each element is already a validated AttributeId
+            let rel_metadata = schema.relations.get(attr_id).ok_or_else(|| {
+                RepositoryError::ValidationFailed(format!("Relation not found: {}", attr_id))
+            })?;
+
+            // only owning side is supported in MVP
+            if !rel_metadata.relation_type.is_owning() {
+                return Err(RepositoryError::ValidationFailed(format!(
+                    "Relation is not owning: {}",
+                    attr_id
+                )));
+            }
+
+            let related_schema = self
+                .schema_registry
+                .get(&rel_metadata.target)
+                .ok_or(RepositoryError::NotFound)?;
+            let related_docs = self
+                .fetch_related_documents(&schema, &related_schema, &attr_id, &[instance_id])
+                .await?;
+
+            result.insert(attr_id.clone(), related_docs);
+        }
+
+        Ok(result)
+    }
+
+    async fn fetch_relations_batch_for_all(
+        &self,
+        document_type_id: &DocumentTypeId,
+        instance_ids: &[DocumentInstanceId],
+        relation_fields: &[AttributeId],
+    ) -> Result<HashMap<AttributeId, HashMap<DocumentInstanceId, Vec<DocumentInstance>>>, RepositoryError>
+    {
+        let schema = self
+            .schema_registry
+            .get(document_type_id)
+            .ok_or(RepositoryError::NotFound)?;
+
+        let mut result: HashMap<AttributeId, HashMap<DocumentInstanceId, Vec<DocumentInstance>>> =
+            std::collections::HashMap::new();
+
+        for attr_id in relation_fields {
+            let rel_metadata = schema.relations.get(attr_id).ok_or_else(|| {
+                RepositoryError::ValidationFailed(format!("Relation not found: {}", attr_id))
+            })?;
+
+            if !rel_metadata.relation_type.is_owning() {
+                return Err(RepositoryError::ValidationFailed(format!(
+                    "Relation is not owning: {}",
+                    attr_id
+                )));
+            }
+
+            let related_schema = self
+                .schema_registry
+                .get(&rel_metadata.target)
+                .ok_or(RepositoryError::NotFound)?;
+            let related_docs = self
+                .fetch_related_documents(&schema, &related_schema, &attr_id, instance_ids)
+                .await?;
+
+            // Group related docs by their owning main document id
+            // For MVP simplicity, assume 1-to-N relations
+            let mut grouped: std::collections::HashMap<DocumentInstanceId, Vec<DocumentInstance>> =
+                std::collections::HashMap::new();
+            for doc in related_docs {
+                for main_id in instance_ids.iter() {
+                    grouped
+                        .entry(*main_id)
+                        .or_insert_with(Vec::new)
+                        .push(doc.clone());
+                }
+            }
+
+            result.insert(attr_id.clone(), grouped);
+        }
+
+        Ok(result)
     }
 }
 
@@ -235,7 +333,11 @@ impl PostgresDocumentRepository {
         })
     }
 
-    fn parse_field_value(row: &PgRow, field: &DocumentField, column_name: &str) -> Result<ContentValue, RepositoryError> {
+    fn parse_field_value(
+        row: &PgRow,
+        field: &DocumentField,
+        column_name: &str,
+    ) -> Result<ContentValue, RepositoryError> {
         let value = match field.attribute_type {
             AttributeType::Text => {
                 let text_value: Option<String> = row.try_get(column_name).map_err(|e| {
@@ -327,7 +429,10 @@ impl PostgresDocumentRepository {
         Ok(value)
     }
 
-    fn parse_audit_trail(row: &PgRow, created_at: DateTime<Utc>) -> Result<AuditTrail, RepositoryError> {
+    fn parse_audit_trail(
+        row: &PgRow,
+        created_at: DateTime<Utc>,
+    ) -> Result<AuditTrail, RepositoryError> {
         let updated_at: DateTime<Utc> = row.try_get(UPDATED_FIELD_NAME).map_err(|e| {
             RepositoryError::DatabaseError(format!("Failed to parse updated_at: {}", e))
         })?;
@@ -355,15 +460,20 @@ impl PostgresDocumentRepository {
     }
 
     // Parse publication state if the schema supports draft_and_publish
-    fn parse_publication_state(row: &PgRow, schema: &DocumentType, created_at: DateTime<Utc>) -> Result<PublicationState, RepositoryError> {
+    fn parse_publication_state(
+        row: &PgRow,
+        schema: &DocumentType,
+        created_at: DateTime<Utc>,
+    ) -> Result<PublicationState, RepositoryError> {
         Ok(if schema.has_draft_and_publish() {
             let published_at: Option<DateTime<Utc>> =
                 row.try_get(PUBLISHED_FIELD_NAME).map_err(|e| {
                     RepositoryError::DatabaseError(format!("Failed to parse published_at: {}", e))
                 })?;
-            let published_by: Option<String> = row.try_get(PUBLISHED_BY_FIELD_NAME).map_err(|e| {
-                RepositoryError::DatabaseError(format!("Failed to parse updated_by: {}", e))
-            })?;
+            let published_by: Option<String> =
+                row.try_get(PUBLISHED_BY_FIELD_NAME).map_err(|e| {
+                    RepositoryError::DatabaseError(format!("Failed to parse updated_by: {}", e))
+                })?;
             let revision: i32 = row.try_get(REVISION_FIELD_NAME).map_err(|e| {
                 RepositoryError::DatabaseError(format!("Failed to parse revision: {}", e))
             })?;
@@ -449,5 +559,154 @@ impl PostgresDocumentRepository {
         }
 
         QueryBuilder::from(table).select(columns)
+    }
+
+    /// Fetch related documents for a batch of main document instance IDs.
+    /// Uses PostgreSQL = ANY syntax for batch queries.
+    /// Results are sorted by document_instance_id for efficient joining.
+    async fn fetch_related_documents(
+        &self,
+        main_schema: &DocumentType,
+        related_schema: &DocumentType,
+        relation_attr: &luminair_common::AttributeId,
+        main_instance_ids: &[DocumentInstanceId],
+    ) -> Result<Vec<DocumentInstance>, RepositoryError> {
+        if main_instance_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        // table/alias names
+        let main_table_name = main_schema.id.normalized();
+        let related_table_name = related_schema.id.normalized();
+        let _relation_table_name = format!(
+            "{}_{}_relation",
+            main_table_name,
+            relation_attr.normalized()
+        );
+
+        // Prepare QueryBuilder
+        use crate::infrastructure::persistence::query::{
+            ColumnRef, Condition, ConditionValue, Join, JoinType, OrderBy, SortDirection,
+        };
+        // use QualifiedTable From implementations (main_table not used directly)
+        let _main_table = QualifiedTable::from(&*main_schema);
+        let related_table = QualifiedTable::from(&*related_schema);
+        let relation_table = QualifiedTable::from((&*main_schema, relation_attr));
+
+        // build select columns for related table (alias r)
+        let mut columns: Vec<ColumnRef<'_>> = vec![
+            Cow::Owned(Column {
+                qualifier: "r",
+                name: Cow::Borrowed(ID_FIELD_NAME),
+            }),
+            Cow::Owned(Column {
+                qualifier: "r",
+                name: Cow::Borrowed(DOCUMENT_ID_FIELD_NAME),
+            }),
+            Cow::Owned(Column {
+                qualifier: "r",
+                name: Cow::Borrowed(CREATED_FIELD_NAME),
+            }),
+            Cow::Owned(Column {
+                qualifier: "r",
+                name: Cow::Borrowed(UPDATED_FIELD_NAME),
+            }),
+            Cow::Owned(Column {
+                qualifier: "r",
+                name: Cow::Borrowed(CREATED_BY_FIELD_NAME),
+            }),
+            Cow::Owned(Column {
+                qualifier: "r",
+                name: Cow::Borrowed(UPDATED_BY_FIELD_NAME),
+            }),
+            Cow::Owned(Column {
+                qualifier: "r",
+                name: Cow::Borrowed(VERSION_FIELD_NAME),
+            }),
+        ];
+
+        if related_schema.has_draft_and_publish() {
+            columns.push(Cow::Owned(Column {
+                qualifier: "r",
+                name: Cow::Borrowed(PUBLISHED_FIELD_NAME),
+            }));
+            columns.push(Cow::Owned(Column {
+                qualifier: "r",
+                name: Cow::Borrowed(PUBLISHED_BY_FIELD_NAME),
+            }));
+            columns.push(Cow::Owned(Column {
+                qualifier: "r",
+                name: Cow::Borrowed(REVISION_FIELD_NAME),
+            }));
+        }
+
+        for id in related_schema.fields.keys() {
+            columns.push(Cow::Owned(Column {
+                qualifier: "r",
+                name: Cow::Owned(id.normalized()),
+            }));
+        }
+
+        let mut qb = QueryBuilder::from(related_table).select(columns);
+
+        // join relation table so we can filter by owning ids
+        let related_doc_id_col = Cow::Owned(Column {
+            qualifier: "r",
+            name: Cow::Borrowed(DOCUMENT_ID_FIELD_NAME),
+        });
+        let relation_inverse_col = Cow::Owned(Column {
+            qualifier: "rel",
+            name: Cow::Owned(format!("{}_id", related_table_name)),
+        });
+        qb = qb.join(Join {
+            join_type: JoinType::Inner,
+            target_table: relation_table,
+            main_column: related_doc_id_col,
+            target_column: relation_inverse_col,
+        });
+
+        // add where clause on owning id
+        let owning_col = Cow::Owned(Column {
+            qualifier: "rel",
+            name: Cow::Owned(format!("{}_id", main_table_name)),
+        });
+        let values: Vec<ConditionValue> = main_instance_ids
+            .iter()
+            .map(|id| ConditionValue::Uuid(id.0))
+            .collect();
+        qb = qb.where_condition(Condition::In {
+            column: owning_col,
+            values,
+        });
+
+        // order by related document id asc
+        qb = qb.order_by(OrderBy {
+            column: Cow::Owned(Column {
+                qualifier: "r",
+                name: Cow::Borrowed(DOCUMENT_ID_FIELD_NAME),
+            }),
+            direction: SortDirection::Ascending,
+        });
+
+        let (sql, params) = qb.build();
+        println!("related SQL: {}", sql);
+
+        let mut documents = Vec::new();
+        let mut query_obj = sqlx::query(&sql);
+        for p in params {
+            query_obj = p.bind_to_query(query_obj);
+        }
+        let mut rows = query_obj.fetch(self.database.database_pool());
+        use futures::TryStreamExt;
+        while let Some(row) = rows
+            .try_next()
+            .await
+            .map_err(|e| RepositoryError::DatabaseError(e.to_string()))?
+        {
+            let document = self.row_to_document(&row, &related_schema)?;
+            documents.push(document);
+        }
+
+        Ok(documents)
     }
 }

@@ -1,11 +1,11 @@
 use chrono::{DateTime, Utc};
 use luminair_common::AttributeId;
 use serde::Serialize;
-use serde_json::{Value as JsonValue, json};
+use serde_json::Value as JsonValue;
 use std::{collections::HashMap, io::ErrorKind};
 
 use crate::domain::document::{
-    DocumentInstance, DocumentInstanceId,
+    DocumentInstance,
     content::{ContentValue, DomainValue},
 };
 use crate::domain::document::lifecycle::PublicationState;
@@ -146,7 +146,7 @@ impl From<DocumentInstance> for DocumentInstanceResponse {
         };
         
         let published = match value.content.publication_state {
-            PublicationState::Draft { revision } => None,
+            PublicationState::Draft { revision: _ } => None,
             PublicationState::Published { revision, published_at, published_by } => {
                 Some(DocumentInstancePublicationState {
                     revision,
@@ -184,9 +184,4 @@ impl From<DocumentInstance> for DocumentInstanceResponse {
         }
     }
 }
-/*
-pub struct GroupedDocumentRowResponse {
-    pub owning_id: DocumentRowId,
-    pub rows: Vec<DocumentRowResponse>
-}
- */
+

@@ -135,6 +135,18 @@ impl <'a> QueryBuilder<'a> {
         self
     }
 
+    /// Add a join clause
+    pub fn join(mut self, join: Join<'a>) -> Self {
+        self.joins.push(join);
+        self
+    }
+
+    /// Add an order-by clause
+    pub fn order_by(mut self, order: OrderBy<'a>) -> Self {
+        self.order_by.push(order);
+        self
+    }
+
     /// Build the SQL query string
     pub fn build(self) -> (String, Vec<SqlParameter>) {
         let mut sql = String::new();
