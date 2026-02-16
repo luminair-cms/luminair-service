@@ -70,45 +70,7 @@ impl DocumentTypeIndex {
 mod tests {
     use super::*;
     use std::collections::HashMap;
-    use luminair_common::entities::{DocumentTypeInfo, DocumentTitle};
-
-    /// A minimal in-memory registry implementation for tests.
-    #[derive(Debug)]
-    struct SimpleRegistry {
-        types: Vec<&'static DocumentType>,
-    }
-
-    impl DocumentTypesRegistry for SimpleRegistry {
-        fn iterate(&self) -> Box<dyn Iterator<Item = &'static DocumentType> + '_> {
-            Box::new(self.types.iter().copied())
-        }
-
-        fn get(&self, id: &DocumentTypeId) -> Option<&'static DocumentType> {
-            self.types.iter().copied().find(|dt| &dt.id == id)
-        }
-    }
-
-    fn make_type(
-        id: &str,
-        kind: DocumentKind,
-        singular: &str,
-        plural: &str,
-    ) -> &'static DocumentType {
-        let dt = DocumentType {
-            id: DocumentTypeId::try_new(id).unwrap(),
-            kind,
-            info: DocumentTypeInfo {
-                title: DocumentTitle::try_new(id).unwrap(),
-                singular_name: DocumentTypeId::try_new(singular).unwrap(),
-                plural_name: DocumentTypeId::try_new(plural).unwrap(),
-                description: None,
-            },
-            options: None,
-            fields: HashMap::new(),
-            relations: HashMap::new(),
-        };
-        Box::leak(Box::new(dt))
-    }
+    use luminair_common::test_utils::{make_type, SimpleRegistry};
 
     #[test]
     fn index_contains_both_forms() {

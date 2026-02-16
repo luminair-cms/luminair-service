@@ -77,3 +77,43 @@ impl AttributeId {
         self.as_ref().replace("-", "_")
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_utils::{make_collection, SimpleRegistry};
+
+    #[test]
+    fn document_type_id_valid_and_normalize() {
+        let dt = DocumentTypeId::try_new("My_Id-123").unwrap();
+        // sanitized to lowercase and trimmed
+        assert_eq!(dt.as_ref(), "my_id-123");
+        assert_eq!(dt.normalized(), "my_id_123");
+    }
+
+    #[test]
+    fn document_type_id_invalid_rejected() {
+        assert!(DocumentTypeId::try_new("my id").is_err());
+        assert!(DocumentTypeId::try_new("").is_err());
+        assert!(DocumentTypeId::try_new("luminair_test").is_err());
+    }
+
+    #[test]
+    fn attribute_id_normalize() {
+        let a = AttributeId::try_new("Foo-Bar").unwrap();
+        assert_eq!(a.as_ref(), "foo-bar");
+        assert_eq!(a.normalized(), "foo_bar");
+    }
+
+    #[test]
+    fn registry_iter_and_get() {
+        let t1 = make_collection("alpha");
+        let t2 = make_collection("beta");
+        let reg = SimpleRegistry { types: vec![t1, t2] };
+        let ids: Vec<_> = reg.iterate().map(|dt| dt.id.clone()).collect();
+        assert_eq!(ids, vec![t1.id.clone(), t2.id.clone()]);
+        assert_eq!(reg.get(&t1.id).unwrap().id, t1.id);
+        assert!(reg.get(&DocumentTypeId::try_new("gamma").unwrap()).is_none());
+    }
+}
+
