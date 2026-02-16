@@ -5,12 +5,12 @@ use crate::domain::document::DocumentInstanceId;
 use crate::domain::repository::DocumentInstanceRepository;
 use crate::domain::repository::query::DocumentInstanceQuery;
 use crate::infrastructure::http::api::{ApiError, ApiSuccess};
-use crate::infrastructure::http::handlers::data::dto::{ManyDocumentsResponse, OneDocumentResponse};
+use crate::infrastructure::http::handlers::data::dto::{
+    ManyDocumentsResponse, OneDocumentResponse,
+};
 use crate::infrastructure::http::querystring::QueryString;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
-use axum::response::{IntoResponse, Response};
-use luminair_common::DocumentTypeId;
 use serde::Deserialize;
 
 mod dto;
@@ -32,7 +32,7 @@ pub struct PaginationParams {
 
 pub async fn find_document_by_id<S: AppState>(
     State(state): State<S>,
-    Path((document_id, id)): Path<(String, String)>,
+    Path((api_type, id)): Path<(String, String)>,
     QueryString(params): QueryString<QueryParams>,
 ) -> Result<ApiSuccess<OneDocumentResponse>, ApiError> {
     if params.pagination.is_some() {
@@ -40,8 +40,12 @@ pub async fn find_document_by_id<S: AppState>(
             "Pagination param isn't eligible for find_by_id query".to_string(),
         ));
     }
-    let document_type_id = DocumentTypeId::try_new(document_id)
-        .map_err(|err| ApiError::UnprocessableEntity(err.to_string()))?;
+
+    let document_type_id = state
+        .document_type_index()
+        .lookup_id(&api_type)
+        .ok_or(ApiError::NotFound)?;
+
     let document_instance_id = DocumentInstanceId::try_from(&id)?;
 
     let repository = state.documents_instance_repository();
@@ -58,11 +62,13 @@ pub async fn find_document_by_id<S: AppState>(
 
 pub async fn find_all_documents<S: AppState>(
     State(state): State<S>,
-    Path(document_id): Path<String>,
+    Path(api_type): Path<String>,
     QueryString(params): QueryString<QueryParams>,
 ) -> Result<ApiSuccess<ManyDocumentsResponse>, ApiError> {
-    let document_type_id = DocumentTypeId::try_new(document_id)
-        .map_err(|err| ApiError::UnprocessableEntity(err.to_string()))?;
+    let document_type_id = state
+        .document_type_index()
+        .lookup_id(&api_type)
+        .ok_or(ApiError::NotFound)?;
 
     let repository = state.documents_instance_repository();
 

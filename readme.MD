@@ -165,7 +165,7 @@ These values are defined when creating a content-type in the Content-Type Builde
 
     :pluralApiId will be articles
 
-### Example of plural api
+### Example of plural api (for collections)
 
 | Method | URL                          | Description               |
 | ------ | ---------------------------- | ------------------------- |
@@ -175,7 +175,7 @@ These values are defined when creating a content-type in the Content-Type Builde
 | DELETE | /api/restaurants/:documentId | Delete a restaurant       |
 | PUT    | /api/restaurants/:documentId | Update a restaurant       |
 
-### Example of singular api
+### Example of singular api (for singletons)
 
 | Method | URL           | Description                        |
 | ------ | ------------- | ---------------------------------- |

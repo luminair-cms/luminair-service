@@ -34,6 +34,7 @@ impl HelloService for HelloServiceAdapter {
 pub struct AppStateImpl {
     hello_service: HelloServiceAdapter,
     document_types_registry: &'static dyn DocumentTypesRegistry,
+    document_type_index: crate::domain::DocumentTypeIndex,
     documents_instance_repository: PostgresDocumentRepository,
 }
 
@@ -43,9 +44,11 @@ impl AppStateImpl {
         document_types_registry: &'static dyn DocumentTypesRegistry,
         documents_instance_repository: PostgresDocumentRepository,
     ) -> Self {
+        let document_type_index = crate::domain::DocumentTypeIndex::new(document_types_registry);
         Self {
             hello_service,
             document_types_registry,
+            document_type_index,
             documents_instance_repository,
         }
     }
@@ -61,6 +64,10 @@ impl AppState for AppStateImpl {
 
     fn document_types_registry(&self) -> &'static dyn DocumentTypesRegistry {
         self.document_types_registry
+    }
+
+    fn document_type_index(&self) -> &crate::domain::DocumentTypeIndex {
+        &self.document_type_index
     }
 
     fn documents_instance_repository(&self) -> &Self::R {
