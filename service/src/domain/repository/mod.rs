@@ -1,12 +1,11 @@
 use std::{collections::HashMap, fmt::Debug, future::Future};
 
-use luminair_common::DocumentTypeId;
+use luminair_common::{DocumentType, DocumentTypeId};
 
 
 use crate::domain::{
     document::{
-        DocumentContent, DocumentInstance, DocumentInstanceId,
-        content::ContentValue, lifecycle::UserId,
+        DatabaseRowId, DocumentContent, DocumentInstance, DocumentInstanceId, content::ContentValue, lifecycle::UserId
     },
     repository::query::DocumentInstanceQuery,
 };
@@ -17,13 +16,14 @@ pub trait DocumentInstanceRepository: Send + Sync + 'static {
     /// Find instances matching query
     fn find(
         &self,
+        document_type: &DocumentType,
         query: DocumentInstanceQuery,
     ) -> impl Future<Output = Result<Vec<DocumentInstance>, RepositoryError>> + Send;
 
     /// Find single instance by ID
     fn find_by_id(
         &self,
-        document_type_id: DocumentTypeId,
+        document_type: &DocumentType,
         id: DocumentInstanceId,
     ) -> impl Future<Output = Result<Option<DocumentInstance>, RepositoryError>> + Send;
 
@@ -69,19 +69,19 @@ pub trait DocumentInstanceRepository: Send + Sync + 'static {
         document_type_id: DocumentTypeId,
     ) -> impl Future<Output = Result<i64, RepositoryError>> + Send;
 
-    /// Fetch relations for a single document instance
-    fn fetch_relations_for_instance(
+    /// Fetch relations for one document instance
+    fn fetch_relations_for_one(
         &self,
-        document_type_id: &DocumentTypeId,
-        instance_id: DocumentInstanceId,
+        main_document_type: &DocumentType,
+        main_table_id: DatabaseRowId,
         relation_fields: &[luminair_common::AttributeId],
     ) -> impl Future<Output = Result<HashMap<luminair_common::AttributeId, Vec<DocumentInstance>>, RepositoryError>> + Send;
 
     /// Fetch relations in batch for multiple document instances
-    fn fetch_relations_batch_for_all(
+    fn fetch_relations_for_many(
         &self,
-        document_type_id: &DocumentTypeId,
-        instance_ids: &[DocumentInstanceId],
+        main_document_type: &DocumentType,
+        main_table_ids: &[DatabaseRowId],
         relation_fields: &[luminair_common::AttributeId],
     ) -> impl Future<Output = Result<HashMap<luminair_common::AttributeId, HashMap<DocumentInstanceId, Vec<DocumentInstance>>>, RepositoryError>> + Send;
 }

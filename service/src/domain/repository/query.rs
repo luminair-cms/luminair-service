@@ -5,10 +5,7 @@ use crate::domain::document::content::DomainValue;
 /// Query for finding DocumentInstances
 #[derive(Debug, Clone)]
 pub struct DocumentInstanceQuery {
-    /// Which DocumentType are we querying?
-    pub document_type_id: DocumentTypeId,
-
-    pub filter: FilterExpression,
+   pub filter: FilterExpression,
     pub sort: Vec<(String, SortDirection)>,
     pub limit: Option<i64>,
     pub offset: Option<i64>,
@@ -19,9 +16,8 @@ pub struct DocumentInstanceQuery {
 
 impl DocumentInstanceQuery {
     /// Create a new query builder for the given document type
-    pub fn new(document_type_id: DocumentTypeId) -> Self {
+    pub fn new() -> Self {
         Self {
-            document_type_id,
             filter: FilterExpression::None,
             sort: Vec::new(),
             limit: None,

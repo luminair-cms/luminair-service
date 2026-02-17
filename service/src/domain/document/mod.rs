@@ -5,7 +5,6 @@ pub mod lifecycle;
 use std::collections::HashMap;
 
 use chrono::Utc;
-use luminair_common::DocumentTypeId;
 use serde::{Deserialize, Serialize};
 use sqlx::types::{uuid::Uuid};
 use crate::domain::document::{
@@ -24,9 +23,6 @@ pub struct DocumentInstance {
 
     /// Unique identifier of this instance, while id is a id of database row
     pub document_id: DocumentInstanceId,
-
-    /// Which DocumentType does this instance conform to?
-    pub document_type_id: DocumentTypeId,
 
     /// The actual field values: field_name → value
     pub content: DocumentContent,
@@ -93,13 +89,11 @@ impl DocumentInstance {
     pub fn new(
         id: DatabaseRowId,
         document_id: DocumentInstanceId,
-        document_type_id: DocumentTypeId,
         content: DocumentContent,
     ) -> Self {
         Self {
             id,
             document_id,
-            document_type_id,
             content,
             audit: AuditTrail {
                 created_at: Utc::now(),

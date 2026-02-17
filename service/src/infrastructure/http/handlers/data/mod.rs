@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use crate::domain::AppState;
-use crate::domain::document::DocumentInstanceId;
+use crate::domain::document::{DatabaseRowId, DocumentInstanceId};
 use crate::domain::repository::DocumentInstanceRepository;
 use crate::domain::repository::query::DocumentInstanceQuery;
 use crate::infrastructure::http::api::{ApiError, ApiSuccess};
@@ -44,16 +44,16 @@ pub async fn find_document_by_id<S: AppState>(
         ));
     }
 
-    let document_type_id = state
+    let document_type = state
         .document_type_index()
-        .lookup_id(&api_type)
+        .lookup(&api_type)
         .ok_or(ApiError::NotFound)?;
 
     let document_instance_id = DocumentInstanceId::try_from(&id)?;
     let repository = state.documents_instance_repository();
 
     let mut document_response: dto::DocumentInstanceResponse = repository
-        .find_by_id(document_type_id.clone(), document_instance_id)
+        .find_by_id(document_type, document_instance_id)
         .await
         .map_err(|err| ApiError::from(err))?
         .ok_or(ApiError::NotFound)?
@@ -64,12 +64,14 @@ pub async fn find_document_by_id<S: AppState>(
         // validate each attribute id
         let mut attr_ids = Vec::with_capacity(populate_fields.len());
         for name in populate_fields {
-            let attr = luminair_common::AttributeId::try_new(&name)
-                .map_err(|_| ApiError::UnprocessableEntity(format!("Invalid populate field: {}", name)))?;
+            let attr = luminair_common::AttributeId::try_new(&name).map_err(|_| {
+                ApiError::UnprocessableEntity(format!("Invalid populate field: {}", name))
+            })?;
             attr_ids.push(attr);
         }
-        let relations_raw = repository
-            .fetch_relations_for_instance(&document_type_id, document_instance_id, &attr_ids)
+        let main_table_id = DatabaseRowId::from(document_response.id);
+        let relations = repository
+            .fetch_relations_for_one(&document_type, main_table_id, &attr_ids)
             .await
             .map_err(|err| ApiError::from(err))?;
 
@@ -102,9 +104,9 @@ pub async fn find_all_documents<S: AppState>(
     Path(api_type): Path<String>,
     QueryString(params): QueryString<QueryParams>,
 ) -> Result<ApiSuccess<ManyDocumentsResponse>, ApiError> {
-    let document_type_id = state
+    let document_type = state
         .document_type_index()
-        .lookup_id(&api_type)
+        .lookup(&api_type)
         .ok_or(ApiError::NotFound)?;
 
     let repository = state.documents_instance_repository();
@@ -116,10 +118,10 @@ pub async fn find_all_documents<S: AppState>(
         .unwrap_or((1, 25));
 
     // Build query using builder pattern - pagination guards are enforced by the query
-    let query = DocumentInstanceQuery::new(document_type_id.clone()).paginate(page, page_size);
+    let query = DocumentInstanceQuery::new().paginate(page, page_size);
 
     let mut documents: Vec<dto::DocumentInstanceResponse> = repository
-        .find(query)
+        .find(document_type, query)
         .await
         .map_err(|err| ApiError::from(err))?
         .into_iter()
@@ -132,8 +134,9 @@ pub async fn find_all_documents<S: AppState>(
             // convert and validate attribute IDs
             let mut attr_ids = Vec::with_capacity(populate_fields.len());
             for name in populate_fields {
-                let attr = luminair_common::AttributeId::try_new(&name)
-                    .map_err(|_| ApiError::UnprocessableEntity(format!("Invalid populate field: {}", name)))?;
+                let attr = luminair_common::AttributeId::try_new(&name).map_err(|_| {
+                    ApiError::UnprocessableEntity(format!("Invalid populate field: {}", name))
+                })?;
                 attr_ids.push(attr);
             }
 
@@ -149,29 +152,32 @@ pub async fn find_all_documents<S: AppState>(
                 .await
                 .map_err(|err| ApiError::from(err))?;
 
-        // Apply relations to each document response
-        for doc_response in &mut documents {
-            let doc_id =
-                DocumentInstanceId::try_from(doc_response.document_id.as_str()).map_err(|_| {
-                    ApiError::InternalServerError("Failed to parse document ID".to_string())
-                })?;
+            // Apply relations to each document response
+            for doc_response in &mut documents {
+                let doc_id = DocumentInstanceId::try_from(doc_response.document_id.as_str())
+                    .map_err(|_| {
+                        ApiError::InternalServerError("Failed to parse document ID".to_string())
+                    })?;
 
-            let doc_relations: std::collections::HashMap<
-                luminair_common::AttributeId,
-                Vec<dto::DocumentInstanceResponse>,
-            > = all_relations_raw
-                .iter()
-                .filter_map(|(attr_id, related_docs_by_id)| {
-                    let related_responses: Vec<dto::DocumentInstanceResponse> = related_docs_by_id
-                        .get(&doc_id)
-                        .map(|instances| instances.iter().cloned().map(Into::into).collect())
-                        .unwrap_or_default();
-                    Some((attr_id.clone(), related_responses))
-                })
-                .collect();
+                let doc_relations: std::collections::HashMap<
+                    luminair_common::AttributeId,
+                    Vec<dto::DocumentInstanceResponse>,
+                > = all_relations_raw
+                    .iter()
+                    .filter_map(|(attr_id, related_docs_by_id)| {
+                        let related_responses: Vec<dto::DocumentInstanceResponse> =
+                            related_docs_by_id
+                                .get(&doc_id)
+                                .map(|instances| {
+                                    instances.iter().cloned().map(Into::into).collect()
+                                })
+                                .unwrap_or_default();
+                        Some((attr_id.clone(), related_responses))
+                    })
+                    .collect();
 
-            *doc_response = doc_response.clone().with_relations(doc_relations);
-        }
+                *doc_response = doc_response.clone().with_relations(doc_relations);
+            }
         }
     }
 

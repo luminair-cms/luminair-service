@@ -64,7 +64,7 @@ impl<'a> From<(&'a DocumentType, &'a AttributeId)> for QualifiedTable<'a> {
         let relation = value.1;
         Self {
             name: TableNameProvider::RelationTable { document, relation },
-            alias: "m",
+            alias: "r",
         }
     }
 }
