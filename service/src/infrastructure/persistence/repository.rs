@@ -1,15 +1,27 @@
-use crate::{domain::{
+use crate::{
+    domain::{
         document::{
-            DatabaseRowId, DocumentContent, DocumentInstance, DocumentInstanceId, content::ContentValue, lifecycle::UserId
+            content::ContentValue, lifecycle::UserId, DatabaseRowId, DocumentContent,
+            DocumentInstance, DocumentInstanceId,
         },
-        repository::{DocumentInstanceRepository, RepositoryError, query::DocumentInstanceQuery},
-    }, infrastructure::persistence::{columns::DOCUMENT_ID_COLUMN, infer::{main_query_builder, related_query_builder}, query::{
-        Column, ColumnRef, Condition, ConditionValue, QueryBuilder,
-    }, result::row_to_document}};
+        repository::{query::DocumentInstanceQuery, DocumentInstanceRepository, RepositoryError},
+    },
+    infrastructure::persistence::{
+        build::{main_query_builder, related_query_builder},
+        columns::DOCUMENT_ID_COLUMN,
+        parameters::QueryParametersHolder,
+        query::Condition,
+        result::row_to_document,
+    },
+};
 
-use luminair_common::{AttributeId, CREATED_BY_FIELD_NAME, CREATED_FIELD_NAME, DOCUMENT_ID_FIELD_NAME, DocumentType, DocumentTypeId, DocumentTypesRegistry, ID_FIELD_NAME, PUBLISHED_BY_FIELD_NAME, PUBLISHED_FIELD_NAME, REVISION_FIELD_NAME, UPDATED_BY_FIELD_NAME, UPDATED_FIELD_NAME, VERSION_FIELD_NAME, database::Database, persistence::QualifiedTable};
+use luminair_common::{
+    database::Database, AttributeId, DocumentType, DocumentTypeId, DocumentTypesRegistry,
+    ID_FIELD_NAME,
+};
 use sqlx::Row;
 
+use crate::infrastructure::persistence::columns::OWNING_ID_COLUMN;
 use std::{borrow::Cow, collections::HashMap};
 
 #[derive(Clone)]
@@ -18,20 +30,28 @@ pub struct PostgresDocumentRepository {
     database: &'static Database,
 }
 
+impl PostgresDocumentRepository {
+    pub fn new(
+        schema_registry: &'static dyn DocumentTypesRegistry,
+        database: &'static Database,
+    ) -> Self {
+        Self {
+            schema_registry,
+            database,
+        }
+    }
+}
+
 impl DocumentInstanceRepository for PostgresDocumentRepository {
     async fn find(
         &self,
         document_type: &DocumentType,
-        query: DocumentInstanceQuery,
+        _query: DocumentInstanceQuery,
     ) -> Result<Vec<DocumentInstance>, RepositoryError> {
         let query_builder = main_query_builder(document_type);
-        let (sql, params) = query_builder.build();
+        let (sql, _) = query_builder.build();
 
-        let mut query_object = sqlx::query(&sql);
-        for param in params {
-            query_object = param.bind_to_query(query_object);
-        }
-
+        let query_object = sqlx::query(&sql);
         let mut rows = query_object.fetch(self.database.database_pool());
 
         let mut documents = Vec::new();
@@ -54,16 +74,17 @@ impl DocumentInstanceRepository for PostgresDocumentRepository {
         document_type: &DocumentType,
         id: DocumentInstanceId,
     ) -> Result<Option<DocumentInstance>, RepositoryError> {
-        let (sql, params) =
-            main_query_builder(document_type).where_condition(Condition::Equals {
-                column: Cow::Borrowed(&DOCUMENT_ID_COLUMN),
-                value: ConditionValue::Uuid(id.0),
-            }).build();
+        let mut params_holder = QueryParametersHolder::new();
 
-        let mut query_object = sqlx::query(&sql);
-        for param in params {
-            query_object = param.bind_to_query(query_object);
-        }
+        let (sql, params) = main_query_builder(document_type)
+            .where_condition(Condition::Equals {
+                column: Cow::Borrowed(&DOCUMENT_ID_COLUMN),
+                value: params_holder.bind(id.0),
+            })
+            .build();
+
+        let query_arguments = params_holder.generate_args(&params);
+        let query_object = sqlx::query_with(&sql, query_arguments);
 
         let row = query_object
             .fetch_optional(self.database.database_pool())
@@ -135,7 +156,7 @@ impl DocumentInstanceRepository for PostgresDocumentRepository {
 
         Ok(row.0)
     }
-    
+
     async fn fetch_relations_for_one(
         &self,
         main_document_type: &DocumentType,
@@ -143,25 +164,27 @@ impl DocumentInstanceRepository for PostgresDocumentRepository {
         relation_fields: &[luminair_common::AttributeId],
     ) -> Result<HashMap<AttributeId, Vec<DocumentInstance>>, RepositoryError> {
         let ids = vec![main_table_id];
-        let result = self.fetch_relations_for_many(main_document_type, &ids, relation_fields)
+        let result = self
+            .fetch_relations_for_many(main_document_type, &ids, relation_fields)
             .await?;
-        
-        let result = result.into_iter()
-            .map(|(k,v)| {
+
+        let result = result
+            .into_iter()
+            .map(|(k, v)| {
                 let v = v.into_values().next().unwrap();
-                (k,v)
+                (k, v)
             })
             .collect();
-        
+
         Ok(result)
     }
-    
+
     async fn fetch_relations_for_many(
         &self,
         main_document_type: &DocumentType,
         main_table_ids: &[DatabaseRowId],
         relation_fields: &[luminair_common::AttributeId],
-    ) -> Result<HashMap<AttributeId, HashMap<DocumentInstanceId, Vec<DocumentInstance>>>, RepositoryError>
+    ) -> Result<HashMap<AttributeId, HashMap<DatabaseRowId, Vec<DocumentInstance>>>, RepositoryError>
     {
         let mut result = HashMap::new();
 
@@ -181,21 +204,28 @@ impl DocumentInstanceRepository for PostgresDocumentRepository {
                 .schema_registry
                 .get(&rel_metadata.target)
                 .ok_or(RepositoryError::NotFound)?;
-            
+
+            let mut params_holder = QueryParametersHolder::new();
+
+            let values: Vec<i64> = main_table_ids.iter().map(|id| id.0).collect();
+
             let (sql, params) =
-                related_query_builder(main_document_type, 
-                    related_document_type, 
-                    &attr_id, 
-                    main_table_ids).build();
-            
-            let mut query_object = sqlx::query(&sql);
-            // TODO: refactor for using ANY() syntax
-            for p in params {
-                query_object = p.bind_to_query(query_object);
-            }
-            
+                related_query_builder(main_document_type, related_document_type, &attr_id)
+                    .where_condition(Condition::EqualsAny {
+                        column: Cow::Borrowed(&OWNING_ID_COLUMN),
+                        value: params_holder.bind(values),
+                    })
+                    .build();
+
+            let query_arguments = params_holder.generate_args(&params);
+            let query_object = sqlx::query_with(&sql, query_arguments);
+
+            // Group related docs by their owning main document id
+            // For MVP simplicity, assume 1-to-N relations
+            let mut grouped: HashMap<DatabaseRowId, Vec<DocumentInstance>> = HashMap::new();
+
             let mut rows = query_object.fetch(self.database.database_pool());
-            
+
             use futures::TryStreamExt;
             while let Some(row) = rows
                 .try_next()
@@ -203,75 +233,17 @@ impl DocumentInstanceRepository for PostgresDocumentRepository {
                 .map_err(|e| RepositoryError::DatabaseError(e.to_string()))?
             {
                 let document = row_to_document(&row, related_document_type)?;
-                let owning: i64 = row
-                    .try_get(ID_FIELD_NAME)
-                    .map_err(|e| RepositoryError::DatabaseError(format!("Failed to parse id: {}", e)))?;
-                let id = DatabaseRowId(owning);
-            }
+                let owning_id: i64 = row.try_get(ID_FIELD_NAME).map_err(|e| {
+                    RepositoryError::DatabaseError(format!("Failed to parse id: {}", e))
+                })?;
 
-            // Group related docs by their owning main document id
-            // For MVP simplicity, assume 1-to-N relations
-            let mut grouped: HashMap<DocumentInstanceId, Vec<DocumentInstance>> =
-                HashMap::new();
-            for doc in related_docs {
-                for main_id in instance_ids.iter() {
-                    grouped
-                        .entry(*main_id)
-                        .or_insert_with(Vec::new)
-                        .push(doc.clone());
-                }
+                let id = DatabaseRowId(owning_id);
+                grouped.entry(id).or_insert_with(Vec::new).push(document);
             }
 
             result.insert(attr_id.clone(), grouped);
         }
 
         Ok(result)
-    }
-}
-
-impl PostgresDocumentRepository {
-    pub fn new(
-        schema_registry: &'static dyn DocumentTypesRegistry,
-        database: &'static Database,
-    ) -> Self {
-        Self {
-            schema_registry,
-            database,
-        }
-    }
-    
-    /// Fetch related documents for a batch of main document instance IDs.
-    /// Uses PostgreSQL = ANY syntax for batch queries.
-    /// Results are sorted by document_instance_id for efficient joining.
-    async fn fetch_related_documents(
-        &self,
-        main_schema: &DocumentType,
-        related_schema: &DocumentType,
-        relation_attr: &luminair_common::AttributeId,
-        main_table_ids: &[DatabaseRowId],
-    ) -> Result<Vec<DocumentInstance>, RepositoryError> {
-        let (sql, params) =
-            related_query_builder(main_schema, 
-                related_schema, 
-                relation_attr, 
-                main_table_ids).build();
-
-        let mut documents = Vec::new();
-        let mut query_obj = sqlx::query(&sql);
-        for p in params {
-            query_obj = p.bind_to_query(query_obj);
-        }
-        let mut rows = query_obj.fetch(self.database.database_pool());
-        use futures::TryStreamExt;
-        while let Some(row) = rows
-            .try_next()
-            .await
-            .map_err(|e| RepositoryError::DatabaseError(e.to_string()))?
-        {
-            let document = self.row_to_document(&row, &related_schema)?;
-            documents.push(document);
-        }
-
-        Ok(documents)
     }
 }

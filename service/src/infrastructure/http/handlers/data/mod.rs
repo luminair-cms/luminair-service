@@ -79,7 +79,7 @@ pub async fn find_document_by_id<S: AppState>(
         let relations_mapped: std::collections::HashMap<
             luminair_common::AttributeId,
             Vec<dto::DocumentInstanceResponse>,
-        > = relations_raw
+        > = relations
             .into_iter()
             .map(|(attr_id, instances)| {
                 let responses: Vec<dto::DocumentInstanceResponse> =
@@ -141,33 +141,30 @@ pub async fn find_all_documents<S: AppState>(
             }
 
             // Collect all instance IDs for batch fetching
-            let instance_ids: Vec<DocumentInstanceId> = documents
+            let ids: Vec<DatabaseRowId> = documents
                 .iter()
-                .map(|doc| DocumentInstanceId::try_from(doc.document_id.as_str()).unwrap())
+                .map(|doc| DatabaseRowId::try_from(doc.id).unwrap())
                 .collect();
 
             // Fetch all relations for this batch of documents
-            let all_relations_raw = repository
-                .fetch_relations_batch_for_all(&document_type_id, &instance_ids, &attr_ids)
+            let all_relations = repository
+                .fetch_relations_for_many(document_type, &ids, &attr_ids)
                 .await
                 .map_err(|err| ApiError::from(err))?;
 
             // Apply relations to each document response
             for doc_response in &mut documents {
-                let doc_id = DocumentInstanceId::try_from(doc_response.document_id.as_str())
-                    .map_err(|_| {
-                        ApiError::InternalServerError("Failed to parse document ID".to_string())
-                    })?;
+                let id = DatabaseRowId::from(doc_response.id);
 
                 let doc_relations: std::collections::HashMap<
                     luminair_common::AttributeId,
                     Vec<dto::DocumentInstanceResponse>,
-                > = all_relations_raw
+                > = all_relations
                     .iter()
                     .filter_map(|(attr_id, related_docs_by_id)| {
                         let related_responses: Vec<dto::DocumentInstanceResponse> =
                             related_docs_by_id
-                                .get(&doc_id)
+                                .get(&id)
                                 .map(|instances| {
                                     instances.iter().cloned().map(Into::into).collect()
                                 })

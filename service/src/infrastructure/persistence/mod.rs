@@ -1,5 +1,6 @@
 pub mod repository;
 mod columns;
-mod infer;
+mod build;
+mod parameters;
 mod result;
 mod query;

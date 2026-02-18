@@ -148,8 +148,13 @@ Fields of table:
 | field        | description |
 |--------------|-------------|
 | id           | id of database row, serial, rimary key |
-| owning-table-name-id | owning table-name underscore-concatenated with "id" suffix |
-| inverse-table-name-id | inverse table-name underscore-concatenated with "id" suffix |
+| owning_table_row_id | 
+| inverse-table-name-id | 
+
+combining document_id and table_row_id give possibility to enable draft-and-publish functionality for relations. 
+E.g. first created relation with draft mode for previously created new rows of main and related documents.
+On publish stage this relation moves to published records.
+So for each document instance we have 2 rows with different table row id and same document id.
 
 ## Rest API
 

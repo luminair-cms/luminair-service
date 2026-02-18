@@ -2,8 +2,9 @@ use crate::domain::tables::{Column, ColumnType, ForeignKeyConstraint, Index, Tab
 
 use luminair_common::{
     AttributeId, CREATED_BY_FIELD_NAME, CREATED_FIELD_NAME, DOCUMENT_ID_FIELD_NAME, DocumentType,
-    DocumentTypesRegistry, ID_FIELD_NAME, PUBLISHED_BY_FIELD_NAME, PUBLISHED_FIELD_NAME,
-    RELATION_ID_FIELD_NAME, REVISION_FIELD_NAME, UPDATED_BY_FIELD_NAME, UPDATED_FIELD_NAME,
+    DocumentTypesRegistry, ID_FIELD_NAME, INVERSE_ID_FIELD_NAME, OWNING_ID_FIELD_NAME,
+    PUBLISHED_BY_FIELD_NAME, PUBLISHED_FIELD_NAME, RELATION_ID_FIELD_NAME, REVISION_FIELD_NAME,
+    UPDATED_BY_FIELD_NAME, UPDATED_FIELD_NAME,
     entities::{AttributeType, DocumentRelation},
 };
 
@@ -47,7 +48,6 @@ struct MainTableBuilder {
 
 struct RelationTablesBuilder {
     main_table_name: String,
-    owning_column_name: String,
     relation_tables: Vec<Table>,
 }
 
@@ -142,19 +142,28 @@ impl MainTableBuilder {
             ]);
         }
 
-        Table::new(self.table_name, self.columns, Vec::new(), Vec::new())
+        let document_id_index = Index::new(
+            &self.table_name as &str,
+            vec![DOCUMENT_ID_FIELD_NAME],
+            false,
+        );
+
+        Table::new(
+            self.table_name,
+            self.columns,
+            Vec::new(),
+            vec![document_id_index],
+        )
     }
 }
 
 impl RelationTablesBuilder {
     fn new(document: &DocumentType) -> Self {
         let main_table_name = document.id.normalized();
-        let owning_column_name = format!("{}_id", main_table_name);
         let relation_tables = Vec::new();
 
         Self {
             main_table_name,
-            owning_column_name,
             relation_tables,
         }
     }
@@ -168,12 +177,11 @@ impl RelationTablesBuilder {
         let target_document = documents.get(&relation.target).unwrap();
         let target_table_name = target_document.id.normalized();
         let relation_table_name = format!("{}_{}_relation", self.main_table_name, id.normalized());
-        let inverse_column_name = format!("{}_id", target_table_name);
 
         let columns = vec![
             Column::primary_key(RELATION_ID_FIELD_NAME, ColumnType::Serial, None),
             Column::new(
-                &self.owning_column_name as &str,
+                OWNING_ID_FIELD_NAME,
                 ColumnType::Integer,
                 None,
                 true,
@@ -181,7 +189,7 @@ impl RelationTablesBuilder {
                 None,
             ),
             Column::new(
-                &inverse_column_name,
+                INVERSE_ID_FIELD_NAME,
                 ColumnType::Integer,
                 None,
                 true,
@@ -193,13 +201,13 @@ impl RelationTablesBuilder {
         let foreign_keys = vec![
             ForeignKeyConstraint::new(
                 &relation_table_name as &str,
-                &self.owning_column_name,
+                OWNING_ID_FIELD_NAME,
                 &self.main_table_name,
                 DOCUMENT_ID_FIELD_NAME,
             ),
             ForeignKeyConstraint::new(
                 &relation_table_name as &str,
-                &inverse_column_name,
+                INVERSE_ID_FIELD_NAME,
                 &target_table_name,
                 DOCUMENT_ID_FIELD_NAME,
             ),
@@ -208,12 +216,12 @@ impl RelationTablesBuilder {
         let indexes = vec![
             Index::new(
                 &relation_table_name as &str,
-                vec![&self.owning_column_name as &str],
+                vec![OWNING_ID_FIELD_NAME],
                 false,
             ),
             Index::new(
                 &relation_table_name as &str,
-                vec![&inverse_column_name],
+                vec![INVERSE_ID_FIELD_NAME],
                 false,
             ),
         ];

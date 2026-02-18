@@ -10,11 +10,6 @@ pub enum ContentValue {
 
     /// Localized text: map of locale → text
     LocalizedText(HashMap<String, String>),
-    // Reference to another document
-    // Reference(DocumentInstanceId),
-
-    // References to multiple documents
-    // References(Vec<DocumentInstanceId>),
 }
 
 /// The actual domain value types your content can have

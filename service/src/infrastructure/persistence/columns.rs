@@ -1,6 +1,6 @@
 use std::borrow::Cow;
 
-use luminair_common::{CREATED_BY_FIELD_NAME, CREATED_FIELD_NAME, DOCUMENT_ID_FIELD_NAME, ID_FIELD_NAME, PUBLISHED_BY_FIELD_NAME, PUBLISHED_FIELD_NAME, REVISION_FIELD_NAME, UPDATED_BY_FIELD_NAME, UPDATED_FIELD_NAME, VERSION_FIELD_NAME};
+use luminair_common::{CREATED_BY_FIELD_NAME, CREATED_FIELD_NAME, DOCUMENT_ID_FIELD_NAME, ID_FIELD_NAME, INVERSE_ID_FIELD_NAME, OWNING_ID_FIELD_NAME, PUBLISHED_BY_FIELD_NAME, PUBLISHED_FIELD_NAME, REVISION_FIELD_NAME, UPDATED_BY_FIELD_NAME, UPDATED_FIELD_NAME, VERSION_FIELD_NAME};
 
 use crate::infrastructure::persistence::query::Column;
 
@@ -48,4 +48,14 @@ pub const VERSION_COLUMN: Column<'static> = Column {
 pub const REVISION_COLUMN: Column<'static> = Column {
     qualifier: "m",
     name: Cow::Borrowed(REVISION_FIELD_NAME),
+};
+
+pub const OWNING_ID_COLUMN: Column<'static> = Column {
+    qualifier: "r",
+    name: Cow::Borrowed(OWNING_ID_FIELD_NAME),
+};
+
+pub const INVERSE_ID_COLUMN: Column<'static> = Column {
+    qualifier: "r",
+    name: Cow::Borrowed(INVERSE_ID_FIELD_NAME),
 };

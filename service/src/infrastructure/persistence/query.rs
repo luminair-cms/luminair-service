@@ -1,4 +1,5 @@
 use luminair_common::persistence::QualifiedTable;
+use crate::infrastructure::persistence::parameters::{QueryParameter, QueryParameterRef};
 
 /// High-level, composable query builder
 /// Similar to jOOQ, but with Rust's type system
@@ -19,43 +20,49 @@ pub enum Condition<'a> {
     /// field = value
     Equals {
         column: ColumnRef<'a>,
-        value: ConditionValue,
+        value: QueryParameterRef,
+    },
+    
+    /// field = ANY(value)
+    EqualsAny {
+        column: ColumnRef<'a>,
+        value: QueryParameterRef,
     },
     
     /// field > value
     GreaterThan {
         column: ColumnRef<'a>,
-        value: i64,
+        value: QueryParameterRef,
     },
     
     /// field < value
     LessThan {
         column: ColumnRef<'a>,
-        value: i64,
+        value: QueryParameterRef,
     },
     
     /// field >= value
     GreaterThanOrEqual {
         column: ColumnRef<'a>,
-        value: i64,
+        value: QueryParameterRef,
     },
     
     /// field <= value
     LessThanOrEqual {
         column: ColumnRef<'a>,
-        value: i64,
+        value: QueryParameterRef,
     },
     
     /// field LIKE '%value%'
     Contains {
         column: ColumnRef<'a>,
-        value: String,
+        value: QueryParameterRef,
     },
     
     /// field IN (values)
     In {
         column: ColumnRef<'a>,
-        values: Vec<ConditionValue>,
+        values: Vec<QueryParameterRef>,
     },
     
     /// field IS NULL
@@ -70,15 +77,6 @@ pub enum Condition<'a> {
     
     /// Combine multiple conditions with OR
     Or(Box<Condition<'a>>, Box<Condition<'a>>),
-}
-
-#[derive(Debug)]
-pub enum ConditionValue {
-    Text(String),
-    Integer(i64),
-    Boolean(bool),
-    Uuid(Uuid),
-    Null,
 }
 
 #[derive(Debug)]
@@ -148,7 +146,7 @@ impl <'a> QueryBuilder<'a> {
     }
 
     /// Build the SQL query string
-    pub fn build(self) -> (String, Vec<SqlParameter>) {
+    pub fn build(self) -> (String, Vec<QueryParameterRef>) {
         let mut sql = String::new();
         let mut params = Vec::new();
         let mut param_counter = 1;
@@ -210,11 +208,11 @@ impl <'a> QueryBuilder<'a> {
         (sql, params)
     }
 
-    /// Generate WHERE conditions
+    /// Generate WHERE condition
     fn generate_where_conditions(
-        conditions: &[Condition],
+        conditions: &[Condition<'a>],
         param_counter: &mut usize,
-    ) -> (String, Vec<SqlParameter>) {
+    ) -> (String, Vec<QueryParameterRef>) {
         let mut where_sql = Vec::new();
         let mut params = Vec::new();
         
@@ -230,42 +228,42 @@ impl <'a> QueryBuilder<'a> {
 }
 
 impl <'a> Condition<'a> {
-    pub fn to_sql(&self, param_counter: &mut usize) -> (String, Vec<SqlParameter>) {
+    pub fn to_sql(&self, param_counter: &mut usize) -> (String, Vec<QueryParameterRef>) {
         match self {
             Condition::Equals { column, value } => {
                 let sql = format!("{} = ${}", column.qualified(), param_counter);
                 *param_counter += 1;
-                (sql, vec![value.into()])
+                (sql, vec![*value])
             }
             
             Condition::GreaterThan { column, value } => {
                 let sql = format!("{} > ${}", column.qualified(), param_counter);
                 *param_counter += 1;
-                (sql, vec![value.into()])
+                (sql, vec![*value])
             }
             
             Condition::LessThan { column, value } => {
                 let sql = format!("{} < ${}", column.qualified(), param_counter);
                 *param_counter += 1;
-                (sql, vec![value.into()])
+                (sql, vec![*value])
             }
             
             Condition::GreaterThanOrEqual { column, value } => {
                 let sql = format!("{} >= ${}", column.qualified(), param_counter);
                 *param_counter += 1;
-                (sql, vec![value.into()])
+                (sql, vec![*value])
             }
             
             Condition::LessThanOrEqual { column, value } => {
                 let sql = format!("{} <= ${}", column.qualified(), param_counter);
                 *param_counter += 1;
-                (sql, vec![value.into()])
+                (sql, vec![*value])
             }
             
             Condition::Contains { column, value } => {
                 let sql = format!("{} ILIKE ${}", column.qualified(), param_counter);
                 *param_counter += 1;
-                (sql, vec![SqlParameter::Text(format!("%{}%", value))])
+                (sql, vec![*value])
             }
             
             Condition::In { column, values } => {
@@ -279,9 +277,9 @@ impl <'a> Condition<'a> {
                     .collect();
                 
                 let sql = format!("{} IN ({})", column.qualified(), placeholders.join(", "));
-                let params: Vec<SqlParameter> = values
+                let params: Vec<QueryParameterRef> = values
                     .iter()
-                    .map(|v| v.into())
+                    .map(|v| *v)
                     .collect();
                 (sql, params)
             }
@@ -303,30 +301,17 @@ impl <'a> Condition<'a> {
                 left_params.extend(right_params);
                 (sql, left_params)
             }
+            
+            Condition::EqualsAny { column, value } => {
+                let sql = format!("{} = ANY ${}", column.qualified(), param_counter);
+                *param_counter += 1;
+                (sql, vec![*value])
+            }
         }
-    }
-}
-
-impl From<&ConditionValue> for SqlParameter {
-    fn from(value: &ConditionValue) -> Self {
-        match value {
-            ConditionValue::Text(s) => SqlParameter::Text(s.clone()),
-            ConditionValue::Integer(i) => SqlParameter::Integer(*i),
-            ConditionValue::Boolean(b) => SqlParameter::Boolean(*b),
-            ConditionValue::Uuid(u) => SqlParameter::Uuid(*u), 
-            ConditionValue::Null => SqlParameter::Null,
-        }
-    }
-}
-
-impl From<&i64> for SqlParameter {
-    fn from(value: &i64) -> Self {
-        SqlParameter::Integer(*value)
     }
 }
 
 use std::borrow::Cow;
-use sqlx::types::Uuid;
 
 /// Represents one column in the database table
 #[derive(Clone, Debug)]
@@ -344,26 +329,3 @@ impl <'a> Column<'a> {
 
 /// Column reference which can be either borrowed or owned
 pub type ColumnRef<'a> = Cow<'a, Column<'a>>;
-
-// SQL parameter that will be bound to query
-#[derive(Debug, Clone)]
-pub enum SqlParameter {
-    Text(String),
-    Integer(i64),
-    Boolean(bool),
-    Uuid(Uuid),
-    Null,
-}
-
-impl SqlParameter {
-    /// Bind to sqlx query
-    pub fn bind_to_query(self, query: sqlx::query::Query<sqlx::Postgres, sqlx::postgres::PgArguments>) -> sqlx::query::Query<sqlx::Postgres, sqlx::postgres::PgArguments> {
-        match self {
-            SqlParameter::Text(s) => query.bind(s),
-            SqlParameter::Integer(i) => query.bind(i),
-            SqlParameter::Boolean(b) => query.bind(b),
-            SqlParameter::Uuid(u) => query.bind(u),
-            SqlParameter::Null => query.bind::<Option<String>>(None),
-        }
-    }
-}

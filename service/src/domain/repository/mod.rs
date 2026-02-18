@@ -83,7 +83,7 @@ pub trait DocumentInstanceRepository: Send + Sync + 'static {
         main_document_type: &DocumentType,
         main_table_ids: &[DatabaseRowId],
         relation_fields: &[luminair_common::AttributeId],
-    ) -> impl Future<Output = Result<HashMap<luminair_common::AttributeId, HashMap<DocumentInstanceId, Vec<DocumentInstance>>>, RepositoryError>> + Send;
+    ) -> impl Future<Output = Result<HashMap<luminair_common::AttributeId, HashMap<DatabaseRowId, Vec<DocumentInstance>>>, RepositoryError>> + Send;
 }
 
 #[derive(Debug)]
