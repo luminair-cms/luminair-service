@@ -20,10 +20,10 @@ pub enum TableNameProvider<'a> {
 impl<'a> TableNameProvider<'a> {
     pub fn table_name(&self) -> String {
         match self {
-            Self::MainTable { document } => format!("{}", document.info.singular_name.normalized()),
+            Self::MainTable { document } => format!("{}", document.id.normalized()),
             Self::RelationTable { document, relation } => format!(
                 "{}_{}_relation",
-                document.info.singular_name.normalized(),
+                document.id.normalized(),
                 relation.normalized()
             ),
         }
@@ -36,12 +36,12 @@ impl<'a> QualifiedTable<'a> {
         match self.name {
             TableNameProvider::MainTable { document } => format!(
                 "\"{}\" AS \"{}\"",
-                document.info.singular_name.normalized(),
+                document.id.normalized(),
                 self.alias
             ),
             TableNameProvider::RelationTable { document, relation } => format!(
                 "\"{}_{}_relation\" AS \"{}\"",
-                document.info.singular_name.normalized(),
+                document.id.normalized(),
                 relation.normalized(),
                 self.alias
             ),

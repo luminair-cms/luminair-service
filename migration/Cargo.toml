@@ -13,3 +13,17 @@ futures = "0.3.31"
 serde = { version = "1.0", features = ["derive"] }
 sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "any", "migrate", "postgres", "uuid"] }
 tokio = { version = "1.48.0", features = ["full"] }
+
+[profile.release]
+# Optimization level: 
+# 3 is the default for release, aiming for speed. 
+# "s" or "z" can be used to optimize for binary size instead.
+opt-level = 3 
+
+# Enables Link-Time Optimization (LTO), which performs whole-program analysis 
+# and can lead to smaller, faster binaries. "fat" or true is the most aggressive.
+lto = true
+
+# Reduces the number of code generation units to 1 for more thorough optimization, 
+# at the cost of significantly longer compile times.
+codegen-units = 1 

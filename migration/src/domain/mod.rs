@@ -1,11 +1,7 @@
 use crate::domain::tables::{Column, ColumnType, ForeignKeyConstraint, Index, Table};
 
 use luminair_common::{
-    AttributeId, CREATED_BY_FIELD_NAME, CREATED_FIELD_NAME, DOCUMENT_ID_FIELD_NAME, DocumentType,
-    DocumentTypesRegistry, ID_FIELD_NAME, INVERSE_ID_FIELD_NAME, OWNING_ID_FIELD_NAME,
-    PUBLISHED_BY_FIELD_NAME, PUBLISHED_FIELD_NAME, RELATION_ID_FIELD_NAME, REVISION_FIELD_NAME,
-    UPDATED_BY_FIELD_NAME, UPDATED_FIELD_NAME,
-    entities::{AttributeType, DocumentRelation},
+    AttributeId, CREATED_BY_FIELD_NAME, CREATED_FIELD_NAME, DOCUMENT_ID_FIELD_NAME, DocumentType, DocumentTypesRegistry, ID_FIELD_NAME, INVERSE_ID_FIELD_NAME, OWNING_ID_FIELD_NAME, PUBLISHED_BY_FIELD_NAME, PUBLISHED_FIELD_NAME, RELATION_ID_FIELD_NAME, REVISION_FIELD_NAME, UPDATED_BY_FIELD_NAME, UPDATED_FIELD_NAME, VERSION_FIELD_NAME, entities::{AttributeType, DocumentRelation}
 };
 
 pub mod migration;
@@ -110,6 +106,13 @@ impl MainTableBuilder {
                 false,
                 false,
                 None,
+            ),Column::new(
+                VERSION_FIELD_NAME,
+                ColumnType::Integer,
+                None,
+                false,
+                false,
+                None,
             ),
         ]);
 
@@ -203,13 +206,13 @@ impl RelationTablesBuilder {
                 &relation_table_name as &str,
                 OWNING_ID_FIELD_NAME,
                 &self.main_table_name,
-                DOCUMENT_ID_FIELD_NAME,
+                ID_FIELD_NAME,
             ),
             ForeignKeyConstraint::new(
                 &relation_table_name as &str,
                 INVERSE_ID_FIELD_NAME,
                 &target_table_name,
-                DOCUMENT_ID_FIELD_NAME,
+                ID_FIELD_NAME,
             ),
         ];
 

@@ -78,6 +78,6 @@ fn api_routes<S: AppState>() -> Router<S> {
         .route("/hello", get(hello_world_handler::<S>))
         .route("/meta/documents", get(documents_metadata::<S>))
         .route("/meta/documents/{id}", get(one_document_metadata::<S>))
-        .route("/data/:api_type", get(find_all_documents::<S>))
-        .route("/data/:api_type/:id", get(find_document_by_id::<S>))
+        .route("/documents/{api_type}", get(find_all_documents::<S>))
+        .route("/documents/{api_type}/{id}", get(find_document_by_id::<S>))
 }

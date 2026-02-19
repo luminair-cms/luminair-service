@@ -1,3 +1,5 @@
+use std::fmt::format;
+
 use crate::domain::AppState;
 use crate::infrastructure::http::api::{ApiError, ApiSuccess};
 use crate::infrastructure::http::handlers::documents::dto::{DetailedDocumentResponse, DocumentResponse};
@@ -23,17 +25,14 @@ pub async fn one_document_metadata<S: AppState>(
     Path(id): Path<String>,
     State(state): State<S>,
 ) -> Result<ApiSuccess<DetailedDocumentResponse>, ApiError> {
-    let document_id =
+    let document_type_id =
         DocumentTypeId::try_new(id).map_err(|err| ApiError::UnprocessableEntity(err.to_string()))?;
 
     let result = state
         .document_types_registry()
-        .get(&document_id)
-        .map(DetailedDocumentResponse::from);
+        .get(&document_type_id)
+        .map(DetailedDocumentResponse::from)
+        .ok_or(ApiError::NotFound)?;
 
-    if let Some(document) = result {
-        Ok(ApiSuccess::new(StatusCode::OK, document))
-    } else {
-        Err(ApiError::NotFound)
-    }
+    Ok(ApiSuccess::new(StatusCode::OK, result))
 }
