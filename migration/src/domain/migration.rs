@@ -1,7 +1,7 @@
 use luminair_common::DocumentTypesRegistry;
 
 use crate::domain::DocumentTables;
-use crate::domain::tables::{Column, ColumnType, ForeignKeyConstraint, Index, Table};
+use crate::domain::tables::{Column, ColumnType, ForeignKeyConstraint, Index, IntegerSize, Table};
 use crate::domain::persistence::Persistence;
 
 #[derive(Clone)]
@@ -104,7 +104,10 @@ fn column_ddl(column: &Column) -> String {
         ColumnType::Uuid => "UUID",
         ColumnType::Text => "TEXT",
         ColumnType::Varchar => "VARCHAR",
-        ColumnType::Integer => "INTEGER",
+        ColumnType::Integer(size) => match size {
+            IntegerSize::Int32 => "INT",
+            IntegerSize::Int64 => "BIGINT",
+        },
         ColumnType::Decimal => "DECIMAL",
         ColumnType::Date => "DATE",
         ColumnType::TimestampTZ => "TIMESTAMPTZ",

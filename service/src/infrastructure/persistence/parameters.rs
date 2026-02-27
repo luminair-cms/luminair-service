@@ -91,18 +91,18 @@ impl Into<Box<dyn SqlParameter>> for &str {
     }
 }
 
-// Integer (i64)
+// Integer (i32)
 
 #[derive(Debug, Clone)]
-struct IntegerQueryParameter(i64);
+struct IntegerQueryParameter(i32);
 
-impl From<i64> for IntegerQueryParameter {
-    fn from(value: i64) -> Self {
+impl From<i32> for IntegerQueryParameter {
+    fn from(value: i32) -> Self {
         Self(value)
     }
 }
 
-impl Into<Box<dyn SqlParameter>> for i64 {
+impl Into<Box<dyn SqlParameter>> for i32 {
     fn into(self) -> Box<dyn SqlParameter> {
         Box::new(IntegerQueryParameter::from(self))
     }

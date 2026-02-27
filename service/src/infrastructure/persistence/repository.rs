@@ -23,7 +23,6 @@ use std::{borrow::Cow, collections::HashMap};
 use chrono::{DateTime, Utc};
 use sqlx::types::Uuid;
 use uuid::{ContextV7, Timestamp};
-use crate::domain::document::content::DomainValue;
 use crate::domain::document::lifecycle::PublicationState;
 use crate::domain::sql::query::Condition;
 use crate::infrastructure::persistence::build::build_create_statement;
@@ -131,19 +130,19 @@ impl DocumentInstanceRepository for PostgresDocumentRepository {
         param_refs.push(params_holder.bind_null()); // CREATED_BY_FIELD_NAME
         param_refs.push(params_holder.bind_null()); // UPDATED_BY_FIELD_NAME
 
-        param_refs.push(params_holder.bind(1i64)); // VERSION_FIELD_NAME
+        param_refs.push(params_holder.bind(1i32)); // VERSION_FIELD_NAME
 
         if document_type.has_draft_and_publish() {
             match &content.publication_state {
                 PublicationState::Published { revision, published_at, published_by } => {
                     param_refs.push(params_holder.bind(*published_at));
                     param_refs.push(params_holder.bind_null());
-                    param_refs.push(params_holder.bind(*revision as i64));
+                    param_refs.push(params_holder.bind(*revision));
                 }
                 PublicationState::Draft { revision } => {
                     param_refs.push(params_holder.bind_null());
                     param_refs.push(params_holder.bind_null());
-                    param_refs.push(params_holder.bind(*revision as i64));
+                    param_refs.push(params_holder.bind(*revision));
                 }
             }
         }

@@ -1,4 +1,4 @@
-use crate::domain::tables::{Column, ColumnType, ForeignKeyConstraint, Index, Table};
+use crate::domain::tables::{Column, ColumnType, ForeignKeyConstraint, Index, IntegerSize, Table};
 
 use luminair_common::{
     AttributeId, CREATED_BY_FIELD_NAME, CREATED_FIELD_NAME, DOCUMENT_ID_FIELD_NAME, DocumentType, DocumentTypesRegistry, ID_FIELD_NAME, INVERSE_ID_FIELD_NAME, OWNING_ID_FIELD_NAME, PUBLISHED_BY_FIELD_NAME, PUBLISHED_FIELD_NAME, RELATION_ID_FIELD_NAME, REVISION_FIELD_NAME, UPDATED_BY_FIELD_NAME, UPDATED_FIELD_NAME, VERSION_FIELD_NAME, entities::{FieldType, DocumentRelation}
@@ -108,7 +108,7 @@ impl MainTableBuilder {
                 None,
             ),Column::new(
                 VERSION_FIELD_NAME,
-                ColumnType::Integer,
+                ColumnType::Integer(IntegerSize::Int32),
                 None,
                 false,
                 false,
@@ -136,7 +136,7 @@ impl MainTableBuilder {
                 ),
                 Column::new(
                     REVISION_FIELD_NAME,
-                    ColumnType::Integer,
+                    ColumnType::Integer(IntegerSize::Int32),
                     None,
                     false,
                     false,
@@ -185,7 +185,7 @@ impl RelationTablesBuilder {
             Column::primary_key(RELATION_ID_FIELD_NAME, ColumnType::Serial, None),
             Column::new(
                 OWNING_ID_FIELD_NAME,
-                ColumnType::Integer,
+                ColumnType::Integer(IntegerSize::Int32),
                 None,
                 true,
                 false,
@@ -193,7 +193,7 @@ impl RelationTablesBuilder {
             ),
             Column::new(
                 INVERSE_ID_FIELD_NAME,
-                ColumnType::Integer,
+                ColumnType::Integer(IntegerSize::Int32),
                 None,
                 true,
                 false,
@@ -244,7 +244,7 @@ fn handle_document_fields(document: &DocumentType, main_table_builder: &mut Main
             FieldType::Uid => ColumnType::Text,
             FieldType::Uuid => ColumnType::Uuid,
             FieldType::Text { localized } => if localized { ColumnType::JsonB } else { ColumnType::Text },
-            FieldType::Integer => ColumnType::Integer,
+            FieldType::Integer => ColumnType::Integer(IntegerSize::Int64), // TODO: support for 32 bit integers
             FieldType::Decimal => ColumnType::Decimal,
             FieldType::Date => ColumnType::Date,
             FieldType::DateTime => ColumnType::TimestampTZ,

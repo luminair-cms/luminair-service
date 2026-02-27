@@ -22,18 +22,24 @@ pub struct Column {
 // TODO: contextual column properties depends on column type:
 
 /// Represents Column types
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ColumnType {
     Serial,
     Uuid,
     Text,
     Varchar,
-    Integer, // TODO: 32 and 64 bit integer types
+    Integer(IntegerSize),
     Decimal,
     Date,
     TimestampTZ,
     Boolean,
     JsonB
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum IntegerSize {
+    Int32,
+    Int64,
 }
 
 /// Represents foreign key constraint in the database table
