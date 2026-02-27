@@ -1,14 +1,15 @@
-use crate::domain::sql::SqlParameterRef;
+use crate::domain::{document::content::ContentValue, sql::SqlParameterRef};
 use chrono::{DateTime, Utc};
 use sqlx::{postgres::PgArguments, types::Uuid, Arguments};
+use serde_json;
 use std::fmt::Debug;
 
 pub struct SqlParametersHolder {
     // Use Option so we can `take()` by index without shifting the vector
-    parameters: Vec<Option<Box<dyn QueryParameter>>>,
+    parameters: Vec<Option<Box<dyn SqlParameter>>>,
 }
 
-pub trait QueryParameter: Debug + Send {
+pub trait SqlParameter: Debug + Send {
     fn add_to_args(self: Box<Self>, args: &mut PgArguments);
 }
 
@@ -21,7 +22,7 @@ impl SqlParametersHolder {
 
     pub fn bind<T>(&mut self, value: T) -> SqlParameterRef
     where
-        T: Into<Box<dyn QueryParameter>>,
+        T: Into<Box<dyn SqlParameter>>,
     {
         self.parameters.push(Some(value.into()));
         let index = self.parameters.len() - 1;
@@ -57,10 +58,11 @@ impl SqlParametersHolder {
 #[derive(Debug, Clone)]
 struct TextQueryParameter(String);
 
-impl QueryParameter for TextQueryParameter {
+impl SqlParameter for TextQueryParameter {
     fn add_to_args(self: Box<Self>, args: &mut PgArguments) {
         // we own the String now; move it into args without cloning
         let TextQueryParameter(value) = *self;
+        // TODO: handle Result from add() in case of error
         args.add(value);
     }
 }
@@ -71,8 +73,8 @@ impl From<String> for TextQueryParameter {
     }
 }
 
-impl Into<Box<dyn QueryParameter>> for String {
-    fn into(self) -> Box<dyn QueryParameter> {
+impl Into<Box<dyn SqlParameter>> for String {
+    fn into(self) -> Box<dyn SqlParameter> {
         Box::new(TextQueryParameter::from(self))
     }
 }
@@ -83,8 +85,8 @@ impl From<&str> for TextQueryParameter {
     }
 }
 
-impl Into<Box<dyn QueryParameter>> for &str {
-    fn into(self) -> Box<dyn QueryParameter> {
+impl Into<Box<dyn SqlParameter>> for &str {
+    fn into(self) -> Box<dyn SqlParameter> {
         Box::new(TextQueryParameter::from(self))
     }
 }
@@ -100,15 +102,63 @@ impl From<i64> for IntegerQueryParameter {
     }
 }
 
-impl Into<Box<dyn QueryParameter>> for i64 {
-    fn into(self) -> Box<dyn QueryParameter> {
+impl Into<Box<dyn SqlParameter>> for i64 {
+    fn into(self) -> Box<dyn SqlParameter> {
         Box::new(IntegerQueryParameter::from(self))
     }
 }
 
-impl QueryParameter for IntegerQueryParameter {
+impl SqlParameter for IntegerQueryParameter {
     fn add_to_args(self: Box<Self>, args: &mut PgArguments) {
         let IntegerQueryParameter(value) = *self;
+        args.add(value);
+    }
+}
+
+// Decimal (f64)
+
+#[derive(Debug, Clone)]
+struct DecimalQueryParameter(f64);
+
+impl From<f64> for DecimalQueryParameter {
+    fn from(value: f64) -> Self {
+        Self(value)
+    }
+}
+
+impl Into<Box<dyn SqlParameter>> for f64 {
+    fn into(self) -> Box<dyn SqlParameter> {
+        Box::new(DecimalQueryParameter::from(self))
+    }
+}
+
+impl SqlParameter for DecimalQueryParameter {
+    fn add_to_args(self: Box<Self>, args: &mut PgArguments) {
+        let DecimalQueryParameter(value) = *self;
+        args.add(value);
+    }
+}
+
+// Date (chrono::NaiveDate)
+
+#[derive(Debug, Clone)]
+struct DateQueryParameter(chrono::NaiveDate);
+
+impl From<chrono::NaiveDate> for DateQueryParameter {
+    fn from(value: chrono::NaiveDate) -> Self {
+        Self(value)
+    }
+}
+
+impl Into<Box<dyn SqlParameter>> for chrono::NaiveDate {
+    fn into(self) -> Box<dyn SqlParameter> {
+        Box::new(DateQueryParameter::from(self))
+    }
+}
+
+impl SqlParameter for DateQueryParameter {
+    fn add_to_args(self: Box<Self>, args: &mut PgArguments) {
+        let DateQueryParameter(value) = *self;
         args.add(value);
     }
 }
@@ -124,13 +174,13 @@ impl From<bool> for BooleanQueryParameter {
     }
 }
 
-impl Into<Box<dyn QueryParameter>> for bool {
-    fn into(self) -> Box<dyn QueryParameter> {
+impl Into<Box<dyn SqlParameter>> for bool {
+    fn into(self) -> Box<dyn SqlParameter> {
         Box::new(BooleanQueryParameter::from(self))
     }
 }
 
-impl QueryParameter for BooleanQueryParameter {
+impl SqlParameter for BooleanQueryParameter {
     fn add_to_args(self: Box<Self>, args: &mut PgArguments) {
         let BooleanQueryParameter(value) = *self;
         args.add(value);
@@ -148,13 +198,13 @@ impl From<Uuid> for UuidQueryParameter {
     }
 }
 
-impl Into<Box<dyn QueryParameter>> for Uuid {
-    fn into(self) -> Box<dyn QueryParameter> {
+impl Into<Box<dyn SqlParameter>> for Uuid {
+    fn into(self) -> Box<dyn SqlParameter> {
         Box::new(UuidQueryParameter::from(self))
     }
 }
 
-impl QueryParameter for UuidQueryParameter {
+impl SqlParameter for UuidQueryParameter {
     fn add_to_args(self: Box<Self>, args: &mut PgArguments) {
         let UuidQueryParameter(value) = *self;
         args.add(value);
@@ -172,13 +222,13 @@ impl From<DateTime<Utc>> for DateTimeQueryParameter {
     }
 }
 
-impl Into<Box<dyn QueryParameter>> for DateTime<Utc> {
-    fn into(self) -> Box<dyn QueryParameter> {
+impl Into<Box<dyn SqlParameter>> for DateTime<Utc> {
+    fn into(self) -> Box<dyn SqlParameter> {
         Box::new(DateTimeQueryParameter::from(self))
     }
 }
 
-impl QueryParameter for DateTimeQueryParameter {
+impl SqlParameter for DateTimeQueryParameter {
     fn add_to_args(self: Box<Self>, args: &mut PgArguments) {
         let DateTimeQueryParameter(value) = *self;
         args.add(value);
@@ -191,12 +241,12 @@ impl QueryParameter for DateTimeQueryParameter {
 pub struct NullQueryParameter();
 
 impl NullQueryParameter {
-    pub fn new() -> Box<dyn QueryParameter> {
+    pub fn new() -> Box<dyn SqlParameter> {
         Box::new(Self())
     }
 }
 
-impl QueryParameter for NullQueryParameter {
+impl SqlParameter for NullQueryParameter {
     fn add_to_args(self: Box<Self>, args: &mut PgArguments) {
         let null: Option<String> = None;
         args.add(null);
@@ -214,15 +264,65 @@ impl From<Vec<i64>> for IntegerVectorQueryParameter {
     }
 }
 
-impl Into<Box<dyn QueryParameter>> for Vec<i64> {
-    fn into(self) -> Box<dyn QueryParameter> {
+impl Into<Box<dyn SqlParameter>> for Vec<i64> {
+    fn into(self) -> Box<dyn SqlParameter> {
         Box::new(IntegerVectorQueryParameter::from(self))
     }
 }
 
-impl QueryParameter for IntegerVectorQueryParameter {
+impl SqlParameter for IntegerVectorQueryParameter {
     fn add_to_args(self: Box<Self>, args: &mut PgArguments) {
         let IntegerVectorQueryParameter(value) = *self;
         args.add(value);
+    }
+}
+
+#[derive(Debug, Clone)]
+struct ContentValueQueryParameter(ContentValue);
+
+impl From<ContentValue> for ContentValueQueryParameter {
+    fn from(value: ContentValue) -> Self {
+        Self(value)
+    }
+}
+
+impl Into<Box<dyn SqlParameter>> for ContentValue {
+    fn into(self) -> Box<dyn SqlParameter> {
+        Box::new(ContentValueQueryParameter::from(self))
+    }
+}
+
+impl SqlParameter for ContentValueQueryParameter {
+    fn add_to_args(self: Box<Self>, args: &mut PgArguments) {
+        use crate::domain::document::content::{ContentValue, DomainValue};
+        let ContentValueQueryParameter(value) = *self;
+
+        match value {
+            ContentValue::Null => {
+                let null: Option<String> = None;
+                let _ = args.add(null);
+            }
+            ContentValue::Scalar(dv) => {
+                match dv {
+                    DomainValue::Text(s) => { let _ = args.add(s); }
+                    DomainValue::Integer(i) => { let _ = args.add(i); }
+                    DomainValue::Decimal(f) => { let _ = args.add(f); }
+                    DomainValue::Boolean(b) => { let _ = args.add(b); }
+                    DomainValue::Date(d) => { let _ = args.add(d); }
+                    DomainValue::DateTime(dt) => { let _ = args.add(dt); }
+                    DomainValue::Uuid(u) => { let _ = args.add(u); }
+                    DomainValue::Email(e) => { let _ = args.add(e.as_ref()); }
+                    DomainValue::Url(u) => { let _ = args.add(u.as_ref()); }
+                    DomainValue::Json(map) => {
+                        let json = serde_json::to_value(map).unwrap();
+                        let _ = args.add(json.to_string());
+                    }
+                }
+            }
+            ContentValue::LocalizedText(map) => {
+                let json = serde_json::to_value(map).unwrap();
+                let _ = args.add(json.to_string());
+            }
+        }
     }
 }

@@ -1,9 +1,9 @@
 use crate::{
     domain::{
         document::{
-            content::ContentValue, lifecycle::UserId, DatabaseRowId, DocumentContent, DocumentInstance, DocumentInstanceId
+            DatabaseRowId, DocumentContent, DocumentInstance, DocumentInstanceId, content::{self, ContentValue}, lifecycle::UserId
         },
-        repository::{query::DocumentInstanceQuery, DocumentInstanceRepository, RepositoryError},
+        repository::{DocumentInstanceRepository, RepositoryError, query::DocumentInstanceQuery},
     },
     infrastructure::persistence::{
         build::{main_query_builder, related_query_builder},
@@ -28,7 +28,6 @@ use crate::domain::document::lifecycle::PublicationState;
 use crate::domain::sql::query::Condition;
 use crate::infrastructure::persistence::build::build_create_statement;
 use crate::infrastructure::persistence::parameters::SqlParametersHolder;
-use crate::infrastructure::persistence::sql::query::Condition;
 
 #[derive(Clone)]
 pub struct PostgresDocumentRepository {
@@ -152,21 +151,8 @@ impl DocumentInstanceRepository for PostgresDocumentRepository {
         for (id, _field_def) in &document_type.fields {
             let val = content.fields.get(id.as_ref());
             match val {
-                Some(ContentValue::Scalar(dv)) => {
-                    match dv {
-                        DomainValue::Text(s) => param_refs.push(params_holder.bind(s.clone())),
-                        DomainValue::Integer(i) => param_refs.push(params_holder.bind(*i)),
-                        DomainValue::Boolean(b) => param_refs.push(params_holder.bind(*b)),
-                        DomainValue::Uuid(u) => param_refs.push(params_holder.bind(*u)),
-                        DomainValue::Decimal(f) => param_refs.push(params_holder.bind(*f)),
-                        DomainValue::Date(d) => param_refs.push(params_holder.bind(*d)),
-                        DomainValue::DateTime(dt) => param_refs.push(params_holder.bind(*dt)),
-                        _ => return Err(RepositoryError::ValidationFailed(format!("Unsupported domain value for field {}", id))),
-                    }
-                }
-                Some(ContentValue::LocalizedText(map)) => {
-                    let json = serde_json::to_value(map).map_err(|e| RepositoryError::ValidationFailed(e.to_string()))?;
-                    param_refs.push(params_holder.bind(json.to_string())); // Assuming stored as JSON string or jsonb
+                Some(content) => {
+                    param_refs.push(params_holder.bind(content.clone()));
                 }
                 _ => {
                     param_refs.push(params_holder.bind_null());
