@@ -1,19 +1,23 @@
 use std::collections::HashSet;
 
 use crate::domain::AppState;
-use crate::domain::document::{DatabaseRowId, DocumentInstanceId};
+use crate::domain::document::lifecycle::PublicationState;
+use crate::domain::document::{DatabaseRowId, DocumentContent, DocumentInstanceId};
 use crate::domain::repository::DocumentInstanceRepository;
 use crate::domain::repository::query::DocumentInstanceQuery;
 use crate::infrastructure::http::api::{ApiError, ApiSuccess};
-use crate::infrastructure::http::handlers::data::dto::{
+use crate::infrastructure::http::handlers::data::response::{
     ManyDocumentsResponse, OneDocumentResponse,
 };
 use crate::infrastructure::http::querystring::QueryString;
+use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
+use axum::response::IntoResponse;
 use serde::Deserialize;
 
-mod dto;
+mod request;
+mod response;
 
 #[derive(Deserialize, Debug)]
 pub struct QueryParams {
@@ -52,7 +56,7 @@ pub async fn find_document_by_id<S: AppState>(
     let document_instance_id = DocumentInstanceId::try_from(&id)?;
     let repository = state.documents_instance_repository();
 
-    let mut document_response: dto::DocumentInstanceResponse = repository
+    let mut document_response: response::DocumentInstanceResponse = repository
         .find_by_id(document_type, document_instance_id)
         .await
         .map_err(|err| ApiError::from(err))?
@@ -78,11 +82,11 @@ pub async fn find_document_by_id<S: AppState>(
         // Convert relation instances to responses
         let relations_mapped: std::collections::HashMap<
             luminair_common::AttributeId,
-            Vec<dto::DocumentInstanceResponse>,
+            Vec<response::DocumentInstanceResponse>,
         > = relations
             .into_iter()
             .map(|(attr_id, instances)| {
-                let responses: Vec<dto::DocumentInstanceResponse> =
+                let responses: Vec<response::DocumentInstanceResponse> =
                     instances.into_iter().map(Into::into).collect();
                 (attr_id, responses)
             })
@@ -120,7 +124,7 @@ pub async fn find_all_documents<S: AppState>(
     // Build query using builder pattern - pagination guards are enforced by the query
     let query = DocumentInstanceQuery::new().paginate(page, page_size);
 
-    let mut documents: Vec<dto::DocumentInstanceResponse> = repository
+    let mut documents: Vec<response::DocumentInstanceResponse> = repository
         .find(document_type, query)
         .await
         .map_err(|err| ApiError::from(err))?
@@ -158,11 +162,11 @@ pub async fn find_all_documents<S: AppState>(
 
                 let doc_relations: std::collections::HashMap<
                     luminair_common::AttributeId,
-                    Vec<dto::DocumentInstanceResponse>,
+                    Vec<response::DocumentInstanceResponse>,
                 > = all_relations
                     .iter()
                     .filter_map(|(attr_id, related_docs_by_id)| {
-                        let related_responses: Vec<dto::DocumentInstanceResponse> =
+                        let related_responses: Vec<response::DocumentInstanceResponse> =
                             related_docs_by_id
                                 .get(&id)
                                 .map(|instances| {
@@ -183,7 +187,51 @@ pub async fn find_all_documents<S: AppState>(
         StatusCode::OK,
         ManyDocumentsResponse {
             data: documents,
-            meta: dto::MetadataResponse { total },
+            meta: response::MetadataResponse { total },
         },
     ))
+}
+
+pub async fn create_new_document<S: AppState>(
+    State(state): State<S>,
+    Path(api_type): Path<String>,
+   Json(payload): Json<serde_json::Value>,
+) -> Result<impl IntoResponse, ApiError> {
+       let document_type = state
+           .document_type_index()
+           .lookup(&api_type)
+           .ok_or(ApiError::NotFound)?;
+   
+       let repository = state.documents_instance_repository();
+       
+       // Validate and build fields from payload using document type metadata
+        let fields = request::build_fields_from_payload(document_type, &payload)
+            .map_err(|err| ApiError::UnprocessableEntity(err.to_string()))?;
+           
+       let content = DocumentContent {
+               fields,
+               publication_state: PublicationState::Draft { 
+                   revision: 0 
+               },
+           };
+       
+       let created_document_id = repository
+           .create(document_type, content, None)
+           .await
+           .map_err(|err| ApiError::from(err))?;
+       
+       let created_id: String = created_document_id.into();
+       
+        let location = format!("/documents/{}/{}", api_type, created_id);
+        let mut headers = axum::http::HeaderMap::new();
+        headers.insert(
+            axum::http::header::LOCATION,
+            axum::http::HeaderValue::from_str(&location)
+                .map_err(|_| ApiError::InternalServerError("Invalid location header".to_string()))?
+        );
+    
+        Ok((
+            StatusCode::CREATED,
+            headers,
+        ))
 }

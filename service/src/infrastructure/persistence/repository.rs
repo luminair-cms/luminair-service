@@ -1,16 +1,13 @@
 use crate::{
     domain::{
         document::{
-            content::ContentValue, lifecycle::UserId, DatabaseRowId, DocumentContent,
-            DocumentInstance, DocumentInstanceId,
+            content::ContentValue, lifecycle::UserId, DatabaseRowId, DocumentContent, DocumentInstance, DocumentInstanceId
         },
         repository::{query::DocumentInstanceQuery, DocumentInstanceRepository, RepositoryError},
     },
     infrastructure::persistence::{
         build::{main_query_builder, related_query_builder},
         columns::DOCUMENT_ID_COLUMN,
-        parameters::QueryParametersHolder,
-        query::Condition,
         result::row_to_document,
     },
 };
@@ -23,6 +20,15 @@ use sqlx::Row;
 
 use crate::infrastructure::persistence::columns::OWNING_ID_COLUMN;
 use std::{borrow::Cow, collections::HashMap};
+use chrono::{DateTime, Utc};
+use sqlx::types::Uuid;
+use uuid::{ContextV7, Timestamp};
+use crate::domain::document::content::DomainValue;
+use crate::domain::document::lifecycle::PublicationState;
+use crate::domain::sql::query::Condition;
+use crate::infrastructure::persistence::build::build_create_statement;
+use crate::infrastructure::persistence::parameters::SqlParametersHolder;
+use crate::infrastructure::persistence::sql::query::Condition;
 
 #[derive(Clone)]
 pub struct PostgresDocumentRepository {
@@ -74,7 +80,7 @@ impl DocumentInstanceRepository for PostgresDocumentRepository {
         document_type: &DocumentType,
         id: DocumentInstanceId,
     ) -> Result<Option<DocumentInstance>, RepositoryError> {
-        let mut params_holder = QueryParametersHolder::new();
+        let mut params_holder = SqlParametersHolder::new();
 
         let (sql, params) = main_query_builder(document_type)
             .where_condition(Condition::Equals {
@@ -104,11 +110,79 @@ impl DocumentInstanceRepository for PostgresDocumentRepository {
 
     async fn create(
         &self,
-        _document_type_id: DocumentTypeId,
-        _content: DocumentContent,
-        _user_id: Option<UserId>,
-    ) -> Result<DocumentInstance, RepositoryError> {
-        todo!()
+        document_type: &DocumentType,
+        content: DocumentContent,
+        user_id: Option<UserId>,
+    ) -> Result<DocumentInstanceId, RepositoryError> {
+        let mut params_holder = SqlParametersHolder::new();
+        let mut create_statement = build_create_statement(document_type);
+
+        let mut param_refs = Vec::new();
+
+        let now = chrono::Utc::now();
+        let ts = uuid_timestamp_from_chrono(&now);
+
+        let document_id = DocumentInstanceId(Uuid::new_v7(ts));
+
+        param_refs.push(params_holder.bind(document_id.0)); // DOCUMENT_ID_FIELD_NAME
+        param_refs.push(params_holder.bind(now)); // CREATED_FIELD_NAME
+        param_refs.push(params_holder.bind(now)); // UPDATED_FIELD_NAME
+
+        let uid_str = user_id.as_ref().map(|u| u.0.clone());
+        param_refs.push(params_holder.bind_null()); // CREATED_BY_FIELD_NAME
+        param_refs.push(params_holder.bind_null()); // UPDATED_BY_FIELD_NAME
+
+        param_refs.push(params_holder.bind(1i64)); // VERSION_FIELD_NAME
+
+        if document_type.has_draft_and_publish() {
+            match &content.publication_state {
+                PublicationState::Published { revision, published_at, published_by } => {
+                    param_refs.push(params_holder.bind(*published_at));
+                    param_refs.push(params_holder.bind_null());
+                    param_refs.push(params_holder.bind(*revision as i64));
+                }
+                PublicationState::Draft { revision } => {
+                    param_refs.push(params_holder.bind_null());
+                    param_refs.push(params_holder.bind_null());
+                    param_refs.push(params_holder.bind(*revision as i64));
+                }
+            }
+        }
+
+        for (id, _field_def) in &document_type.fields {
+            let val = content.fields.get(id.as_ref());
+            match val {
+                Some(ContentValue::Scalar(dv)) => {
+                    match dv {
+                        DomainValue::Text(s) => param_refs.push(params_holder.bind(s.clone())),
+                        DomainValue::Integer(i) => param_refs.push(params_holder.bind(*i)),
+                        DomainValue::Boolean(b) => param_refs.push(params_holder.bind(*b)),
+                        DomainValue::Uuid(u) => param_refs.push(params_holder.bind(*u)),
+                        DomainValue::Decimal(f) => param_refs.push(params_holder.bind(*f)),
+                        DomainValue::Date(d) => param_refs.push(params_holder.bind(*d)),
+                        DomainValue::DateTime(dt) => param_refs.push(params_holder.bind(*dt)),
+                        _ => return Err(RepositoryError::ValidationFailed(format!("Unsupported domain value for field {}", id))),
+                    }
+                }
+                Some(ContentValue::LocalizedText(map)) => {
+                    let json = serde_json::to_value(map).map_err(|e| RepositoryError::ValidationFailed(e.to_string()))?;
+                    param_refs.push(params_holder.bind(json.to_string())); // Assuming stored as JSON string or jsonb
+                }
+                _ => {
+                    param_refs.push(params_holder.bind_null());
+                }
+            }
+        }
+
+        let (sql, _) = create_statement.with_params(param_refs.clone()).to_sql();
+        let query_arguments = params_holder.generate_args(&param_refs);
+
+        sqlx::query_with(&sql, query_arguments)
+            .execute(self.database.database_pool())
+            .await
+            .map_err(|e| RepositoryError::DatabaseError(e.to_string()))?;
+
+        Ok(document_id)
     }
 
     async fn update(
@@ -132,13 +206,6 @@ impl DocumentInstanceRepository for PostgresDocumentRepository {
         &self,
         _id: DocumentInstanceId,
         _user_id: Option<UserId>,
-    ) -> Result<DocumentInstance, RepositoryError> {
-        todo!()
-    }
-
-    async fn unpublish(
-        &self,
-        _id: DocumentInstanceId,
     ) -> Result<DocumentInstance, RepositoryError> {
         todo!()
     }
@@ -205,7 +272,7 @@ impl DocumentInstanceRepository for PostgresDocumentRepository {
                 .get(&rel_metadata.target)
                 .ok_or(RepositoryError::NotFound)?;
 
-            let mut params_holder = QueryParametersHolder::new();
+            let mut params_holder = SqlParametersHolder::new();
 
             let values: Vec<i64> = main_table_ids.iter().map(|id| id.0).collect();
 
@@ -246,4 +313,12 @@ impl DocumentInstanceRepository for PostgresDocumentRepository {
 
         Ok(result)
     }
+}
+
+const CLOCK_SEQUENCE: ContextV7 = ContextV7::new();
+
+fn uuid_timestamp_from_chrono(datetime: &DateTime<Utc>) -> Timestamp {
+    let secs = datetime.timestamp();
+    let nanos = datetime.timestamp_subsec_nanos();
+    Timestamp::from_unix(CLOCK_SEQUENCE, secs as u64, nanos)
 }

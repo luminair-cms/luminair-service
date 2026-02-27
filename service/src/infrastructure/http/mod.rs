@@ -1,9 +1,10 @@
 use anyhow::Context;
 use axum::http::StatusCode;
-use axum::routing::get;
+use axum::routing::{get, post};
 use axum::{Extension, Router};
 use axum_prometheus::PrometheusMetricLayer;
 
+use crate::infrastructure::http::handlers::data::create_new_document;
 use crate::infrastructure::http::handlers::{health_check, hello_world_handler};
 use crate::infrastructure::http::querystring::QueryStringConfig;
 use crate::infrastructure::{
@@ -80,4 +81,5 @@ fn api_routes<S: AppState>() -> Router<S> {
         .route("/meta/documents/{id}", get(one_document_metadata::<S>))
         .route("/documents/{api_type}", get(find_all_documents::<S>))
         .route("/documents/{api_type}/{id}", get(find_document_by_id::<S>))
+        .route("/documents/{api_type}", post(create_new_document::<S>))
 }

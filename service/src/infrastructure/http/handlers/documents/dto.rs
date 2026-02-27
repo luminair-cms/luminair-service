@@ -1,7 +1,7 @@
 use luminair_common::{
     AttributeId, DocumentType,
     entities::{
-        AttributeConstraints, AttributeType, DocumentField, DocumentKind, DocumentRelation,
+        AttributeConstraints, FieldType, DocumentField, DocumentKind, DocumentRelation,
         DocumentTypeInfo, DocumentTypeOptions, RelationType,
     },
 };
@@ -77,7 +77,7 @@ pub struct AttributeResponse {
 #[serde(rename_all = "camelCase", untagged)]
 pub enum AttribteBodyResponse {
     Field {
-        attribute_type: AttributeType,
+        attribute_type: FieldType,
         unique: bool,
         #[serde(default)]
         required: bool,
@@ -147,10 +147,13 @@ impl From<(&AttributeId, &DocumentField)> for AttributeResponse {
         let body = value.1;
         let constraints = body.constraints.as_ref().map(|c| c.clone());
         let body = AttribteBodyResponse::Field {
-            attribute_type: body.attribute_type.clone(),
+            attribute_type: body.field_type.clone(),
             unique: body.unique,
             required: body.required,
-            localized: body.localized,
+            localized: match body.field_type {
+                FieldType::Text { localized } => localized,
+                _ => false,
+            },
             constraints,
         };
         Self { id, body }

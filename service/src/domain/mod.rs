@@ -3,11 +3,12 @@ use std::collections::HashMap;
 use crate::domain::repository::DocumentInstanceRepository;
 use anyhow::Result;
 use luminair_common::{
-    DocumentType, DocumentTypeId, DocumentTypesRegistry, entities::DocumentKind,
+    entities::DocumentKind, DocumentType, DocumentTypesRegistry,
 };
 
 pub mod document;
 pub mod repository;
+pub mod sql;
 
 /// This trait used only for testing purposes.
 pub trait HelloService: Send + Sync + 'static {
@@ -60,33 +61,24 @@ impl DocumentTypeIndex {
         self.map.get(api_id).copied()
     }
 
-    /// Convenience helper returning just the `DocumentTypeId`.
-    pub fn lookup_id(&self, api_id: &str) -> Option<DocumentTypeId> {
-        self.lookup(api_id).map(|dt| dt.id.clone())
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::HashMap;
-    use luminair_common::test_utils::{make_type, SimpleRegistry};
+    use luminair_common::test_utils::{make_collection, make_single, SimpleRegistry};
 
     #[test]
     fn index_contains_both_forms() {
-        let dt1 = make_type("t1", DocumentKind::Collection, "foo", "foos");
-        let dt2 = make_type("t2", DocumentKind::SingleType, "bar", "bars");
+        let dt1 = make_collection("foo");
+        let dt2 = make_single("bar");
         let registry = SimpleRegistry { types: vec![dt1, dt2] };
         let idx = DocumentTypeIndex::new(&registry);
 
         // plural form for collection
         assert_eq!(idx.lookup("foos"), Some(dt1));
-        assert_eq!(idx.lookup_id("foos"), Some(dt1.id.clone()));
-        // singular form for collection
-        assert_eq!(idx.lookup("foo"), Some(dt1));
         // singular only for singletons
         assert_eq!(idx.lookup("bar"), Some(dt2));
-        assert_eq!(idx.lookup_id("bar"), Some(dt2.id.clone()));
         // plural of singleton not inserted (not needed)
         assert_eq!(idx.lookup("bars"), None);
         // missing key

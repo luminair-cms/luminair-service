@@ -30,10 +30,10 @@ pub trait DocumentInstanceRepository: Send + Sync + 'static {
     /// Create new instance
     fn create(
         &self,
-        document_type_id: DocumentTypeId,
+        document_type: &DocumentType,
         content: DocumentContent,
         user_id: Option<UserId>,
-    ) -> impl Future<Output = Result<DocumentInstance, RepositoryError>> + Send;
+    ) -> impl Future<Output = Result<DocumentInstanceId, RepositoryError>> + Send;
 
     /// Update instance
     fn update(
@@ -55,12 +55,6 @@ pub trait DocumentInstanceRepository: Send + Sync + 'static {
         &self,
         id: DocumentInstanceId,
         user_id: Option<UserId>,
-    ) -> impl Future<Output = Result<DocumentInstance, RepositoryError>> + Send;
-
-    /// Unpublish back to draft
-    fn unpublish(
-        &self,
-        id: DocumentInstanceId,
     ) -> impl Future<Output = Result<DocumentInstance, RepositoryError>> + Send;
 
     /// Get total count of documents

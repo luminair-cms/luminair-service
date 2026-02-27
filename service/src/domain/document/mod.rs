@@ -138,17 +138,4 @@ impl DocumentInstance {
         }
     }
 
-    /// Unpublish back to draft
-    pub fn unpublish(&mut self) -> Result<(), DocumentError> {
-        match &self.content.publication_state {
-            PublicationState::Published { .. } => {
-                self.content.publication_state = PublicationState::Draft {
-                    revision: self.audit.version,
-                };
-                self.audit.version += 1;
-                Ok(())
-            }
-            PublicationState::Draft { .. } => Err(DocumentError::AlreadyDraft),
-        }
-    }
 }

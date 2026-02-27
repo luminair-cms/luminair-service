@@ -1,16 +1,13 @@
+use std::collections::HashMap;
 use chrono::{DateTime, Utc};
 use luminair_common::{
     CREATED_BY_FIELD_NAME, CREATED_FIELD_NAME, DOCUMENT_ID_FIELD_NAME, DocumentType, ID_FIELD_NAME,
     PUBLISHED_BY_FIELD_NAME, PUBLISHED_FIELD_NAME, REVISION_FIELD_NAME, UPDATED_BY_FIELD_NAME,
     UPDATED_FIELD_NAME, VERSION_FIELD_NAME,
-    entities::{AttributeType, DocumentField},
+    entities::{FieldType, DocumentField},
 };
-use sqlx::{
-    Row,
-    postgres::PgRow,
-    types::{Uuid, uuid},
-};
-
+use sqlx::{Row, postgres::PgRow, types::{Uuid, Json}, ValueRef, decode::Decode, Postgres, Type};
+use sqlx::postgres::PgValueRef;
 use crate::domain::{
     document::{
         DatabaseRowId, DocumentContent, DocumentInstance, DocumentInstanceId,
@@ -69,95 +66,73 @@ pub fn row_to_document(
     })
 }
 
+fn decode_value<'r, T>(value: PgValueRef<'r>) -> Result<T, RepositoryError>
+where
+    T: Decode<'r, Postgres> + Type<Postgres>,
+{
+    T::decode(value).map_err(|e| {
+        RepositoryError::DatabaseError(format!(
+            "Failed to decode value: {}", e
+        ))
+    })
+}
+
 pub fn parse_field_value(
     row: &PgRow,
     field: &DocumentField,
     column_name: &str,
 ) -> Result<ContentValue, RepositoryError> {
-    let value = match field.attribute_type {
-        AttributeType::Text => {
-            let text_value: Option<String> = row.try_get(column_name).map_err(|e| {
-                RepositoryError::DatabaseError(format!(
-                    "Failed to parse text field {}: {}",
-                    column_name, e
-                ))
-            })?;
-            match text_value {
-                Some(v) => ContentValue::Scalar(DomainValue::Text(v)),
-                None => ContentValue::Scalar(DomainValue::Null),
+    let value_ref = row.try_get_raw(column_name)
+        .map_err(|e| {
+        RepositoryError::DatabaseError(format!(
+            "Failed to parse field {}: {}",
+            column_name, e
+        ))
+    })?;
+
+    if value_ref.is_null() {
+        return Ok(ContentValue::Null);
+    }
+
+    // TODO: generalize this: DomainValue is depend on FieldType, both can precise param of row.try_get
+
+    let value = match field.field_type {
+        FieldType::Text { localized } => {
+            if localized {
+                let value: Json<HashMap<String, String>> = decode_value(value_ref)?;
+                ContentValue::LocalizedText(value.0)
+            } else {
+                let value: String = decode_value(value_ref)?;
+                ContentValue::Scalar(DomainValue::Text(value))
             }
         }
-        AttributeType::Integer => {
-            let int_value: Option<i64> = row.try_get(column_name).map_err(|e| {
-                RepositoryError::DatabaseError(format!(
-                    "Failed to parse integer field {}: {}",
-                    column_name, e
-                ))
-            })?;
-            match int_value {
-                Some(v) => ContentValue::Scalar(DomainValue::Integer(v)),
-                None => ContentValue::Scalar(DomainValue::Null),
-            }
+        FieldType::Integer => {
+            let value: i64 = decode_value(value_ref)?;
+            ContentValue::Scalar(DomainValue::Integer(value))
         }
-        AttributeType::Decimal => {
-            let dec_value: Option<f64> = row.try_get(column_name).map_err(|e| {
-                RepositoryError::DatabaseError(format!(
-                    "Failed to parse decimal field {}: {}",
-                    column_name, e
-                ))
-            })?;
-            match dec_value {
-                Some(v) => ContentValue::Scalar(DomainValue::Decimal(v)),
-                None => ContentValue::Scalar(DomainValue::Null),
-            }
+        FieldType::Decimal => {
+            let value: f64 = decode_value(value_ref)?;
+            ContentValue::Scalar(DomainValue::Decimal(value))
         }
-        AttributeType::Boolean => {
-            let bool_value: Option<bool> = row.try_get(column_name).map_err(|e| {
-                RepositoryError::DatabaseError(format!(
-                    "Failed to parse boolean field {}: {}",
-                    column_name, e
-                ))
-            })?;
-            match bool_value {
-                Some(v) => ContentValue::Scalar(DomainValue::Boolean(v)),
-                None => ContentValue::Scalar(DomainValue::Null),
-            }
+        FieldType::Boolean => {
+            let value: bool = decode_value(value_ref)?;
+            ContentValue::Scalar(DomainValue::Boolean(value))
         }
-        AttributeType::Date => {
-            let date_value: Option<chrono::NaiveDate> = row.try_get(column_name).map_err(|e| {
-                RepositoryError::DatabaseError(format!(
-                    "Failed to parse date field {}: {}",
-                    column_name, e
-                ))
-            })?;
-            match date_value {
-                Some(v) => ContentValue::Scalar(DomainValue::Date(v)),
-                None => ContentValue::Scalar(DomainValue::Null),
-            }
+        FieldType::Date => {
+            let value: chrono::NaiveDate = decode_value(value_ref)?;
+            ContentValue::Scalar(DomainValue::Date(value))
         }
-        AttributeType::DateTime => {
-            let datetime_value: Option<DateTime<Utc>> = row.try_get(column_name).map_err(|e| {
-                RepositoryError::DatabaseError(format!(
-                    "Failed to parse datetime field {}: {}",
-                    column_name, e
-                ))
-            })?;
-            match datetime_value {
-                Some(v) => ContentValue::Scalar(DomainValue::DateTime(v)),
-                None => ContentValue::Scalar(DomainValue::Null),
-            }
+        FieldType::DateTime => {
+            let value: DateTime<Utc> = decode_value(value_ref)?;
+            ContentValue::Scalar(DomainValue::DateTime(value))
         }
-        AttributeType::Uid | AttributeType::Uuid => {
-            let uuid_value: Option<uuid::Uuid> = row.try_get(column_name).map_err(|e| {
-                RepositoryError::DatabaseError(format!(
-                    "Failed to parse uuid field {}: {}",
-                    column_name, e
-                ))
-            })?;
-            match uuid_value {
-                Some(v) => ContentValue::Scalar(DomainValue::Uuid(v)),
-                None => ContentValue::Scalar(DomainValue::Null),
-            }
+        FieldType::Uid | FieldType::Uuid => {
+            let value: Uuid = decode_value(value_ref)?;
+            ContentValue::Scalar(DomainValue::Uuid(value))
+        }
+        FieldType::Json => {
+            let value: Json<HashMap<String, String>> = decode_value(value_ref)?;
+            ContentValue::Scalar(DomainValue::Json(value.0))
         }
     };
     Ok(value)

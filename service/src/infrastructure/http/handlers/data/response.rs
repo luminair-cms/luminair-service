@@ -98,7 +98,6 @@ impl DocumentInstanceResponse {
 #[serde(untagged)]
 pub enum AttributeResponse {
     Field(JsonValue),
-    LocalizedField(HashMap<String, String>),
     Relation(Vec<DocumentInstanceResponse>),
 }
 
@@ -119,11 +118,15 @@ impl From<DomainValue> for JsonValue {
             DomainValue::Boolean(b) => JsonValue::Bool(b),
             DomainValue::Date(date) => JsonValue::String(date.to_string()),
             DomainValue::DateTime(dt) => JsonValue::String(dt.to_rfc3339()),
-            DomainValue::Email(email) => JsonValue::String(email.as_str().to_string()),
-            DomainValue::Url(url) => JsonValue::String(url.as_str().to_string()),
+            DomainValue::Email(email) => JsonValue::String(email.into_inner()),
+            DomainValue::Url(url) => JsonValue::String(url.into_inner()),
             DomainValue::Uuid(uuid) => JsonValue::String(uuid.to_string()),
-            DomainValue::Json(json_blob) => json_blob.as_value().clone(),
-            DomainValue::Null => JsonValue::Null,
+            DomainValue::Json(json_blob) => JsonValue::Object(
+                json_blob
+                    .into_iter()
+                    .map(|(k,v)|(k, JsonValue::String(v)))
+                    .collect()
+            )
         }
     }
 }
@@ -168,7 +171,15 @@ impl From<DocumentInstance> for DocumentInstanceResponse {
                             AttributeResponse::Field(JsonValue::from(domain_value.clone()))
                         }
                         ContentValue::LocalizedText(value) => {
-                            AttributeResponse::LocalizedField(value.to_owned())
+                            let json_value = JsonValue::Object(
+                                value.into_iter()
+                                    .map(|(k,v)| (k.to_owned(), JsonValue::String(v.to_owned())))
+                                    .collect()
+                            );
+                            AttributeResponse::Field(json_value)
+                        }
+                        ContentValue::Null => {
+                            AttributeResponse::Field(JsonValue::Null)
                         }
                     },
                 )

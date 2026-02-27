@@ -1,7 +1,7 @@
 use crate::domain::tables::{Column, ColumnType, ForeignKeyConstraint, Index, Table};
 
 use luminair_common::{
-    AttributeId, CREATED_BY_FIELD_NAME, CREATED_FIELD_NAME, DOCUMENT_ID_FIELD_NAME, DocumentType, DocumentTypesRegistry, ID_FIELD_NAME, INVERSE_ID_FIELD_NAME, OWNING_ID_FIELD_NAME, PUBLISHED_BY_FIELD_NAME, PUBLISHED_FIELD_NAME, RELATION_ID_FIELD_NAME, REVISION_FIELD_NAME, UPDATED_BY_FIELD_NAME, UPDATED_FIELD_NAME, VERSION_FIELD_NAME, entities::{AttributeType, DocumentRelation}
+    AttributeId, CREATED_BY_FIELD_NAME, CREATED_FIELD_NAME, DOCUMENT_ID_FIELD_NAME, DocumentType, DocumentTypesRegistry, ID_FIELD_NAME, INVERSE_ID_FIELD_NAME, OWNING_ID_FIELD_NAME, PUBLISHED_BY_FIELD_NAME, PUBLISHED_FIELD_NAME, RELATION_ID_FIELD_NAME, REVISION_FIELD_NAME, UPDATED_BY_FIELD_NAME, UPDATED_FIELD_NAME, VERSION_FIELD_NAME, entities::{FieldType, DocumentRelation}
 };
 
 pub mod migration;
@@ -240,19 +240,16 @@ impl RelationTablesBuilder {
 
 fn handle_document_fields(document: &DocumentType, main_table_builder: &mut MainTableBuilder) {
     for (id, persisted) in document.fields.iter() {
-        let column_type = if persisted.localized {
-            ColumnType::JsonB
-        } else {
-            match persisted.attribute_type {
-                AttributeType::Uid => ColumnType::Text,
-                AttributeType::Uuid => ColumnType::Uuid,
-                AttributeType::Text => ColumnType::Text,
-                AttributeType::Integer => ColumnType::Integer,
-                AttributeType::Decimal => ColumnType::Decimal,
-                AttributeType::Date => ColumnType::Date,
-                AttributeType::DateTime => ColumnType::TimestampTZ,
-                AttributeType::Boolean => ColumnType::Boolean,
-            }
+        let column_type = match persisted.field_type {
+            FieldType::Uid => ColumnType::Text,
+            FieldType::Uuid => ColumnType::Uuid,
+            FieldType::Text { localized } => if localized { ColumnType::JsonB } else { ColumnType::Text },
+            FieldType::Integer => ColumnType::Integer,
+            FieldType::Decimal => ColumnType::Decimal,
+            FieldType::Date => ColumnType::Date,
+            FieldType::DateTime => ColumnType::TimestampTZ,
+            FieldType::Boolean => ColumnType::Boolean,
+            FieldType::Json => ColumnType::JsonB
         };
 
         let column = Column::new(

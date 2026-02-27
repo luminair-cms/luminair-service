@@ -3,7 +3,7 @@ use std::{collections::{HashMap, HashSet}, path::Path, sync::{Arc, OnceLock}};
 use anyhow::{*, Context};
 use serde::Deserialize;
 
-use crate::{AttributeId, domain::{DocumentType, DocumentTypeId, DocumentTypesRegistry}, entities::{AttributeConstraints, AttributeType, DocumentField, DocumentKind, DocumentRelation, DocumentTitle, DocumentTypeInfo, DocumentTypeOptions, LocalizationId, LocalizationIdError, RelationType}};
+use crate::{AttributeId, domain::{DocumentType, DocumentTypeId, DocumentTypesRegistry}, entities::{AttributeConstraints, FieldType, DocumentField, DocumentKind, DocumentRelation, DocumentTitle, DocumentTypeInfo, DocumentTypeOptions, LocalizationId, LocalizationIdError, RelationType}};
 
 pub fn load(schema_config_path: &str) -> Result<&'static dyn DocumentTypesRegistry, anyhow::Error> {
     let loaded = DocumentTypesRegistryAdapter::load(schema_config_path)?;
@@ -127,13 +127,13 @@ struct DocumentOptionsRecord<'a> {
 enum AttributeRecord<'a> {
     Field {
         #[serde(alias = "type")]
-        attribute_type: AttributeType,
+        field_type: FieldType,
+        #[serde(default)]
+        localized: bool,
         #[serde(default)]
         unique: bool,
         #[serde(default)]
         required: bool,
-        #[serde(default)]
-        localized: bool,
         constraints: Option<AttributeConstraintsRecord<'a>>,
     },
     Relation {
@@ -173,18 +173,24 @@ impl<'a> TryFrom<(&'a str, DocumentRecord<'a>)> for DocumentType {
 
             match record {
                 AttributeRecord::Field {
-                    attribute_type,
+                    field_type,
+                    localized,
                     unique,
                     required,
-                    localized,
                     constraints,
                 } => {
+                    let mut field_type = *field_type;
+
+                    // If it's a Text field, apply the localized modifier from the record
+                    if let FieldType::Text { localized: ref mut l } = field_type {
+                        *l = *localized;
+                    }
+                    
                     let constraints = constraints.as_ref().map(AttributeConstraints::from);
                     let field = DocumentField {
-                        attribute_type: *attribute_type,
+                        field_type,
                         unique: *unique,
                         required: *required,
-                        localized: *localized,
                         constraints,
                     };
                     fields.insert(id, field);

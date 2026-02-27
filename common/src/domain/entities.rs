@@ -87,14 +87,12 @@ static VALID_LOCALIZATIONS_REGEX: LazyLock<Regex> =
 )]
 pub struct LocalizationId(String);
 
-
 /// A uniquely identifiable document Field.
 #[derive(Debug, Serialize)]
 pub struct DocumentField {
-    pub attribute_type: AttributeType,
+    pub field_type: FieldType,
     pub unique: bool,
     pub required: bool,
-    pub localized: bool,
     pub constraints: Option<AttributeConstraints>,
 }
 
@@ -105,19 +103,37 @@ pub struct DocumentRelation {
     pub target: DocumentTypeId
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-pub enum AttributeType {
+// TODO: support for more complex relations (e.g. with additional fields on the relation itself, like in a many-to-many with pivot table)
+// TODO: support for self-relations (e.g. a "Category" that can have a parent category, which is also of type "Category")
+// TODO: support for polymorphic relations (e.g. a "Comment" that can belong to either a "Post" or a "Product", etc.)
+// TODO: support for recursive relations (e.g. a "Category" that can have subcategories, which are also of type "Category")
+// TODO: support for more complex relation types (e.g. one-to-one, many-to-many, etc.) and relation options (e.g. cascade delete, etc.)
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum FieldType {
     Uid,  // unique identifier based on text
     Uuid, // unique identifier based on UUID
-    Text,
+    Text {
+        #[serde(skip)]
+        localized: bool,
+    },
     Integer,
     Decimal,
     Date,
     DateTime,
     Boolean,
+    Json,  // arbitrary JSON data
 }
 
-#[derive(Clone, Debug, Serialize)]
+// TODO: support for more complex constraints (e.g. regex patterns for text, min/max for numbers, date ranges for dates, etc.)
+// TODO: constraints that depend on other fields (e.g. "start_date" must be before "end_date", etc.)
+// TODO: constraints that depend on the relation (e.g. "category" must be one of the categories defined in the "Category" document type, etc.)
+// TODO: support for custom validation functions (e.g. a "validate_email" function that checks if a text field is a valid email address, etc.)
+// TODO: support for localization-specific constraints (e.g. a "name" field that must be unique across all localizations, etc.)
+// TODO: constraints that depends on the FieldType (e.g. a "price" field that must be a positive decimal, etc.)
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
 #[serde(rename_all = "camelCase")]
 pub struct AttributeConstraints {
     #[serde(default)]
@@ -127,6 +143,8 @@ pub struct AttributeConstraints {
     #[serde(default)]
     pub maximal_length: Option<usize>,
 }
+
+// TODO: different constraints for different types (e.g. min/max for numbers, date ranges for dates, etc.)
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum RelationType {

@@ -19,6 +19,8 @@ pub struct Column {
     pub default_value: Option<String>,
 }
 
+// TODO: contextual column properties depends on column type:
+
 /// Represents Column types
 #[derive(Debug)]
 pub enum ColumnType {
@@ -26,7 +28,7 @@ pub enum ColumnType {
     Uuid,
     Text,
     Varchar,
-    Integer,
+    Integer, // TODO: 32 and 64 bit integer types
     Decimal,
     Date,
     TimestampTZ,

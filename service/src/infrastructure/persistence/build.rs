@@ -1,18 +1,13 @@
 use std::borrow::Cow;
 
-use luminair_common::{AttributeId, DocumentType, OWNING_ID_FIELD_NAME, persistence::QualifiedTable};
-
-use crate::{
-    domain::document::DatabaseRowId,
-    infrastructure::persistence::{
-        columns::{
-            CREATED_BY_COLUMN, CREATED_COLUMN, DOCUMENT_ID_COLUMN, ID_COLUMN, INVERSE_ID_COLUMN, OWNING_ID_COLUMN, PUBLISHED_BY_COLUMN, PUBLISHED_COLUMN, REVISION_COLUMN, UPDATED_BY_COLUMN, UPDATED_COLUMN, VERSION_COLUMN
-        },
-        query::{
-            Column, ColumnRef, Condition, Join, JoinType, OrderBy, QueryBuilder,
-            SortDirection,
-        },
-    },
+use luminair_common::{persistence::QualifiedTable, AttributeId, DocumentType, CREATED_BY_FIELD_NAME, CREATED_FIELD_NAME, DOCUMENT_ID_FIELD_NAME, ID_FIELD_NAME, PUBLISHED_BY_FIELD_NAME, PUBLISHED_FIELD_NAME, REVISION_FIELD_NAME, UPDATED_BY_FIELD_NAME, UPDATED_FIELD_NAME, VERSION_FIELD_NAME};
+use luminair_common::persistence::TableNameProvider;
+use crate::domain::sql::modify::CreateStatement;
+use crate::domain::sql::query::{Column, ColumnRef, Join, JoinType, OrderBy, QueryBuilder, SortDirection};
+use crate::infrastructure::persistence::columns::{
+    CREATED_BY_COLUMN, CREATED_COLUMN, DOCUMENT_ID_COLUMN, ID_COLUMN, INVERSE_ID_COLUMN,
+    OWNING_ID_COLUMN, PUBLISHED_BY_COLUMN, PUBLISHED_COLUMN, REVISION_COLUMN,
+    UPDATED_BY_COLUMN, UPDATED_COLUMN, VERSION_COLUMN,
 };
 
 pub fn main_query_builder(schema: &DocumentType) -> QueryBuilder<'_> {
@@ -77,4 +72,29 @@ fn main_columns(schema: &DocumentType) -> Vec<ColumnRef<'_>> {
     }
 
     columns
+}
+
+pub fn build_create_statement(document: &DocumentType) -> CreateStatement {
+    let table = TableNameProvider::MainTable { document };
+
+    let mut columns = vec![
+        Cow::Borrowed(DOCUMENT_ID_FIELD_NAME),
+        Cow::Borrowed(CREATED_FIELD_NAME),
+        Cow::Borrowed(UPDATED_FIELD_NAME),
+        Cow::Borrowed(CREATED_BY_FIELD_NAME),
+        Cow::Borrowed(UPDATED_BY_FIELD_NAME),
+        Cow::Borrowed(VERSION_FIELD_NAME),
+    ];
+
+    if document.has_draft_and_publish() {
+        columns.push(Cow::Borrowed(PUBLISHED_FIELD_NAME));
+        columns.push(Cow::Borrowed(PUBLISHED_BY_FIELD_NAME));
+        columns.push(Cow::Borrowed(REVISION_FIELD_NAME));
+    }
+
+    for id in document.fields.keys() {
+        columns.push(Cow::Owned(id.normalized()));
+    }
+
+    CreateStatement::new(table, columns ).returning(Cow::Borrowed(ID_FIELD_NAME))
 }
