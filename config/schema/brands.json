@@ -1,5 +1,5 @@
 {
-  "type": "Collection",
+  "type": "collection",
   "info": {
     "title": "Brands",
     "singularName": "brand",
@@ -12,21 +12,21 @@
   },
   "attributes": {
     "uid": {
-      "type": "Uid",
+      "type": "uid",
       "unique": true,
       "required": true,
-      "constraints": {
-        "minimalLength": 4,
-        "maximalLength": 10
-      }
+      "constraints": [
+        { "minimalLength": 4 },
+        { "maximalLength": 10 }
+      ]
     },
     "name": {
-      "type": "Text",
+      "type": "text",
       "required": true,
       "localized": true
     },
     "partners": {
-      "relation": "BelongsToMany",
+      "relation": "belongsToMany",
       "target": "partners"
     }
   }

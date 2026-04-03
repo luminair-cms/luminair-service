@@ -1,24 +1,22 @@
 use std::collections::HashMap;
+use std::str::FromStr;
 use chrono::{DateTime, Utc};
-use luminair_common::{
-    CREATED_BY_FIELD_NAME, CREATED_FIELD_NAME, DOCUMENT_ID_FIELD_NAME, DocumentType, ID_FIELD_NAME,
-    PUBLISHED_BY_FIELD_NAME, PUBLISHED_FIELD_NAME, REVISION_FIELD_NAME, UPDATED_BY_FIELD_NAME,
-    UPDATED_FIELD_NAME, VERSION_FIELD_NAME,
-    entities::{FieldType, DocumentField},
-};
+use rust_decimal::Decimal;
+use luminair_common::{CREATED_BY_FIELD_NAME, CREATED_FIELD_NAME, DOCUMENT_ID_FIELD_NAME, DocumentType, ID_FIELD_NAME, PUBLISHED_BY_FIELD_NAME, PUBLISHED_FIELD_NAME, REVISION_FIELD_NAME, UPDATED_BY_FIELD_NAME, UPDATED_FIELD_NAME, VERSION_FIELD_NAME, entities::{FieldType, DocumentField}, AttributeId};
 use sqlx::{Row, postgres::PgRow, types::{Uuid, Json}, ValueRef, decode::Decode, Postgres, Type};
 use sqlx::postgres::PgValueRef;
 use crate::domain::{
     document::{
-        DatabaseRowId, DocumentContent, DocumentInstance, DocumentInstanceId,
+        DatabaseRowId, DocumentInstance, DocumentInstanceId,
         content::{ContentValue, DomainValue},
         lifecycle::{AuditTrail, PublicationState, UserId},
     },
     repository::RepositoryError,
 };
+use crate::domain::document::content::DocumentContent;
 
 pub fn row_to_document(
-    row: &sqlx::postgres::PgRow,
+    row: &PgRow,
     schema: &DocumentType,
 ) -> Result<DocumentInstance, RepositoryError> {
     use chrono::{DateTime, Utc};
@@ -36,14 +34,14 @@ pub fn row_to_document(
     let document_id = DocumentInstanceId(document_id);
 
     // Extract field values
-    let mut fields = std::collections::HashMap::new();
-    for (field_id, field) in schema.fields.iter() {
-        let normalized_name = field_id.normalized();
+    let mut fields = HashMap::new();
+    for field in schema.fields.iter() {
+        let normalized_name = field.id.normalized();
         let column_name: &str = normalized_name.as_ref();
 
         let value = parse_field_value(row, field, column_name)?;
 
-        fields.insert(field_id.normalized().to_string(), value);
+        fields.insert(AttributeId::from_str(column_name).unwrap(), value);
     }
 
     let created_at: DateTime<Utc> = row.try_get(CREATED_FIELD_NAME).map_err(|e| {
@@ -63,6 +61,7 @@ pub fn row_to_document(
         document_id,
         content,
         audit,
+        relations: HashMap::new(),
     })
 }
 
@@ -97,21 +96,21 @@ pub fn parse_field_value(
     // TODO: generalize this: DomainValue is depend on FieldType, both can precise param of row.try_get
 
     let value = match field.field_type {
-        FieldType::Text { localized } => {
-            if localized {
-                let value: Json<HashMap<String, String>> = decode_value(value_ref)?;
-                ContentValue::LocalizedText(value.0)
-            } else {
-                let value: String = decode_value(value_ref)?;
-                ContentValue::Scalar(DomainValue::Text(value))
-            }
+        FieldType::Text => {
+            let value: String = decode_value(value_ref)?;
+            ContentValue::Scalar(DomainValue::Text(value))
         }
-        FieldType::Integer => {
+        FieldType::LocalizedText => {
+            let value: Json<HashMap<String, String>> = decode_value(value_ref)?;
+            ContentValue::LocalizedText(value.0)
+        }
+        // TODO: use different types for different integer sizes
+        FieldType::Integer(_) => {
             let value: i64 = decode_value(value_ref)?;
             ContentValue::Scalar(DomainValue::Integer(value))
         }
-        FieldType::Decimal => {
-            let value: f64 = decode_value(value_ref)?;
+        FieldType::Decimal { precision, scale } => {
+            let value: Decimal = decode_value(value_ref)?;
             ContentValue::Scalar(DomainValue::Decimal(value))
         }
         FieldType::Boolean => {

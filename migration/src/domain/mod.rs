@@ -1,8 +1,9 @@
-use crate::domain::tables::{Column, ColumnType, ForeignKeyConstraint, Index, IntegerSize, Table};
+use crate::domain::tables::{Column, ColumnType, ForeignKeyConstraint, Index, Table};
 
 use luminair_common::{
-    AttributeId, CREATED_BY_FIELD_NAME, CREATED_FIELD_NAME, DOCUMENT_ID_FIELD_NAME, DocumentType, DocumentTypesRegistry, ID_FIELD_NAME, INVERSE_ID_FIELD_NAME, OWNING_ID_FIELD_NAME, PUBLISHED_BY_FIELD_NAME, PUBLISHED_FIELD_NAME, RELATION_ID_FIELD_NAME, REVISION_FIELD_NAME, UPDATED_BY_FIELD_NAME, UPDATED_FIELD_NAME, VERSION_FIELD_NAME, entities::{FieldType, DocumentRelation}
+    CREATED_BY_FIELD_NAME, CREATED_FIELD_NAME, DOCUMENT_ID_FIELD_NAME, DocumentType, DocumentTypesRegistry, ID_FIELD_NAME, INVERSE_ID_FIELD_NAME, OWNING_ID_FIELD_NAME, PUBLISHED_BY_FIELD_NAME, PUBLISHED_FIELD_NAME, RELATION_ID_FIELD_NAME, REVISION_FIELD_NAME, UPDATED_BY_FIELD_NAME, UPDATED_FIELD_NAME, VERSION_FIELD_NAME, entities::{FieldType, DocumentRelation}
 };
+use luminair_common::entities::{DocumentField, FieldConstraint, IntegerSize};
 
 pub mod migration;
 pub mod persistence;
@@ -20,9 +21,9 @@ impl DocumentTables {
 
         handle_document_fields(document, &mut main_table_builder);
 
-        for (id, relation) in document.relations.iter() {
+        for relation in document.relations.iter() {
             if relation.relation_type.is_owning() {
-                relation_tables_builder.push(id, relation, documents);
+                relation_tables_builder.push(relation, documents);
             }
         }
 
@@ -173,13 +174,12 @@ impl RelationTablesBuilder {
 
     fn push(
         &mut self,
-        id: &AttributeId,
         relation: &DocumentRelation,
         documents: &dyn DocumentTypesRegistry,
     ) {
         let target_document = documents.get(&relation.target).unwrap();
         let target_table_name = target_document.id.normalized();
-        let relation_table_name = format!("{}_{}_relation", self.main_table_name, id.normalized());
+        let relation_table_name = format!("{}_{}_relation", self.main_table_name, relation.id.normalized());
 
         let columns = vec![
             Column::primary_key(RELATION_ID_FIELD_NAME, ColumnType::Serial, None),
@@ -239,28 +239,33 @@ impl RelationTablesBuilder {
 }
 
 fn handle_document_fields(document: &DocumentType, main_table_builder: &mut MainTableBuilder) {
-    for (id, persisted) in document.fields.iter() {
-        let column_type = match persisted.field_type {
-            FieldType::Uid => ColumnType::Text,
-            FieldType::Uuid => ColumnType::Uuid,
-            FieldType::Text { localized } => if localized { ColumnType::JsonB } else { ColumnType::Text },
-            FieldType::Integer => ColumnType::Integer(IntegerSize::Int64), // TODO: support for 32 bit integers
-            FieldType::Decimal => ColumnType::Decimal,
-            FieldType::Date => ColumnType::Date,
-            FieldType::DateTime => ColumnType::TimestampTZ,
-            FieldType::Boolean => ColumnType::Boolean,
-            FieldType::Json => ColumnType::JsonB
-        };
+    for field in document.fields.iter() {
+        let column_type = infer_column_type(field);
 
         let column = Column::new(
-            id.normalized(),
+            field.id.normalized(),
             column_type,
             None,
-            persisted.required,
-            persisted.unique,
+            field.required,
+            field.unique,
             None,
         );
 
         main_table_builder.push(column);
+    }
+}
+
+fn infer_column_type(field: &DocumentField) -> ColumnType {
+    match field.field_type {
+        FieldType::Uid => ColumnType::Text,
+        FieldType::Uuid => ColumnType::Uuid,
+        FieldType::Text => ColumnType::Text,
+        FieldType::LocalizedText => ColumnType::JsonB,
+        FieldType::Integer(size) => ColumnType::Integer(size),
+        FieldType::Decimal { precision, scale } => ColumnType::Decimal { precision, scale },
+        FieldType::Date => ColumnType::Date,
+        FieldType::DateTime => ColumnType::TimestampTZ,
+        FieldType::Boolean => ColumnType::Boolean,
+        FieldType::Json => ColumnType::JsonB
     }
 }

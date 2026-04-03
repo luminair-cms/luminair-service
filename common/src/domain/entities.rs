@@ -1,13 +1,12 @@
-use std::{
-    borrow::Borrow, 
-    collections::HashMap, 
-    hash::Hash, 
-    sync::LazyLock
-};
-
 use nutype::nutype;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
+use std::{
+    collections::HashSet,
+    borrow::Borrow,
+    hash::Hash,
+    sync::LazyLock
+};
 
 use crate::domain::{AttributeId, DocumentTypeId};
 
@@ -19,11 +18,12 @@ pub struct DocumentType {
     pub kind: DocumentKind,
     pub info: DocumentTypeInfo,
     pub options: Option<DocumentTypeOptions>,
-    pub fields: HashMap<AttributeId, DocumentField>,
-    pub relations: HashMap<AttributeId, DocumentRelation>
+    pub fields: HashSet<DocumentField>,
+    pub relations: HashSet<DocumentRelation>
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub enum DocumentKind {
     Collection,     // Many instances: Partners, Brands
     SingleType,     // One instance: Settings, SiteConfig
@@ -90,15 +90,17 @@ pub struct LocalizationId(String);
 /// A uniquely identifiable document Field.
 #[derive(Debug, Serialize)]
 pub struct DocumentField {
+    pub id: AttributeId,
     pub field_type: FieldType,
     pub unique: bool,
     pub required: bool,
-    pub constraints: Option<AttributeConstraints>,
+    pub constraints: HashSet<FieldConstraint>,
 }
 
 /// A uniquely identifiable document Relation.
 #[derive(Debug, Serialize)]
 pub struct DocumentRelation {
+    pub id: AttributeId,
     pub relation_type: RelationType,
     pub target: DocumentTypeId
 }
@@ -110,20 +112,70 @@ pub struct DocumentRelation {
 // TODO: support for more complex relation types (e.g. one-to-one, many-to-many, etc.) and relation options (e.g. cascade delete, etc.)
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(untagged)]
+#[serde(rename_all = "camelCase")]
 pub enum FieldType {
     Uid,  // unique identifier based on text
     Uuid, // unique identifier based on UUID
-    Text {
-        #[serde(skip)]
-        localized: bool,
+    Text,
+    LocalizedText,
+    Integer (
+        #[serde(default)]
+        IntegerSize
+    ),
+    Decimal {
+        precision: usize,
+        scale: u32
     },
-    Integer,
-    Decimal,
     Date,
     DateTime,
     Boolean,
     Json,  // arbitrary JSON data
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(rename_all = "camelCase")]
+pub enum FieldConstraint {
+    Pattern(String),     // test string with regular expression
+    MinimalLength(usize), // test string with minimal length
+    MaximalLength(usize), // test string with maximal length
+    MinimalIntegerValue(i32),
+    MaximalIntegerValue(i32)
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(rename_all = "camelCase")]
+pub enum IntegerSize { Int16, Int32, Int64 }
+
+impl Default for IntegerSize {
+    fn default() -> Self {
+        IntegerSize::Int32
+    }
+}
+
+impl FieldType {
+    pub fn is_integer(&self) -> bool {
+        matches!(self, FieldType::Integer(_))
+    }
+
+    pub fn is_number(&self) -> bool {
+        matches!(self, FieldType::Integer(_) | FieldType::Decimal { .. })
+    }
+
+    pub fn is_text(&self) -> bool {
+        matches!(self, FieldType::Text | FieldType::LocalizedText | FieldType::Uid)
+    }
+}
+
+impl FieldConstraint {
+    pub fn is_applicable_for(&self, field_type: FieldType) -> bool {
+        match self {
+            FieldConstraint::Pattern(_) => matches!(field_type, FieldType::Text | FieldType::Uid),
+            FieldConstraint::MinimalLength(_) => field_type.is_text(),
+            FieldConstraint::MaximalLength(_) => field_type.is_text(),
+            FieldConstraint::MinimalIntegerValue(_) => field_type.is_integer(),
+            FieldConstraint::MaximalIntegerValue(_) => field_type.is_integer(),
+        }
+    }
 }
 
 // TODO: support for more complex constraints (e.g. regex patterns for text, min/max for numbers, date ranges for dates, etc.)
@@ -133,20 +185,10 @@ pub enum FieldType {
 // TODO: support for localization-specific constraints (e.g. a "name" field that must be unique across all localizations, etc.)
 // TODO: constraints that depends on the FieldType (e.g. a "price" field that must be a positive decimal, etc.)
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
-#[serde(rename_all = "camelCase")]
-pub struct AttributeConstraints {
-    #[serde(default)]
-    pub pattern: Option<String>,
-    #[serde(default)]
-    pub minimal_length: Option<usize>,
-    #[serde(default)]
-    pub maximal_length: Option<usize>,
-}
-
 // TODO: different constraints for different types (e.g. min/max for numbers, date ranges for dates, etc.)
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub enum RelationType {
     // owning side
     HasOne,
@@ -158,6 +200,7 @@ pub enum RelationType {
 
 // implementations
 
+// Document
 
 impl DocumentType {
     pub fn has_localization(&self) -> bool {
@@ -166,6 +209,32 @@ impl DocumentType {
     
     pub fn has_draft_and_publish(&self) -> bool {
         self.options.as_ref().map_or(false, |options|options.draft_and_publish)
+    }
+
+    pub fn ordered_fields(&self) -> Vec<&DocumentField> {
+        // sord fields by unique flag, FieldType & name
+        // order of types: integer, uuid, date, datetime, boolean, decimal, uid, text, localized text, json
+        fn field_type_order(ft: &FieldType) -> u8 {
+            match ft {
+                FieldType::Integer(_) => 0,
+                FieldType::Uuid => 1,
+                FieldType::Date => 2,
+                FieldType::DateTime => 3,
+                FieldType::Boolean => 4,
+                FieldType::Decimal { .. } => 5,
+                FieldType::Uid => 6,
+                FieldType::Text => 7,
+                FieldType::LocalizedText => 8,
+                FieldType::Json => 9,
+            }
+        }
+        let mut fields: Vec<_> = self.fields.iter().collect();
+        fields.sort_by_key(|f| (
+            !f.unique, // unique fields first
+            field_type_order(&f.field_type),
+            &f.id
+        ));
+        fields
     }
 }
 
@@ -194,6 +263,35 @@ impl Hash for DocumentType {
     }
 }
 
+// Field
+
+impl PartialEq for DocumentField {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+    }
+}
+impl Eq for DocumentField {}
+
+impl PartialEq<AttributeId> for DocumentField {
+    fn eq(&self, other: &AttributeId) -> bool {
+        self.id == *other
+    }
+}
+
+impl Borrow<AttributeId> for DocumentField {
+    fn borrow(&self) -> &AttributeId {
+        &self.id
+    }
+}
+
+impl Hash for DocumentField {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.id.hash(state);
+    }
+}
+
+// Relation
+
 impl RelationType {
     pub fn is_owning(&self) -> bool {
         matches!(self, RelationType::HasOne | RelationType::HasMany)
@@ -203,5 +301,30 @@ impl RelationType {
             self,
             RelationType::BelongsToOne | RelationType::BelongsToMany
         )
+    }
+}
+
+impl PartialEq for DocumentRelation {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+    }
+}
+impl Eq for DocumentRelation {}
+
+impl PartialEq<AttributeId> for DocumentRelation {
+    fn eq(&self, other: &AttributeId) -> bool {
+        self.id == *other
+    }
+}
+
+impl Borrow<AttributeId> for DocumentRelation {
+    fn borrow(&self) -> &AttributeId {
+        &self.id
+    }
+}
+
+impl Hash for DocumentRelation {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.id.hash(state);
     }
 }

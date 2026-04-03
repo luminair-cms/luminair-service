@@ -3,7 +3,7 @@ use luminair_common::AttributeId;
 use serde::Serialize;
 use serde_json::Value as JsonValue;
 use std::{collections::HashMap, io::ErrorKind};
-
+use rust_decimal::prelude::ToPrimitive;
 use crate::domain::document::{
     DocumentInstance,
     content::{ContentValue, DomainValue},
@@ -112,7 +112,7 @@ impl From<DomainValue> for JsonValue {
         match value {
             DomainValue::Text(text) => JsonValue::String(text),
             DomainValue::Integer(num) => JsonValue::Number(num.into()),
-            DomainValue::Decimal(num) => serde_json::Number::from_f64(num)
+            DomainValue::Decimal(num) => serde_json::Number::from_f64(num.to_f64().unwrap())
                 .map(JsonValue::Number)
                 .unwrap_or(JsonValue::Null),
             DomainValue::Boolean(b) => JsonValue::Bool(b),
@@ -165,7 +165,7 @@ impl From<DocumentInstance> for DocumentInstanceResponse {
             .iter()
             .map(|(k, v)| {
                 (
-                    k.to_owned(),
+                    k.as_ref().to_owned(),
                     match v {
                         ContentValue::Scalar(domain_value) => {
                             AttributeResponse::Field(JsonValue::from(domain_value.clone()))
@@ -191,7 +191,7 @@ impl From<DocumentInstance> for DocumentInstanceResponse {
             document_id,
             audit,
             published,
-            fields,
+            fields
         }
     }
 }

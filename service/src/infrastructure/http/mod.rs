@@ -4,12 +4,12 @@ use axum::routing::{get, post};
 use axum::{Extension, Router};
 use axum_prometheus::PrometheusMetricLayer;
 
-use crate::infrastructure::http::handlers::data::create_new_document;
-use crate::infrastructure::http::handlers::{health_check, hello_world_handler};
+use crate::infrastructure::http::handlers::health_check;
 use crate::infrastructure::http::querystring::QueryStringConfig;
+use crate::infrastructure::http::routes::api_routes;
 use crate::infrastructure::{
-    AppState,
     http::handlers::data::{find_all_documents, find_document_by_id},
+    AppState,
 };
 use handlers::documents::{documents_metadata, one_document_metadata};
 use serde_querystring::ParseMode;
@@ -18,6 +18,7 @@ use tokio::net;
 mod api;
 mod handlers;
 mod querystring;
+pub mod routes;
 
 /// Configuration for the HTTP server.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -72,14 +73,4 @@ impl HttpServer {
             .context("received error from running server")?;
         Ok(())
     }
-}
-
-fn api_routes<S: AppState>() -> Router<S> {
-    Router::new()
-        .route("/hello", get(hello_world_handler::<S>))
-        .route("/meta/documents", get(documents_metadata::<S>))
-        .route("/meta/documents/{id}", get(one_document_metadata::<S>))
-        .route("/documents/{api_type}", get(find_all_documents::<S>))
-        .route("/documents/{api_type}/{id}", get(find_document_by_id::<S>))
-        .route("/documents/{api_type}", post(create_new_document::<S>))
 }

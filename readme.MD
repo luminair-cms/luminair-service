@@ -34,6 +34,10 @@ see resources:
 - https://www.howtocodeit.com/guides/ultimate-guide-rust-newtypes
 - https://bitfieldconsulting.com/posts/best-rust-books
 
+Domain driven design in Functor programming style.
+
+- https://bespoyasov.ru/blog/domain-modelling-made-functional/
+
 ### Microservices architecture, separated parts
 
 - common crate for common domain model and logic

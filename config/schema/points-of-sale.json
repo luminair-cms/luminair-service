@@ -1,5 +1,5 @@
 {
-  "type": "Collection",
+  "type": "collection",
   "info": {
     "title": "Points of sale",
     "singularName": "point-of-sale",
@@ -12,23 +12,33 @@
   },
   "attributes": {
     "title": {
-      "type": "Text"
+      "type": "text"
     },
     "location": {
-      "type": "Text",
+      "type": "text",
       "required": true,
       "localized": true
     },
     "latitude": {
-      "type": "Decimal",
+      "type": {
+        "decimal": {
+          "precision": 10,
+          "scale": 8
+        }
+      },
       "required": true
     },
     "longitude": {
-      "type": "Decimal",
+      "type": {
+        "decimal": {
+          "precision": 10,
+          "scale": 8
+        }
+      },
       "required": true
     },
     "partner": {
-      "relation": "BelongsToOne",
+      "relation": "belongsToOne",
       "target": "partners"
     }
   }

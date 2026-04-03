@@ -1,10 +1,5 @@
+use sea_query::{IntoIden, TableName, TableRef};
 use crate::{AttributeId, DocumentType};
-
-#[derive(Debug)]
-pub struct QualifiedTable<'a> {
-    pub name: TableNameProvider<'a>,
-    pub alias: &'static str,
-}
 
 #[derive(Debug)]
 pub enum TableNameProvider<'a> {
@@ -28,43 +23,41 @@ impl<'a> TableNameProvider<'a> {
             ),
         }
     }
-}
+    
+    const MAIN_TABLE_ALIAS: &'static str = "m";
+    const RELATION_TABLE_ALIAS: &'static str = "r";
+    
+    pub fn alias(&self) -> &'static str {
+        match self {
+            Self::MainTable { .. } => Self::MAIN_TABLE_ALIAS,
+            Self::RelationTable { .. } => Self::RELATION_TABLE_ALIAS,
+        }
+    }
 
-impl<'a> QualifiedTable<'a> {
-    /// Get a qualified table name with alias
     pub fn qualified(&self) -> String {
-        match self.name {
-            TableNameProvider::MainTable { document } => format!(
-                "\"{}\" AS \"{}\"",
-                document.id.normalized(),
-                self.alias
-            ),
-            TableNameProvider::RelationTable { document, relation } => format!(
-                "\"{}_{}_relation\" AS \"{}\"",
-                document.id.normalized(),
-                relation.normalized(),
-                self.alias
-            ),
-        }
+        format!("{} AS \"{}\"", self.table_name(), self.alias())
     }
 }
 
-impl<'a> From<&'a DocumentType> for QualifiedTable<'a> {
-    fn from(document: &'a DocumentType) -> Self {
-        Self {
-            name: TableNameProvider::MainTable { document },
-            alias: "m",
-        }
+impl<'a> From<&'a DocumentType> for TableNameProvider<'a> {
+    fn from(value: &'a DocumentType) -> Self {
+        Self::MainTable { document: value }
     }
 }
 
-impl<'a> From<(&'a DocumentType, &'a AttributeId)> for QualifiedTable<'a> {
+impl<'a> From<(&'a DocumentType, &'a AttributeId)> for TableNameProvider<'a> {
     fn from(value: (&'a DocumentType, &'a AttributeId)) -> Self {
         let document = value.0;
         let relation = value.1;
-        Self {
-            name: TableNameProvider::RelationTable { document, relation },
-            alias: "r",
-        }
+        TableNameProvider::RelationTable { document, relation }
+    }
+}
+
+impl <'a> From <TableNameProvider<'a>> for TableRef {
+    fn from(value: TableNameProvider<'a>) -> Self {
+        TableRef::Table(
+            TableName::from(value.table_name()), 
+            Some(value.alias().into_iden())
+        )
     }
 }

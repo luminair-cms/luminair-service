@@ -1,40 +1,26 @@
-use crate::{
-    domain::{
-        document::{
-            DatabaseRowId, DocumentContent, DocumentInstance, DocumentInstanceId, content::{self, ContentValue}, lifecycle::UserId
-        },
-        repository::{DocumentInstanceRepository, RepositoryError, query::DocumentInstanceQuery},
-    },
-    infrastructure::persistence::{
-        build::{main_query_builder, related_query_builder},
-        columns::DOCUMENT_ID_COLUMN,
-        result::row_to_document,
-    },
-};
-
-use luminair_common::{
-    database::Database, AttributeId, DocumentType, DocumentTypeId, DocumentTypesRegistry,
-    ID_FIELD_NAME,
-};
-use sqlx::Row;
-
-use crate::infrastructure::persistence::columns::OWNING_ID_COLUMN;
-use std::{borrow::Cow, collections::HashMap};
+use std::collections::HashMap;
 use chrono::{DateTime, Utc};
-use sqlx::types::Uuid;
-use uuid::{ContextV7, Timestamp};
-use crate::domain::document::lifecycle::PublicationState;
-use crate::domain::sql::query::Condition;
-use crate::infrastructure::persistence::build::build_create_statement;
-use crate::infrastructure::persistence::parameters::SqlParametersHolder;
+use sea_query::Expr;
+use sqlx::Row;
+use uuid::{ContextV7, Timestamp, Uuid};
+use luminair_common::database::Database;
+use luminair_common::{AttributeId, DocumentType, DocumentTypesRegistry, ID_FIELD_NAME};
+use crate::domain::document::{DatabaseRowId, DocumentInstance, DocumentInstanceId};
+use crate::domain::document::content::{ContentValue, DocumentContent};
+use crate::domain::document::lifecycle::{PublicationState, UserId};
+use crate::domain::repository::{DocumentsRepository, RepositoryError};
+use crate::domain::repository::query::DocumentInstanceQuery;
+use crate::infrastructure::persistence::builders::{delete_document, insert_document, query_find_document_by_criteria, query_find_document_by_id, query_find_related_documents};
+use crate::infrastructure::persistence::CLOCK_SEQUENCE;
+use crate::infrastructure::persistence::result::row_to_document;
 
 #[derive(Clone)]
-pub struct PostgresDocumentRepository {
+pub struct PostgresDocumentsRepository {
     schema_registry: &'static dyn DocumentTypesRegistry,
     database: &'static Database,
 }
 
-impl PostgresDocumentRepository {
+impl PostgresDocumentsRepository {
     pub fn new(
         schema_registry: &'static dyn DocumentTypesRegistry,
         database: &'static Database,
@@ -44,18 +30,24 @@ impl PostgresDocumentRepository {
             database,
         }
     }
+
+    pub fn uuid_timestamp_from_chrono(datetime: &DateTime<Utc>) -> Timestamp {
+        let secs = datetime.timestamp();
+        let nanos = datetime.timestamp_subsec_nanos();
+        Timestamp::from_unix(CLOCK_SEQUENCE, secs as u64, nanos)
+    }
 }
 
-impl DocumentInstanceRepository for PostgresDocumentRepository {
+impl DocumentsRepository for PostgresDocumentsRepository {
+    
     async fn find(
         &self,
         document_type: &DocumentType,
         _query: DocumentInstanceQuery,
     ) -> Result<Vec<DocumentInstance>, RepositoryError> {
-        let query_builder = main_query_builder(document_type);
-        let (sql, _) = query_builder.build();
-
+        let (sql, _values) = query_find_document_by_criteria(document_type);
         let query_object = sqlx::query(&sql);
+
         let mut rows = query_object.fetch(self.database.database_pool());
 
         let mut documents = Vec::new();
@@ -78,17 +70,8 @@ impl DocumentInstanceRepository for PostgresDocumentRepository {
         document_type: &DocumentType,
         id: DocumentInstanceId,
     ) -> Result<Option<DocumentInstance>, RepositoryError> {
-        let mut params_holder = SqlParametersHolder::new();
-
-        let (sql, params) = main_query_builder(document_type)
-            .where_condition(Condition::Equals {
-                column: Cow::Borrowed(&DOCUMENT_ID_COLUMN),
-                value: params_holder.bind(id.0),
-            })
-            .build();
-
-        let query_arguments = params_holder.generate_args(&params);
-        let query_object = sqlx::query_with(&sql, query_arguments);
+        let (sql, values) = query_find_document_by_id(document_type, id.0);
+        let query_object = sqlx::query_with(&sql, values);
 
         let row = query_object
             .fetch_optional(self.database.database_pool())
@@ -106,114 +89,11 @@ impl DocumentInstanceRepository for PostgresDocumentRepository {
         Ok(document)
     }
 
-    async fn create(
-        &self,
-        document_type: &DocumentType,
-        content: DocumentContent,
-        user_id: Option<UserId>,
-    ) -> Result<DocumentInstanceId, RepositoryError> {
-        let mut params_holder = SqlParametersHolder::new();
-        let mut create_statement = build_create_statement(document_type);
-
-        let mut param_refs = Vec::new();
-
-        let now = chrono::Utc::now();
-        let ts = uuid_timestamp_from_chrono(&now);
-
-        let document_id = DocumentInstanceId(Uuid::new_v7(ts));
-
-        param_refs.push(params_holder.bind(document_id.0)); // DOCUMENT_ID_FIELD_NAME
-        param_refs.push(params_holder.bind(now)); // CREATED_FIELD_NAME
-        param_refs.push(params_holder.bind(now)); // UPDATED_FIELD_NAME
-
-        let uid_str = user_id.as_ref().map(|u| u.0.clone());
-        param_refs.push(params_holder.bind_null()); // CREATED_BY_FIELD_NAME
-        param_refs.push(params_holder.bind_null()); // UPDATED_BY_FIELD_NAME
-
-        param_refs.push(params_holder.bind(1i32)); // VERSION_FIELD_NAME
-
-        if document_type.has_draft_and_publish() {
-            match &content.publication_state {
-                PublicationState::Published { revision, published_at, published_by } => {
-                    param_refs.push(params_holder.bind(*published_at));
-                    param_refs.push(params_holder.bind_null());
-                    param_refs.push(params_holder.bind(*revision));
-                }
-                PublicationState::Draft { revision } => {
-                    param_refs.push(params_holder.bind_null());
-                    param_refs.push(params_holder.bind_null());
-                    param_refs.push(params_holder.bind(*revision));
-                }
-            }
-        }
-
-        for (id, _field_def) in &document_type.fields {
-            let val = content.fields.get(id.as_ref());
-            match val {
-                Some(content) => {
-                    param_refs.push(params_holder.bind(content.clone()));
-                }
-                _ => {
-                    param_refs.push(params_holder.bind_null());
-                }
-            }
-        }
-
-        let (sql, _) = create_statement.with_params(param_refs.clone()).to_sql();
-        let query_arguments = params_holder.generate_args(&param_refs);
-
-        sqlx::query_with(&sql, query_arguments)
-            .execute(self.database.database_pool())
-            .await
-            .map_err(|e| RepositoryError::DatabaseError(e.to_string()))?;
-
-        Ok(document_id)
-    }
-
-    async fn update(
-        &self,
-        _id: DocumentInstanceId,
-        _content_updates: std::collections::HashMap<String, ContentValue>,
-        _user_id: Option<UserId>,
-    ) -> Result<DocumentInstance, RepositoryError> {
-        todo!()
-    }
-
-    async fn delete(
-        &self,
-        _document_type_id: DocumentTypeId,
-        _id: DocumentInstanceId,
-    ) -> Result<(), RepositoryError> {
-        todo!()
-    }
-
-    async fn publish(
-        &self,
-        _id: DocumentInstanceId,
-        _user_id: Option<UserId>,
-    ) -> Result<DocumentInstance, RepositoryError> {
-        todo!()
-    }
-
-    async fn count(&self, document_type_id: DocumentTypeId) -> Result<i64, RepositoryError> {
-        let sql = format!(
-            "SELECT COUNT(*) as count FROM \"{}\"",
-            document_type_id.normalized()
-        );
-
-        let row: (i64,) = sqlx::query_as(&sql)
-            .fetch_one(self.database.database_pool())
-            .await
-            .map_err(|e| RepositoryError::DatabaseError(e.to_string()))?;
-
-        Ok(row.0)
-    }
-
     async fn fetch_relations_for_one(
         &self,
         main_document_type: &DocumentType,
         main_table_id: DatabaseRowId,
-        relation_fields: &[luminair_common::AttributeId],
+        relation_fields: &[AttributeId],
     ) -> Result<HashMap<AttributeId, Vec<DocumentInstance>>, RepositoryError> {
         let ids = vec![main_table_id];
         let result = self
@@ -235,10 +115,12 @@ impl DocumentInstanceRepository for PostgresDocumentRepository {
         &self,
         main_document_type: &DocumentType,
         main_table_ids: &[DatabaseRowId],
-        relation_fields: &[luminair_common::AttributeId],
+        relation_fields: &[AttributeId],
     ) -> Result<HashMap<AttributeId, HashMap<DatabaseRowId, Vec<DocumentInstance>>>, RepositoryError>
     {
         let mut result = HashMap::new();
+
+        let params: Vec<i64> = main_table_ids.iter().map(|id| id.0).collect();
 
         for attr_id in relation_fields {
             let rel_metadata = main_document_type.relations.get(attr_id).ok_or_else(|| {
@@ -255,22 +137,15 @@ impl DocumentInstanceRepository for PostgresDocumentRepository {
             let related_document_type = self
                 .schema_registry
                 .get(&rel_metadata.target)
-                .ok_or(RepositoryError::NotFound)?;
+                .ok_or(RepositoryError::DocumentInstanceNotFound)?;
 
-            let mut params_holder = SqlParametersHolder::new();
-
-            let values: Vec<i64> = main_table_ids.iter().map(|id| id.0).collect();
-
-            let (sql, params) =
-                related_query_builder(main_document_type, related_document_type, &attr_id)
-                    .where_condition(Condition::EqualsAny {
-                        column: Cow::Borrowed(&OWNING_ID_COLUMN),
-                        value: params_holder.bind(values),
-                    })
-                    .build();
-
-            let query_arguments = params_holder.generate_args(&params);
-            let query_object = sqlx::query_with(&sql, query_arguments);
+            let (sql, values) = query_find_related_documents(
+                main_document_type,
+                related_document_type,
+                &attr_id,
+                params.clone(),
+            );
+            let query_object = sqlx::query_with(&sql, values);
 
             // Group related docs by their owning main document id
             // For MVP simplicity, assume 1-to-N relations
@@ -298,12 +173,88 @@ impl DocumentInstanceRepository for PostgresDocumentRepository {
 
         Ok(result)
     }
-}
 
-const CLOCK_SEQUENCE: ContextV7 = ContextV7::new();
+    async fn create(
+        &self,
+        document_type: &DocumentType,
+        content: DocumentContent,
+        user_id: Option<UserId>,
+    ) -> Result<DocumentInstanceId, RepositoryError> {
+        let now = chrono::Utc::now();
+        let ts = Self::uuid_timestamp_from_chrono(&now);
 
-fn uuid_timestamp_from_chrono(datetime: &DateTime<Utc>) -> Timestamp {
-    let secs = datetime.timestamp();
-    let nanos = datetime.timestamp_subsec_nanos();
-    Timestamp::from_unix(CLOCK_SEQUENCE, secs as u64, nanos)
+        let document_id = DocumentInstanceId(Uuid::new_v7(ts));
+
+        let mut params: Vec<Expr> = vec![
+            document_id.0.into(),
+            now.into(),  // CREATED
+            now.into(),  // UPDATED
+            1i32.into(), // VERSION
+        ];
+
+        if document_type.has_draft_and_publish() {
+            match &content.publication_state {
+                PublicationState::Published {
+                    revision,
+                    published_at,
+                    published_by,
+                } => {
+                    params.push((*published_at).into());
+                    params.push((*revision).into());
+                }
+                PublicationState::Draft { revision } => {
+                    params.push(Expr::null());
+                    params.push((*revision).into());
+                }
+            }
+        }
+
+        for field in &document_type.fields {
+            let val = content.fields.get(&field.id);
+            if let Some(val) = val {
+                params.push(val.into());
+            } else {
+                params.push(Expr::null());
+            }
+        }
+
+        let (sql, values) = insert_document(document_type, params);
+
+        sqlx::query_with(&sql, values)
+            .execute(self.database.database_pool())
+            .await
+            .map_err(|e| RepositoryError::DatabaseError(e.to_string()))?;
+
+        Ok(document_id)
+    }
+
+    async fn update(
+        &self,
+        id: DocumentInstanceId,
+        content_updates: HashMap<String, ContentValue>,
+        user_id: Option<UserId>,
+    ) -> Result<DocumentInstance, RepositoryError> {
+        todo!()
+    }
+
+    async fn delete(
+        &self,
+        document_type: &DocumentType,
+        id: DocumentInstanceId,
+    ) -> Result<(), RepositoryError> {
+        let (sql, values) = delete_document(document_type, id.0);
+        sqlx::query_with(&sql, values)
+            .execute(self.database.database_pool())
+            .await
+            .map_err(|e| RepositoryError::DatabaseError(e.to_string()))?;
+        Ok(())
+    }
+
+    async fn publish(
+        &self,
+        id: DocumentInstanceId,
+        user_id: Option<UserId>,
+    ) -> Result<DocumentInstance, RepositoryError> {
+        todo!()
+    }
 }

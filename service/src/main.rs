@@ -1,10 +1,10 @@
 use luminair_common::{database, load_documents};
-use crate::infrastructure::persistence::repository::PostgresDocumentRepository;
-use crate::infrastructure::{AppStateImpl, HelloServiceAdapter};
+use crate::infrastructure::AppStateImpl;
 use crate::infrastructure::http::{HttpServer, HttpServerConfig};
 use crate::infrastructure::settings::Settings;
 
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+use crate::infrastructure::persistence::repository::PostgresDocumentsRepository;
 
 mod domain;
 mod infrastructure;
@@ -26,10 +26,9 @@ async fn main() -> anyhow::Result<()> {
 
     let database = database::connect(&settings.database).await?;
     tracing::debug!("Connected to DB");
-
-    let hello_service = HelloServiceAdapter::new(database);
-    let repository = PostgresDocumentRepository::new(registry, database);
-    let state = AppStateImpl::new(hello_service, registry, repository);
+    
+    let repository = PostgresDocumentsRepository::new(registry, database);
+    let state = AppStateImpl::new(registry, repository);
 
     let server_config = HttpServerConfig {
         port: &settings.server_port,

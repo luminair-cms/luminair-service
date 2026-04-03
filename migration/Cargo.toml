@@ -14,6 +14,10 @@ serde = { version = "1.0", features = ["derive"] }
 sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "any", "migrate", "postgres", "uuid"] }
 tokio = { version = "1.48.0", features = ["full"] }
 
+[dependencies.sea-query]
+version = "1.0.0-rc.31"
+features = ["backend-postgres", "with-chrono", "with-json", "with-rust_decimal", "with-uuid", "postgres-array", "postgres-interval", "postgres-vector"]
+
 [profile.release]
 # Optimization level: 
 # 3 is the default for release, aiming for speed. 

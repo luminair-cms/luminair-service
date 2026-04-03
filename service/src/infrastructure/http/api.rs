@@ -41,7 +41,10 @@ impl From<anyhow::Error> for ApiError {
 impl From<RepositoryError> for ApiError {
     fn from(value: RepositoryError) -> Self {
         match value {
-            RepositoryError::NotFound => {
+            RepositoryError::DocumentInstanceNotFound => {
+                Self::NotFound
+            }
+            RepositoryError::DocumentTypeNotFound => {
                 Self::NotFound
             }
             RepositoryError::ValidationFailed(cause) => {

@@ -105,10 +105,11 @@ fn column_ddl(column: &Column) -> String {
         ColumnType::Text => "TEXT",
         ColumnType::Varchar => "VARCHAR",
         ColumnType::Integer(size) => match size {
+            IntegerSize::Int16 => "SMALLINT",
             IntegerSize::Int32 => "INT",
             IntegerSize::Int64 => "BIGINT",
         },
-        ColumnType::Decimal => "DECIMAL",
+        ColumnType::Decimal { precision, scale } => &format!("DECIMAL({},{})", precision, scale),
         ColumnType::Date => "DATE",
         ColumnType::TimestampTZ => "TIMESTAMPTZ",
         ColumnType::Boolean => "BOOLEAN",

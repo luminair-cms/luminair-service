@@ -1,7 +1,28 @@
 use std::collections::HashMap;
 
 use nutype::nutype;
-use sqlx::types::uuid;
+use rust_decimal::Decimal;
+use luminair_common::AttributeId;
+use crate::domain::document::lifecycle::PublicationState;
+
+/// The actual data payload of a document
+#[derive(Debug, Clone)]
+pub struct DocumentContent {
+    /// All fields with their values
+    pub fields: HashMap<AttributeId, ContentValue>,
+
+    /// Publishing state (if draft_and_publish is enabled)
+    pub publication_state: PublicationState,
+}
+
+impl DocumentContent {
+    pub fn new(fields: HashMap<AttributeId, ContentValue>) -> Self {
+        Self {
+            fields,
+            publication_state: PublicationState::Draft { revision: 0 },
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
 pub enum ContentValue {
@@ -26,7 +47,7 @@ pub enum DomainValue {
     Integer(i64),
 
     /// Decimal/float field
-    Decimal(f64),
+    Decimal(Decimal),
 
     /// Boolean field
     Boolean(bool),
@@ -65,7 +86,7 @@ fn is_valid_email(s: &str) -> bool {
     // Derive useful traits like Debug, Clone, PartialEq, and optional Serde traits
     derive(Debug, Clone, PartialEq, Eq, AsRef, Hash, FromStr, Serialize, Deserialize)
 )]
-pub struct Email(String);
+struct Email(String);
 
 // A custom validation function that tries to parse the string into a valid Url
 fn is_valid_url(s: &str) -> bool {
@@ -82,4 +103,5 @@ fn is_valid_url(s: &str) -> bool {
     // Derive useful traits
     derive(Debug, Clone, PartialEq, Eq, AsRef, Hash, FromStr, Serialize, Deserialize)
 )]
-pub struct Url(String);
+struct Url(String);
+

@@ -3,7 +3,8 @@ use std::{collections::{HashMap, HashSet}, path::Path, sync::{Arc, OnceLock}};
 use anyhow::{*, Context};
 use serde::Deserialize;
 
-use crate::{AttributeId, domain::{DocumentType, DocumentTypeId, DocumentTypesRegistry}, entities::{AttributeConstraints, FieldType, DocumentField, DocumentKind, DocumentRelation, DocumentTitle, DocumentTypeInfo, DocumentTypeOptions, LocalizationId, LocalizationIdError, RelationType}};
+use crate::{AttributeId, domain::{DocumentType, DocumentTypeId, DocumentTypesRegistry}, entities::{FieldType, DocumentField, DocumentKind, DocumentRelation, DocumentTitle, DocumentTypeInfo, DocumentTypeOptions, LocalizationId, LocalizationIdError, RelationType}, DocumentTypeApiId};
+use crate::entities::{FieldConstraint, IntegerSize};
 
 pub fn load(schema_config_path: &str) -> Result<&'static dyn DocumentTypesRegistry, anyhow::Error> {
     let loaded = DocumentTypesRegistryAdapter::load(schema_config_path)?;
@@ -19,6 +20,7 @@ static DOCUMENTS_REGISTRY: OnceLock<Arc<dyn DocumentTypesRegistry>> = OnceLock::
 #[derive(Debug)]
 struct DocumentTypesRegistryAdapter {
     types: HashSet<&'static DocumentType>,
+    map: HashMap<String, &'static DocumentType>,
 }
 
 impl DocumentTypesRegistry for DocumentTypesRegistryAdapter {
@@ -30,6 +32,10 @@ impl DocumentTypesRegistry for DocumentTypesRegistryAdapter {
         self.types
             .get(id)
             .and_then(|idx| self.types.get(*idx).copied())
+    }
+
+    fn lookup(&self, api_id: &DocumentTypeApiId) -> Option<&'static DocumentType> {
+        self.map.get(api_id.as_ref()).copied()
     }
 }
 
@@ -61,7 +67,18 @@ impl DocumentTypesRegistryAdapter {
             }
         }
 
-        Ok(Self { types })
+        let mut map = HashMap::new();
+        for dt in types.iter() {
+            let api_id = match dt.kind {
+                DocumentKind::SingleType => 
+                    dt.info.singular_name.as_ref().to_string(),
+                DocumentKind::Collection => 
+                    dt.info.plural_name.as_ref().to_string()
+            };
+            map.insert(api_id, *dt);
+        }
+
+        Ok(Self { types, map })
     }
 }
 
@@ -129,27 +146,17 @@ enum AttributeRecord<'a> {
         #[serde(alias = "type")]
         field_type: FieldType,
         #[serde(default)]
-        localized: bool,
-        #[serde(default)]
         unique: bool,
         #[serde(default)]
         required: bool,
-        constraints: Option<AttributeConstraintsRecord<'a>>,
+        #[serde(default)]
+        constraints: HashSet<FieldConstraint>,
     },
     Relation {
         #[serde(alias = "relation")]
         relation_type: RelationType,
         target: &'a str,
     },
-}
-
-#[derive(Clone, Debug, Deserialize)]
-#[serde(bound = "'de: 'a")]
-#[serde(rename_all = "camelCase")]
-struct AttributeConstraintsRecord<'a> {
-    pattern: Option<&'a str>,
-    minimal_length: Option<usize>,
-    maximal_length: Option<usize>,
 }
 
 // conversion into document model
@@ -164,8 +171,8 @@ impl<'a> TryFrom<(&'a str, DocumentRecord<'a>)> for DocumentType {
         let info = DocumentTypeInfo::try_from(&record.info)?;
         let options = record.options.as_ref().map(DocumentTypeOptions::try_from).transpose()?;
 
-        let mut fields = HashMap::new();
-        let mut relations = HashMap::new();
+        let mut fields = HashSet::new();
+        let mut relations = HashSet::new();
 
         for attribute in record.attributes.iter() {
             let id = AttributeId::try_new(*attribute.0)?;
@@ -174,26 +181,28 @@ impl<'a> TryFrom<(&'a str, DocumentRecord<'a>)> for DocumentType {
             match record {
                 AttributeRecord::Field {
                     field_type,
-                    localized,
                     unique,
                     required,
                     constraints,
                 } => {
                     let mut field_type = *field_type;
 
-                    // If it's a Text field, apply the localized modifier from the record
-                    if let FieldType::Text { localized: ref mut l } = field_type {
-                        *l = *localized;
+                    let constraints_are_valid = constraints.iter().all(|constraint| 
+                        constraint.is_applicable_for(field_type)
+                    );
+                    if !constraints_are_valid {
+                        return Err(anyhow!("Invalid constraints for field '{}': constraints are not applicable for field type '{:?}'", id, field_type));
                     }
+                    let constraints = constraints.into_iter().map(|it|it.clone()).collect();
                     
-                    let constraints = constraints.as_ref().map(AttributeConstraints::from);
                     let field = DocumentField {
+                        id,
                         field_type,
                         unique: *unique,
                         required: *required,
                         constraints,
                     };
-                    fields.insert(id, field);
+                    fields.insert(field);
                 }
                 AttributeRecord::Relation {
                     relation_type,
@@ -202,10 +211,11 @@ impl<'a> TryFrom<(&'a str, DocumentRecord<'a>)> for DocumentType {
                     let target = DocumentTypeId::try_new(target.to_owned())?;
                     
                     let relation = DocumentRelation {
+                        id,
                         relation_type: *relation_type,
                         target
                     };
-                    relations.insert(id, relation);
+                    relations.insert(relation);
                 }
             }
         }
@@ -253,15 +263,5 @@ impl<'a> TryFrom<&DocumentInfoRecord<'a>> for DocumentTypeInfo {
             singular_name,
             plural_name,
         })
-    }
-}
-
-impl<'a> From<&AttributeConstraintsRecord<'a>> for AttributeConstraints {
-    fn from(value: &AttributeConstraintsRecord<'a>) -> Self {
-        Self {
-            pattern: value.pattern.map(String::from),
-            minimal_length: value.minimal_length,
-            maximal_length: value.maximal_length,
-        }
     }
 }

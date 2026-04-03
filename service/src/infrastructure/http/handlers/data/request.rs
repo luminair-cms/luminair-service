@@ -1,15 +1,16 @@
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Context, Result};
 use luminair_common::{AttributeId, DocumentType, entities::{FieldType, DocumentField}};
 use serde_json::Value as JsonValue;
 use crate::domain::document::content::{ContentValue, DomainValue};
 use std::collections::HashMap;
 use regex::Regex;
+use rust_decimal::Decimal;
 
 /// Validates and constructs fields from JSON payload using DocumentType metadata
 pub fn build_fields_from_payload(
     document_type: &DocumentType,
     payload: &JsonValue,
-) -> Result<HashMap<String, ContentValue>> {
+) -> Result<HashMap<AttributeId, ContentValue>> {
     let mut fields = HashMap::new();
 
     let payload_obj = payload
@@ -38,7 +39,7 @@ pub fn build_fields_from_payload(
             field_name,
         )?;
         
-        fields.insert(field_name.clone(), content_value);
+        fields.insert(attribute_id, content_value);
     }
 
     Ok(fields)
@@ -55,49 +56,50 @@ fn convert_to_content_value(
     }
 
     match field_def.field_type {
-        FieldType::Text { localized } => {
-            if localized {
-                let json_obj = value
-                    .as_object()
-                    .ok_or_else(|| anyhow!("Field '{}' must be a JSON object", field_name))?;
-                let mut localized_map = HashMap::new();
-
-                for (locale, val) in json_obj {
-                    let text = val
-                        .as_str()
-                        .ok_or_else(|| anyhow!("Value for locale '{}' in field '{}' must be a string", locale, field_name))?
-                        .to_string();
-
-                    localized_map.insert(locale.clone(), text);
-                }
-
-                Ok(ContentValue::LocalizedText(localized_map))
-            } else {
+        FieldType::Text => {
                 let text = value
                     .as_str()
                     .ok_or_else(|| anyhow!("Field '{}' must be a string", field_name))?
                     .to_string();
 
-                // Validate constraints
-                validate_text_constraints(&text, field_def, field_name)?;
-
                 Ok(ContentValue::Scalar(DomainValue::Text(text)))
-            }
         }
 
-        FieldType::Integer => {
+        FieldType::LocalizedText => {
+            let json_obj = value
+                .as_object()
+                .ok_or_else(|| anyhow!("Field '{}' must be a JSON object", field_name))?;
+            let mut localized_map = HashMap::new();
+
+            for (locale, val) in json_obj {
+                let text = val
+                    .as_str()
+                    .ok_or_else(|| anyhow!("Value for locale '{}' in field '{}' must be a string", locale, field_name))?
+                    .to_string();
+
+                localized_map.insert(locale.clone(), text);
+            }
+
+            Ok(ContentValue::LocalizedText(localized_map))
+        }
+
+        // TODO: use different types for different integer sizes
+        FieldType::Integer { .. } => {
             let int = value
                 .as_i64()
                 .ok_or_else(|| anyhow!("Field '{}' must be an integer", field_name))?;
 
             Ok(ContentValue::Scalar(DomainValue::Integer(int)))
         }
+        
+        FieldType::Decimal { scale, precision } => {
+            use rust_decimal::prelude::*;
+            let float_value = value.as_f64()
+                .ok_or_else(|| anyhow!("Field '{}' must be a float", field_name))?;
 
-        // TODO: consider using Decimal type from rust_decimal crate for better precision
-        FieldType::Decimal => {
-            let decimal = value
-                .as_f64()
-                .ok_or_else(|| anyhow!("Field '{}' must be a decimal number", field_name))?;
+            let mut decimal: Decimal = Decimal::from_f64_retain(float_value)
+                .ok_or_else(|| anyhow!("Failed to convert float to Decimal"))?;
+            decimal.rescale(scale);
 
             Ok(ContentValue::Scalar(DomainValue::Decimal(decimal)))
         }
@@ -144,8 +146,6 @@ fn convert_to_content_value(
                 // TODO: Check against repository for existing values
             }
 
-            validate_text_constraints(&uid, field_def, field_name)?;
-
             Ok(ContentValue::Scalar(DomainValue::Text(uid)))
         }
 
@@ -167,50 +167,4 @@ fn convert_to_content_value(
         
         _ => Err(anyhow!("Unsupported field type: {:?}", field_def.field_type)),
     }
-}
-
-/// Validates text field constraints (length, pattern)
-fn validate_text_constraints(
-    text: &str,
-    field_def: &DocumentField,
-    field_name: &str,
-) -> Result<()> {
-    if let Some(constraints) = &field_def.constraints {
-        // Check minimal length
-        if let Some(min_len) = constraints.minimal_length {
-            if text.len() < min_len {
-                return Err(anyhow!(
-                    "Field '{}' must be at least {} characters long",
-                    field_name,
-                    min_len
-                ));
-            }
-        }
-
-        // Check maximal length
-        if let Some(max_len) = constraints.maximal_length {
-            if text.len() > max_len {
-                return Err(anyhow!(
-                    "Field '{}' must be at most {} characters long",
-                    field_name,
-                    max_len
-                ));
-            }
-        }
-
-        // Check pattern
-        if let Some(pattern) = &constraints.pattern {
-            let regex = Regex::new(pattern)
-                .map_err(|_| anyhow!("Invalid regex pattern in field definition: {}", field_name))?;
-
-            if !regex.is_match(text) {
-                return Err(anyhow!(
-                    "Field '{}' does not match required pattern",
-                    field_name
-                ));
-            }
-        }
-    }
-
-    Ok(())
 }

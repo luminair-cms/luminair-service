@@ -1,6 +1,5 @@
 mod domain;
 mod infratructure;
-pub mod test_utils;
 
 // Persisted documents field names
 

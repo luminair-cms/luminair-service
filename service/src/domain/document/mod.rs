@@ -7,11 +7,13 @@ use std::collections::HashMap;
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use sqlx::types::{uuid::Uuid};
+use luminair_common::AttributeId;
 use crate::domain::document::{
     content::ContentValue,
     error::DocumentError,
     lifecycle::{AuditTrail, PublicationState, UserId},
 };
+use crate::domain::document::content::DocumentContent;
 
 /// A DocumentInstance: one actual row of data
 /// An instance of a DocumentType
@@ -26,9 +28,21 @@ pub struct DocumentInstance {
 
     /// The actual field values: field_name → value
     pub content: DocumentContent,
+    
+    /// Document relations
+    pub relations: HashMap<AttributeId, Vec<DocumentRelation>>,
 
     /// System/infrastructure metadata about this instance
     pub audit: AuditTrail,
+}
+
+impl DocumentInstance {
+    pub(crate) fn with_relations(self, relations: HashMap<AttributeId, Vec<DocumentInstance>>) -> DocumentInstance {
+        let relations = relations.into_iter()
+            .map(|(k, v)| (k, v.into_iter().map(|i| i.into()).collect()))
+            .collect();
+        Self { relations, ..self }
+    }
 }
 
 /// Wrapper to prevent ID confusion
@@ -75,26 +89,18 @@ impl From<DocumentInstanceId> for String {
     }
 }
 
-/// The actual data payload of a document
-#[derive(Debug, Clone)]
-pub struct DocumentContent {
-    /// All fields with their values
-    pub fields: HashMap<String, ContentValue>,
-
-    /// Publishing state (if draft_and_publish is enabled)
-    pub publication_state: PublicationState,
-}
-
 impl DocumentInstance {
     pub fn new(
         id: DatabaseRowId,
         document_id: DocumentInstanceId,
         content: DocumentContent,
+        relations: HashMap<AttributeId, Vec<DocumentRelation>>,
     ) -> Self {
         Self {
             id,
             document_id,
             content,
+            relations,
             audit: AuditTrail {
                 created_at: Utc::now(),
                 created_by: None,
@@ -137,5 +143,16 @@ impl DocumentInstance {
             PublicationState::Published { .. } => Err(DocumentError::AlreadyPublished),
         }
     }
+}
 
+#[derive(Debug, Clone)]
+pub enum DocumentRelation {
+    Id(DocumentInstanceId),
+    Instance(DocumentInstance),
+}
+
+impl From<DocumentInstance> for DocumentRelation {
+    fn from(relation: DocumentInstance) -> Self {
+        Self::Instance(relation)
+    }
 }

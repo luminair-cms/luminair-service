@@ -1,3 +1,5 @@
+pub(crate) use luminair_common::entities::IntegerSize;
+
 /// Represents table in a database, used for ddl generation
 #[derive(Debug)]
 pub struct Table {
@@ -29,17 +31,14 @@ pub enum ColumnType {
     Text,
     Varchar,
     Integer(IntegerSize),
-    Decimal,
+    Decimal{
+        precision: usize,
+        scale: u32
+    },
     Date,
     TimestampTZ,
     Boolean,
     JsonB
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum IntegerSize {
-    Int32,
-    Int64,
 }
 
 /// Represents foreign key constraint in the database table
