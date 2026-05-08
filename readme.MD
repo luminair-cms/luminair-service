@@ -26,13 +26,17 @@ Microservice, uses Schema Registry, provide dynamic api for Schama Metadata and 
 
 ### Domain driven design and Hexagonal architecture where it is appropriate.
 
-see resources:
+Main resources:
 
 - https://berk.es/2022/09/28/value-objects-in-rust/
 - https://www.howtocodeit.com/guides/master-hexagonal-architecture-in-rust
-- https://www.howtocodeit.com/guides/the-definitive-guide-to-rust-error-handling
 - https://www.howtocodeit.com/guides/ultimate-guide-rust-newtypes
 - https://bitfieldconsulting.com/posts/best-rust-books
+
+Error handling.
+
+- https://www.howtocodeit.com/guides/the-definitive-guide-to-rust-error-handling
+- https://momori.dev/posts/rust-error-handling-thiserror-anyhow/
 
 Domain driven design in Functor programming style.
 
