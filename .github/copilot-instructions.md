@@ -7,7 +7,11 @@ For detailed information, see:
 - [Domain Model](../documentation/domain-model.md)
 - [API Documentation](../documentation/api.md)
 - [Schema Formats](../documentation/schemas.md)
+- [Database structure](../documentation/database.md)
 - [Draft and Publishing Workflow](../documentation/draft-publish.md)
+
+> If these instructions conflict with the actual codebase, the code is the
+> source of truth. Flag any discrepancy you notice.
 
 ### Main principles
 
