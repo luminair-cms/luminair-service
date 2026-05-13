@@ -138,7 +138,22 @@ APIs should support filtering by publication state:
 
 ### Relations and Draft-Publish
 
-When draft-and-publish is enabled for document types, relations between documents also respect publication states. A draft document can reference both draft and published related documents, but published documents typically only reference other published documents.
+When draft-and-publish is enabled for document types, relations between documents also respect publication states.
+A draft document can work with relation values independently from the currently published version.
+
+For connected collections (`hasMany` / `hasOne` owning relations):
+
+- relation additions and removals are applied against the draft version of the owning document
+- the draft relation set may include references to both draft and published related documents
+- when the owning document is published, the relation set is synchronized to the published row
+- published documents should expose a stable relation graph representing the last published state
+
+This means connected collections are versioned along with the document instance:
+- the same `document_id` may have multiple main table rows (draft + published)
+- relation rows point at the concrete main row IDs (`owning_id` / `inverse_id`)
+- editing relations in draft does not immediately change published visibility
+
+If the related document type also has draft-and-publish enabled, then the service should resolve relation visibility according to each document's own publication state. In practice, published documents and published related items are what end users see, while editors can preview draft relation changes before publishing.
 
 ## Schema Configuration
 

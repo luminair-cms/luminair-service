@@ -1,1 +1,282 @@
-endpoints, request/response examples
+# REST API Documentation
+
+This documentation describes the REST API exposed by the Luminair service. It is modeled after Strapi's REST API conventions while keeping project-specific behavior, especially around i18n, document IDs, and content-type handling.
+
+> Rest API is modeled after same in Strapi. See: https://docs.strapi.io/cms/api/rest
+
+## API structure
+
+All endpoints are served under the `/api` prefix.
+
+- Collection routes: `/api/:pluralApiId`
+- Single-item routes: `/api/:pluralApiId/:documentId`
+- Singleton routes: `/api/:singularApiId`
+
+### Plural collection example
+
+| Method | URL | Description |
+| ------ | --- | ----------- |
+| GET | `/api/restaurants` | Get a list of restaurants |
+| POST | `/api/restaurants` | Create a restaurant |
+| GET | `/api/restaurants/:documentId` | Get a specific restaurant |
+| PUT | `/api/restaurants/:documentId` | Update a restaurant |
+| DELETE | `/api/restaurants/:documentId` | Delete a restaurant |
+
+### Singleton example
+
+| Method | URL | Description |
+| ------ | --- | ----------- |
+| GET | `/api/homepage` | Get the homepage content |
+| PUT | `/api/homepage` | Create or update the homepage content |
+| DELETE | `/api/homepage` | Delete the homepage content |
+
+## Response structure
+
+Responses follow the same structure as Strapi's REST API:
+
+- `data` contains the requested content
+- `meta` contains pagination or other metadata when applicable
+
+### Collection response example
+
+```json
+{
+  "data": [
+    {
+      "id": 2,
+      "documentId": "8d0ef031-2a9a-4ea3-980f-e2a7f4803e95",
+      "name": "BMK Paris Bamako",
+      "description": {
+        "en": "Description on English language",
+        "ro": "Descriptie la limba Romaina",
+        "ru": "Описание на Русском языке"
+      },
+      "createdAt": "2024-03-06T13:42:05.098Z",
+      "updatedAt": "2024-03-06T13:42:05.098Z",
+      "publishedAt": "2024-03-06T13:42:05.103Z"
+    },
+    {
+      "id": 4,
+      "documentId": "791620a6-1099-4a41-ad74-21c5a25ce9b2",
+      "name": "Biscotte Restaurant",
+      "description": [
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "text": "Welcome to Biscotte restaurant! Restaurant Biscotte offers a cuisine based on fresh, quality products, often local, organic when possible, and always produced by passionate producers."
+            }
+          ]
+        }
+      ],
+      "createdAt": "2024-03-06T13:43:30.172Z",
+      "updatedAt": "2024-03-06T13:43:30.172Z",
+      "publishedAt": "2024-03-06T13:42:05.175Z"
+    }
+  ],
+  "meta": {
+    "pagination": {
+      "page": 1,
+      "pageSize": 25,
+      "pageCount": 1,
+      "total": 2
+    },
+    "defaultLocale": "en"
+  }
+}
+```
+
+### Single-item response example
+
+```json
+{
+  "data": {
+    "id": 6,
+    "documentId": "791620a6-1099-4a41-ad74-21c5a25ce9b2",
+    "name": "Biscotte Restaurant",
+    "description": [
+      {
+        "type": "paragraph",
+        "children": [
+          {
+            "type": "text",
+            "text": "Welcome to Biscotte restaurant! Restaurant Biscotte offers a cuisine bassics, such as 4 Formaggi or Calzone, and our original creations such as Do Luigi or Nduja."
+          }
+        ]
+      }
+    ],
+    "createdAt": "2024-02-27T10:19:04.953Z",
+    "updatedAt": "2024-03-05T15:52:05.591Z",
+    "publishedAt": "2024-03-05T15:52:05.600Z"
+  },
+  "meta": {
+    "defaultLocale": "en"
+  }
+}
+```
+
+## i18n behavior
+
+In this project, internationalization is configured per field rather than per document.
+Each localized field is represented as an object whose keys are locale codes, for example `en`, `ro`, and `ru`.
+
+### Example localized field
+
+```json
+"description": {
+  "en": "Description on English language",
+  "ro": "Descriptie la limba Romaina",
+  "ru": "Описание на Русском языке"
+}
+```
+
+This format is used for both read and write operations.
+
+## Supported REST query parameters
+
+The service supports query parameters similar to Strapi's REST API, including:
+
+- `filters`: filter content by field values
+- `sort`: specify result ordering
+- `pagination`: control page and page size
+- `fields`: select a subset of fields to return
+- `populate`: include relational fields or nested content
+- `locale`: select a locale when applicable
+
+For more details on field selection and population syntax, see Strapi's REST docs: https://docs.strapi.io/cms/api/rest/populate-select
+
+### Pagination
+
+Use `pagination[page]` and `pagination[pageSize]` to paginate results.
+
+Example:
+
+```http
+GET /api/restaurants?pagination[page]=2&pagination[pageSize]=10
+```
+
+### Sorting
+
+Sort results using `sort`.
+
+Example:
+
+```http
+GET /api/restaurants?sort=createdAt:desc
+```
+
+### Filtering
+
+Filter by field values using `filters`.
+Common operators include `$eq`, `$ne`, `$contains`, `$lt`, `$gt`, and others supported by Strapi-style filtering.
+
+Examples:
+
+```http
+GET /api/restaurants?filters[name][$contains]=Biscotte
+GET /api/restaurants?filters[price][$gt]=10
+GET /api/restaurants?filters[category][slug][$eq]=italian
+```
+
+### Field selection
+
+Select only the fields you need by using `fields`.
+This reduces payload size and improves performance.
+
+Example:
+
+```http
+GET /api/restaurants?fields=name,description
+```
+
+If you are returning populated relations, use `populate` to load those related fields explicitly.
+
+### Population
+
+Populate relational fields and nested objects using `populate`.
+The `populate` parameter controls which relations and nested content are returned with the response.
+
+Examples:
+
+```http
+GET /api/restaurants?populate=*
+GET /api/restaurants?populate=author
+GET /api/restaurants?populate[author]=*
+GET /api/restaurants?populate[author][fields]=name,email
+GET /api/restaurants?populate[gallery][fields]=url,caption
+```
+
+Use `populate=*` to include all relations in the response. For large documents, prefer explicit population to keep the returned payload minimal.
+
+### Filtering within population
+
+You can apply filters to populated relations to limit which related records are returned.
+This is useful when you only need a subset of nested documents or relation items.
+
+Examples:
+
+```http
+GET /api/restaurants?populate[reviews]=*&filters[reviews][rating][$gte]=4
+GET /api/restaurants?populate[author]=*&filters[author][status][$eq]=active
+```
+
+In this project, filters inside `populate` work together with top-level filters, allowing both primary document selection and nested relation filtering in a single request.
+
+### Combined selection and population
+
+You can combine `fields` and `populate` to return a limited set of top-level fields while still loading related data:
+
+```http
+GET /api/restaurants?fields=name,description&populate=author
+```
+
+By default, `fields` applies to top-level document attributes. Use the `populate` parameter to control nested relations and their fields.
+
+## Request examples
+
+### Create a document
+
+```http
+POST /api/restaurants
+Content-Type: application/json
+
+{
+  "name": "New Restaurant",
+  "description": {
+    "en": "New English description",
+    "ro": "Descriere nouă în română",
+    "ru": "Новое описание на русском"
+  }
+}
+```
+
+### Update a document
+
+```http
+PUT /api/restaurants/791620a6-1099-4a41-ad74-21c5a25ce9b2
+Content-Type: application/json
+
+{
+  "name": "Updated Restaurant Name",
+  "description": {
+    "en": "Updated English description",
+    "ro": "Descriere actualizată în română",
+    "ru": "Обновленное описание на русском"
+  }
+}
+```
+
+### Delete a document
+
+```http
+DELETE /api/restaurants/791620a6-1099-4a41-ad74-21c5a25ce9b2
+```
+
+## Notes
+
+- `documentId` is a UUID that identifies the document instance.
+- `id` is the database row identifier.
+- For singleton content types, the endpoint uses the singular API ID.
+- Collections use the plural API ID for routing.
+- `publishedAt` and `updatedAt` timestamps are returned when publication and update information are available.
