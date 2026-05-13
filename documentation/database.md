@@ -167,8 +167,6 @@ DROP TABLE IF EXISTS "public"."collection_relation_name_relation" CASCADE;
 DROP TABLE "public"."collection_name" CASCADE;
 ```
 
-Status: To be implemented in migration crate
-
 #### Case 3: Adding a New Relation Between Collections
 
 When a new relation is declared in a document's schema (e.g., `hasOne` or `hasMany`):
@@ -211,8 +209,6 @@ ALTER TABLE "public"."partners_brands_relation" DROP CONSTRAINT "partners_brands
 ALTER TABLE "public"."partners_brands_relation" DROP CONSTRAINT "partners_brands_relation_owning_id_fkey";
 DROP TABLE "public"."partners_brands_relation" CASCADE;
 ```
-
-Status: To be implemented in migration crate
 
 ### Migration Execution
 
