@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use chrono::{DateTime, Utc};
 use sea_query::Expr;
 use sqlx::Row;
-use uuid::{ContextV7, Timestamp, Uuid};
+use uuid::{Timestamp, Uuid};
 use luminair_common::database::Database;
 use luminair_common::{AttributeId, DocumentType, DocumentTypesRegistry, ID_FIELD_NAME};
 use crate::domain::document::{DatabaseRowId, DocumentInstance, DocumentInstanceId};
@@ -43,10 +43,10 @@ impl DocumentsRepository for PostgresDocumentsRepository {
     async fn find(
         &self,
         document_type: &DocumentType,
-        _query: DocumentInstanceQuery,
+        query: DocumentInstanceQuery,
     ) -> Result<Vec<DocumentInstance>, RepositoryError> {
-        let (sql, _values) = query_find_document_by_criteria(document_type);
-        let query_object = sqlx::query(&sql);
+        let (sql, values) = query_find_document_by_criteria(document_type, &query);
+        let query_object = sqlx::query_with(&sql, values);
 
         let mut rows = query_object.fetch(self.database.database_pool());
 
@@ -68,25 +68,26 @@ impl DocumentsRepository for PostgresDocumentsRepository {
     async fn find_by_id(
         &self,
         document_type: &DocumentType,
+        query: DocumentInstanceQuery,
         id: DocumentInstanceId,
-    ) -> Result<Option<DocumentInstance>, RepositoryError> {
-        let (sql, values) = query_find_document_by_id(document_type, id.0);
+    ) -> Result<Vec<DocumentInstance>, RepositoryError> {
+        let (sql, values) = query_find_document_by_id(document_type, id.0, &query);
         let query_object = sqlx::query_with(&sql, values);
 
-        let row = query_object
-            .fetch_optional(self.database.database_pool())
+        let mut rows = query_object.fetch(self.database.database_pool());
+        let mut documents = Vec::new();
+
+        use futures::TryStreamExt;
+        while let Some(row) = rows
+            .try_next()
             .await
-            .map_err(|e| RepositoryError::DatabaseError(e.to_string()))?;
+            .map_err(|e| RepositoryError::DatabaseError(e.to_string()))?
+        {
+            let document = row_to_document(&row, document_type)?;
+            documents.push(document);
+        }
 
-        let document = match row {
-            Some(row) => {
-                let document = row_to_document(&row, document_type)?;
-                Some(document)
-            }
-            None => None,
-        };
-
-        Ok(document)
+        Ok(documents)
     }
 
     async fn fetch_relations_for_one(

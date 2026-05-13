@@ -9,7 +9,6 @@ use serde::{Deserialize, Serialize};
 use sqlx::types::{uuid::Uuid};
 use luminair_common::AttributeId;
 use crate::domain::document::{
-    content::ContentValue,
     error::DocumentError,
     lifecycle::{AuditTrail, PublicationState, UserId},
 };

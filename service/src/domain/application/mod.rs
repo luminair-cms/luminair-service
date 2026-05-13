@@ -4,10 +4,10 @@ use crate::domain::document::content::ContentValue;
 use crate::domain::document::{DocumentInstance, DocumentInstanceId};
 use crate::domain::repository::query::DocumentInstanceQuery;
 use crate::domain::repository::RepositoryError;
-use luminair_common::{AttributeId, DocumentType, DocumentTypesRegistry};
+use luminair_common::{AttributeId, DocumentType};
 use std::collections::HashMap;
 
-pub trait DocumentServices: Send + Sync + 'static {
+pub trait DocumentsService: Send + Sync + 'static {
     /// Find instances matching query
     fn find(
         &self,
@@ -21,8 +21,9 @@ pub trait DocumentServices: Send + Sync + 'static {
         &self,
         document_type: &DocumentType,
         populate: Option<Vec<AttributeId>>,
+        query: DocumentInstanceQuery,
         id: DocumentInstanceId,
-    ) -> impl Future<Output = Result<Option<DocumentInstance>, RepositoryError>> + Send;
+    ) -> impl Future<Output = Result<Vec<DocumentInstance>, RepositoryError>> + Send;
     
     /// Create a new instance
     fn create(

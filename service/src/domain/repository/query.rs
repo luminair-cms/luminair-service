@@ -2,6 +2,28 @@ use luminair_common::DocumentTypeId;
 
 use crate::domain::document::content::DomainValue;
 
+/// Represents the publication status filter for document queries
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DocumentStatus {
+    /// Include only published documents
+    Published,
+    /// Include only draft documents (with published instances)
+    Draft,
+}
+
+impl Default for DocumentStatus {
+    fn default() -> Self {
+        DocumentStatus::Published
+    }
+}
+
+impl DocumentStatus {
+    /// Convert status to include_drafts flag
+    pub fn to_include_drafts(self) -> bool {
+        matches!(self, DocumentStatus::Draft)
+    }
+}
+
 /// Query for finding DocumentInstances
 #[derive(Debug, Clone)]
 pub struct DocumentInstanceQuery {
@@ -122,6 +144,12 @@ impl DocumentInstanceQuery {
     /// Exclude draft instances in results (default)
     pub fn exclude_drafts(mut self) -> Self {
         self.include_drafts = false;
+        self
+    }
+
+    /// Set publication status filter
+    pub fn with_status(mut self, status: DocumentStatus) -> Self {
+        self.include_drafts = status.to_include_drafts();
         self
     }
 }

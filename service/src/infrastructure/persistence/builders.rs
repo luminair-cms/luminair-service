@@ -13,27 +13,41 @@ use sea_query_sqlx::{SqlxBinder, SqlxValues};
 use std::convert::Into;
 use uuid::Uuid;
 
-pub fn query_find_document_by_id(document: &DocumentType, id: Uuid) -> (String, SqlxValues) {
+pub fn query_find_document_by_id(
+    document: &DocumentType,
+    id: Uuid,
+    query: &crate::domain::repository::query::DocumentInstanceQuery,
+) -> (String, SqlxValues) {
     let table: TableNameProvider = document.into();
     let columns = main_select_columns(document);
 
     let document_id_column = Expr::col(("m", DOCUMENT_ID_FIELD_NAME));
 
-    Query::select()
-        .columns(columns)
-        .from(table)
-        .and_where(document_id_column.eq(id))
-        .build_sqlx(PostgresQueryBuilder)
+    let mut select = Query::select();
+    select.columns(columns).from(table).and_where(document_id_column.eq(id));
+
+    if document.has_draft_and_publish() && !query.include_drafts {
+        select.and_where(Expr::col(("m", PUBLISHED_FIELD_NAME)).is_not_null());
+    }
+
+    select.build_sqlx(PostgresQueryBuilder)
 }
 
-pub fn query_find_document_by_criteria(document: &DocumentType) -> (String, SqlxValues) {
+pub fn query_find_document_by_criteria(
+    document: &DocumentType,
+    query: &crate::domain::repository::query::DocumentInstanceQuery,
+) -> (String, SqlxValues) {
     let table: TableNameProvider = document.into();
     let columns = main_select_columns(document);
 
-    Query::select()
-        .columns(columns)
-        .from(table)
-        .build_sqlx(PostgresQueryBuilder)
+    let mut select = Query::select();
+    select.columns(columns).from(table);
+
+    if document.has_draft_and_publish() && !query.include_drafts {
+        select.and_where(Expr::col(("m", PUBLISHED_FIELD_NAME)).is_not_null());
+    }
+
+    select.build_sqlx(PostgresQueryBuilder)
 }
 
 /// SELECT r.owning_id, m.id, m.document_id, ...

@@ -166,6 +166,24 @@ Example:
 GET /api/restaurants?sort=createdAt:desc
 ```
 
+### Publication Status
+
+Query documents based on their publication state using the `status` parameter. This is available for document types that have `draftAndPublish` enabled.
+
+Supported values:
+
+- `published` (default) — Returns only published document versions
+- `draft` — Include draft versions in addition to published versions when a draft exists
+
+Examples:
+
+```http
+GET /api/restaurants?status=published
+GET /api/restaurants?status=draft
+```
+
+When `status` is not specified, only published documents are returned. For document instances that have both a published and a draft row, `status=draft` may return two versions for the same document ID.
+
 ### Filtering
 
 Filter by field values using `filters`.

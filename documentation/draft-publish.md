@@ -132,9 +132,10 @@ Key behaviors:
 ### Query Parameters
 
 APIs should support filtering by publication state:
-- `?status=draft` - Return only draft versions
-- `?status=published` - Return only published versions
-- Default behavior depends on user permissions
+- `?status=published` — Return published versions only (default)
+- `?status=draft` — Include draft versions in addition to published versions when a draft exists
+
+When querying a specific document by ID, `status=draft` can return both the published and draft variants for the same document instance.
 
 ### Relations and Draft-Publish
 

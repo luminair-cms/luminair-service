@@ -1,10 +1,8 @@
 use crate::{
     domain::{AppState},
 };
-use anyhow::anyhow;
 use luminair_common::DocumentTypesRegistry;
-use luminair_common::database::Database;
-use crate::domain::application::implementation::DocumentServicesImpl;
+use crate::domain::application::implementation::DocumentsServiceImpl;
 use crate::infrastructure::persistence::repository::PostgresDocumentsRepository;
 
 pub mod http;
@@ -14,7 +12,7 @@ pub mod settings;
 #[derive(Clone)]
 pub struct AppStateImpl {
     types: &'static dyn DocumentTypesRegistry,
-    documents_services: DocumentServicesImpl<PostgresDocumentsRepository>,
+    documents_service: DocumentsServiceImpl<PostgresDocumentsRepository>,
 }
 
 impl AppStateImpl {
@@ -24,19 +22,19 @@ impl AppStateImpl {
     ) -> Self {
         Self {
             types,
-            documents_services: DocumentServicesImpl::new(documents_repository, types),
+            documents_service: DocumentsServiceImpl::new(documents_repository),
         }
     }
 }
 
 impl AppState for AppStateImpl {
-    type D = DocumentServicesImpl<PostgresDocumentsRepository>;
+    type D = DocumentsServiceImpl<PostgresDocumentsRepository>;
 
     fn document_types(&self) -> &'static dyn DocumentTypesRegistry {
         self.types
     }
 
-    fn documents_services(&self) -> &Self::D {
-        &self.documents_services
+    fn documents_service(&self) -> &Self::D {
+        &self.documents_service
     }
 }

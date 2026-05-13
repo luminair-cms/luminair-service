@@ -21,12 +21,13 @@ pub trait DocumentsRepository: Send + Sync + 'static {
         query: DocumentInstanceQuery,
     ) -> impl Future<Output = Result<Vec<DocumentInstance>, RepositoryError>> + Send;
 
-    /// Find single instance by ID
+    /// Find single document instance(s) by document ID
     fn find_by_id(
         &self,
         document_type: &DocumentType,
+        query: DocumentInstanceQuery,
         id: DocumentInstanceId,
-    ) -> impl Future<Output = Result<Option<DocumentInstance>, RepositoryError>> + Send;
+    ) -> impl Future<Output = Result<Vec<DocumentInstance>, RepositoryError>> + Send;
 
     /// Fetch relations for one document instance
     fn fetch_relations_for_one(
