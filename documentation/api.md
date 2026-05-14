@@ -291,6 +291,174 @@ Content-Type: application/json
 DELETE /api/restaurants/791620a6-1099-4a41-ad74-21c5a25ce9b2
 ```
 
+## Managing Relations
+
+Relations between content types can be managed through the REST API by passing `connect`, `disconnect`, or `set` parameters in the request body. These operations work for both single-entry relations and multi-relations (one-to-many, many-to-one, many-to-many, and many-way relations).
+
+### Connect
+
+The `connect` operation establishes new relations with existing documents. It performs a partial update, meaning existing relations are preserved and new ones are added.
+
+**Syntax:** Both shorthand and longhand syntax are supported:
+
+```json
+{
+  "data": {
+    "categories": {
+      "connect": ["z0y2x4w6v8u1t3s5r7q9onm", "j9k8l7m6n5o4p3q2r1s0tuv"]
+    }
+  }
+}
+```
+
+Longhand syntax with document objects:
+
+```json
+{
+  "data": {
+    "categories": {
+      "connect": [
+        { "documentId": "z0y2x4w6v8u1t3s5r7q9onm" },
+        { "documentId": "j9k8l7m6n5o4p3q2r1s0tuv" }
+      ]
+    }
+  }
+}
+```
+
+**Example request:**
+
+```http
+PUT /api/restaurants/a1b2c3d4e5f6g7h8i9j0klm
+Content-Type: application/json
+
+{
+  "data": {
+    "categories": {
+      "connect": ["z0y2x4w6v8u1t3s5r7q9onm", "j9k8l7m6n5o4p3q2r1s0tuv"]
+    }
+  }
+}
+```
+
+> **Note:** In Luminair, internationalization is configured per field, not per document. If you need to connect relations for a specific locale, include the locale information within the field-level object. For example, when a field has multiple locale variants, specify which locale the connection applies to at the field level.
+
+> **Note on MVP limitations:** The MVP version does not support ordering of relations. Positional arguments (`before`, `after`, `start`, `end`) are not available in this release.
+
+### Disconnect
+
+The `disconnect` operation removes existing relations. It performs a partial update, meaning other relations are preserved and only the specified ones are removed.
+
+**Syntax:** Both shorthand and longhand syntax are supported:
+
+```json
+{
+  "data": {
+    "categories": {
+      "disconnect": ["z0y2x4w6v8u1t3s5r7q9onm", "j9k8l7m6n5o4p3q2r1s0tuv"]
+    }
+  }
+}
+```
+
+Longhand syntax:
+
+```json
+{
+  "data": {
+    "categories": {
+      "disconnect": [
+        { "documentId": "z0y2x4w6v8u1t3s5r7q9onm" },
+        { "documentId": "j9k8l7m6n5o4p3q2r1s0tuv" }
+      ]
+    }
+  }
+}
+```
+
+**Example request:**
+
+```http
+PUT /api/restaurants/a1b2c3d4e5f6g7h8i9j0klm
+Content-Type: application/json
+
+{
+  "data": {
+    "categories": {
+      "disconnect": ["z0y2x4w6v8u1t3s5r7q9onm"]
+    }
+  }
+}
+```
+
+### Set
+
+The `set` operation replaces all existing relations with a new set. It performs a full update, meaning all previous relations are removed and replaced with the specified ones.
+
+**Syntax:** Both shorthand and longhand syntax are supported:
+
+```json
+{
+  "data": {
+    "categories": {
+      "set": ["z0y2x4w6v8u1t3s5r7q9onm", "j9k8l7m6n5o4p3q2r1s0tuv"]
+    }
+  }
+}
+```
+
+Longhand syntax:
+
+```json
+{
+  "data": {
+    "categories": {
+      "set": [
+        { "documentId": "z0y2x4w6v8u1t3s5r7q9onm" },
+        { "documentId": "j9k8l7m6n5o4p3q2r1s0tuv" }
+      ]
+    }
+  }
+}
+```
+
+**Example request:**
+
+```http
+PUT /api/restaurants/a1b2c3d4e5f6g7h8i9j0klm
+Content-Type: application/json
+
+{
+  "data": {
+    "categories": {
+      "set": ["z0y2x4w6v8u1t3s5r7q9onm", "j9k8l7m6n5o4p3q2r1s0tuv"]
+    }
+  }
+}
+```
+
+### Combining connect and disconnect
+
+You can combine `connect` and `disconnect` operations in a single request to perform both partial additions and removals:
+
+```http
+PUT /api/restaurants/a1b2c3d4e5f6g7h8i9j0klm
+Content-Type: application/json
+
+{
+  "data": {
+    "categories": {
+      "connect": ["z0y2x4w6v8u1t3s5r7q9onm"],
+      "disconnect": ["j9k8l7m6n5o4p3q2r1s0tuv"]
+    }
+  }
+}
+```
+
+> **Important:** `set` cannot be combined with `connect` or `disconnect`. Use `set` only when you want to completely replace all relations.
+
+For more details on relation management, see the [Strapi REST API documentation on relations](https://docs.strapi.io/cms/api/rest/relations).
+
 ## Notes
 
 - `documentId` is a UUID that identifies the document instance.
