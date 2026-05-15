@@ -4,6 +4,7 @@ use luminair_common::{
     INVERSE_ID_FIELD_NAME, OWNING_ID_FIELD_NAME, PUBLISHED_BY_FIELD_NAME, PUBLISHED_FIELD_NAME,
     REVISION_FIELD_NAME, UPDATED_BY_FIELD_NAME, UPDATED_FIELD_NAME, VERSION_FIELD_NAME,
 };
+use crate::domain::document::DatabaseRowId;
 use sea_query::extension::postgres::PgExpr;
 use sea_query::{
     ColumnRef, DynIden, Expr, ExprTrait, Iden, InsertStatement, IntoColumnRef, JoinType, Order,
@@ -100,6 +101,43 @@ pub fn delete_document(document: &DocumentType, id: Uuid) -> (String, SqlxValues
     Query::delete()
         .from_table(table)
         .and_where(document_id_column.eq(id))
+        .build_sqlx(PostgresQueryBuilder)
+}
+
+pub fn insert_relation_entry(
+    document: &DocumentType,
+    relation_attr: &luminair_common::AttributeId,
+    owning_id: DatabaseRowId,
+    inverse_id: DatabaseRowId,
+) -> (String, SqlxValues) {
+    let relation_table: TableNameProvider = (document, relation_attr).into();
+
+    let columns: Vec<DynIden> = vec![
+        OWNING_ID_FIELD_NAME.into(),
+        INVERSE_ID_FIELD_NAME.into(),
+    ];
+
+    Query::insert()
+        .into_table(relation_table)
+        .columns(columns)
+        .values_panic(vec![owning_id.0.into(), inverse_id.0.into()])
+        .build_sqlx(PostgresQueryBuilder)
+}
+
+pub fn delete_relation_entry(
+    document: &DocumentType,
+    relation_attr: &luminair_common::AttributeId,
+    owning_id: DatabaseRowId,
+    inverse_id: DatabaseRowId,
+) -> (String, SqlxValues) {
+    let relation_table: TableNameProvider = (document, relation_attr).into();
+    let owning_id_column = Expr::col(("r", OWNING_ID_FIELD_NAME));
+    let inverse_id_column = Expr::col(("r", INVERSE_ID_FIELD_NAME));
+
+    Query::delete()
+        .from_table(relation_table)
+        .and_where(owning_id_column.eq(owning_id.0))
+        .and_where(inverse_id_column.eq(inverse_id.0))
         .build_sqlx(PostgresQueryBuilder)
 }
 

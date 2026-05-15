@@ -84,6 +84,24 @@ pub trait DocumentsRepository: Send + Sync + 'static {
         id: DocumentInstanceId,
         user_id: Option<UserId>,
     ) -> impl Future<Output = Result<DocumentInstance, RepositoryError>> + Send;
+
+    /// Connect two related document instances for an owning relation
+    fn connect(
+        &self,
+        document_type: &DocumentType,
+        relation_attr: &luminair_common::AttributeId,
+        owning_id: DatabaseRowId,
+        inverse_id: DatabaseRowId,
+    ) -> impl Future<Output = Result<(), RepositoryError>> + Send;
+
+    /// Disconnect two related document instances for an owning relation
+    fn disconnect(
+        &self,
+        document_type: &DocumentType,
+        relation_attr: &luminair_common::AttributeId,
+        owning_id: DatabaseRowId,
+        inverse_id: DatabaseRowId,
+    ) -> impl Future<Output = Result<(), RepositoryError>> + Send;
 }
 
 #[derive(Debug)]

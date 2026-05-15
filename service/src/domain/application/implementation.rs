@@ -137,4 +137,28 @@ where
         self.repository.delete(document_type, id).await?;
         Ok(())
     }
+
+    async fn connect(
+        &self,
+        document_type: &DocumentType,
+        relation_attr: &AttributeId,
+        owning_id: DatabaseRowId,
+        inverse_id: DatabaseRowId,
+    ) -> Result<(), RepositoryError> {
+        self.repository
+            .connect(document_type, relation_attr, owning_id, inverse_id)
+            .await
+    }
+
+    async fn disconnect(
+        &self,
+        document_type: &DocumentType,
+        relation_attr: &AttributeId,
+        owning_id: DatabaseRowId,
+        inverse_id: DatabaseRowId,
+    ) -> Result<(), RepositoryError> {
+        self.repository
+            .disconnect(document_type, relation_attr, owning_id, inverse_id)
+            .await
+    }
 }

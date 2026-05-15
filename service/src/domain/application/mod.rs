@@ -1,7 +1,7 @@
 pub mod implementation;
 
 use crate::domain::document::content::ContentValue;
-use crate::domain::document::{DocumentInstance, DocumentInstanceId};
+use crate::domain::document::{DatabaseRowId, DocumentInstance, DocumentInstanceId};
 use crate::domain::repository::query::DocumentInstanceQuery;
 use crate::domain::repository::RepositoryError;
 use luminair_common::{AttributeId, DocumentType};
@@ -37,5 +37,23 @@ pub trait DocumentsService: Send + Sync + 'static {
         &self,
         document_type: &DocumentType,
         id: DocumentInstanceId,
+    ) -> impl Future<Output = Result<(), RepositoryError>> + Send;
+
+    /// Connect two related document instances for an owning relation
+    fn connect(
+        &self,
+        document_type: &DocumentType,
+        relation_attr: &AttributeId,
+        owning_id: DatabaseRowId,
+        inverse_id: DatabaseRowId,
+    ) -> impl Future<Output = Result<(), RepositoryError>> + Send;
+
+    /// Disconnect two related document instances for an owning relation
+    fn disconnect(
+        &self,
+        document_type: &DocumentType,
+        relation_attr: &AttributeId,
+        owning_id: DatabaseRowId,
+        inverse_id: DatabaseRowId,
     ) -> impl Future<Output = Result<(), RepositoryError>> + Send;
 }

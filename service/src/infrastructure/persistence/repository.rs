@@ -10,7 +10,7 @@ use crate::domain::document::content::{ContentValue, DocumentContent};
 use crate::domain::document::lifecycle::{PublicationState, UserId};
 use crate::domain::repository::{DocumentsRepository, RepositoryError};
 use crate::domain::repository::query::DocumentInstanceQuery;
-use crate::infrastructure::persistence::builders::{delete_document, insert_document, query_find_document_by_criteria, query_find_document_by_id, query_find_related_documents};
+use crate::infrastructure::persistence::builders::{delete_document, delete_relation_entry, insert_document, insert_relation_entry, query_find_document_by_criteria, query_find_document_by_id, query_find_related_documents};
 use crate::infrastructure::persistence::CLOCK_SEQUENCE;
 use crate::infrastructure::persistence::result::row_to_document;
 
@@ -257,5 +257,68 @@ impl DocumentsRepository for PostgresDocumentsRepository {
         user_id: Option<UserId>,
     ) -> Result<DocumentInstance, RepositoryError> {
         todo!()
+    }
+
+    async fn connect(
+        &self,
+        document_type: &DocumentType,
+        relation_attr: &AttributeId,
+        owning_id: DatabaseRowId,
+        inverse_id: DatabaseRowId,
+    ) -> Result<(), RepositoryError> {
+        let relation_metadata = document_type.relations.get(relation_attr).ok_or_else(|| {
+            RepositoryError::ValidationFailed(format!("Relation not found: {}", relation_attr))
+        })?;
+
+        if !relation_metadata.relation_type.is_owning() {
+            return Err(RepositoryError::ValidationFailed(format!(
+                "Relation is not owning: {}",
+                relation_attr
+            )));
+        }
+
+        self.schema_registry
+            .get(&relation_metadata.target)
+            .ok_or(RepositoryError::DocumentTypeNotFound)?;
+
+        let (sql, values) = insert_relation_entry(document_type, relation_attr, owning_id, inverse_id);
+        sqlx::query_with(&sql, values)
+            .execute(self.database.database_pool())
+            .await
+            .map_err(|e| RepositoryError::DatabaseError(e.to_string()))?;
+
+        Ok(())
+    }
+
+    async fn disconnect(
+        &self,
+        document_type: &DocumentType,
+        relation_attr: &AttributeId,
+        owning_id: DatabaseRowId,
+        inverse_id: DatabaseRowId,
+    ) -> Result<(), RepositoryError> {
+        let relation_metadata = document_type.relations.get(relation_attr).ok_or_else(|| {
+            RepositoryError::ValidationFailed(format!("Relation not found: {}", relation_attr))
+        })?;
+
+        if !relation_metadata.relation_type.is_owning() {
+            return Err(RepositoryError::ValidationFailed(format!(
+                "Relation is not owning: {}",
+                relation_attr
+            )));
+        }
+
+        self.schema_registry
+            .get(&relation_metadata.target)
+            .ok_or(RepositoryError::DocumentTypeNotFound)?;
+
+        let (sql, values) = delete_relation_entry(document_type, relation_attr, owning_id, inverse_id);
+
+        sqlx::query_with(&sql, values)
+            .execute(self.database.database_pool())
+            .await
+            .map_err(|e| RepositoryError::DatabaseError(e.to_string()))?;
+
+        Ok(())
     }
 }
