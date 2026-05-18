@@ -305,7 +305,7 @@ The `connect` operation establishes new relations with existing documents. It pe
 {
   "data": {
     "categories": {
-      "connect": ["z0y2x4w6v8u1t3s5r7q9onm", "j9k8l7m6n5o4p3q2r1s0tuv"]
+      "connect": ["8d0ef031-2a9a-4ea3-980f-e2a7f4803e95", "791620a6-1099-4a41-ad74-21c5a25ce9b2"]
     }
   }
 }
@@ -355,7 +355,7 @@ The `disconnect` operation removes existing relations. It performs a partial upd
 {
   "data": {
     "categories": {
-      "disconnect": ["z0y2x4w6v8u1t3s5r7q9onm", "j9k8l7m6n5o4p3q2r1s0tuv"]
+      "disconnect": ["8d0ef031-2a9a-4ea3-980f-e2a7f4803e95"]
     }
   }
 }
@@ -401,7 +401,7 @@ The `set` operation replaces all existing relations with a new set. It performs 
 {
   "data": {
     "categories": {
-      "set": ["z0y2x4w6v8u1t3s5r7q9onm", "j9k8l7m6n5o4p3q2r1s0tuv"]
+      "set": ["8d0ef031-2a9a-4ea3-980f-e2a7f4803e95", "791620a6-1099-4a41-ad74-21c5a25ce9b2"]
     }
   }
 }
@@ -442,14 +442,14 @@ Content-Type: application/json
 You can combine `connect` and `disconnect` operations in a single request to perform both partial additions and removals:
 
 ```http
-PUT /api/restaurants/a1b2c3d4e5f6g7h8i9j0klm
+PUT /api/restaurants/8d0ef031-2a9a-4ea3-980f-e2a7f4803e95
 Content-Type: application/json
 
 {
   "data": {
     "categories": {
-      "connect": ["z0y2x4w6v8u1t3s5r7q9onm"],
-      "disconnect": ["j9k8l7m6n5o4p3q2r1s0tuv"]
+      "connect": ["8d0ef031-2a9a-4ea3-980f-e2a7f4803e95"],
+      "disconnect": ["791620a6-1099-4a41-ad74-21c5a25ce9b2"]
     }
   }
 }

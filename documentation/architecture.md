@@ -74,6 +74,21 @@ These definitions are used to:
 - validate document instances,
 - drive the dynamic API.
 
+## Naming conventions
+
+This project follows clear naming conventions across layers to avoid ambiguity:
+
+- Rust code and internal domain identifiers: use snake_case (for example `document_type_id`, `draft_and_publish`).
+- Postgres database identifiers (tables and columns): use snake_case (for example `document_id`, `published_at`).
+- JSON schema files under `config/schema/` and API payloads: use camelCase (for example `documentId`, `draftAndPublish`, `publishedAt`).
+
+When documenting fields, examples will show both forms where applicable, for example:
+
+- API/JSON: `"publishedAt"`
+- DB/Rust: `published_at`
+
+The mapping between representations is deterministic: camelCase keys in schema and API are mapped to snake_case identifiers in the Rust domain and database.
+
 ## Best-practice guidance for AI/agent use
 
 - Keep architecture documentation declarative and sectioned.

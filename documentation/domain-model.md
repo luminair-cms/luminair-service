@@ -176,6 +176,17 @@ Publication is modeled in the service crate by `PublicationState`:
 
 This models the draft-publish lifecycle and revision progression.
 
+Semantics and initial values:
+
+- New `DocumentInstance` values start with `AuditTrail.version = 0` and `PublicationState::Draft { revision: 0 }`.
+- Editing a document increments `AuditTrail.version`.
+- Publishing increments `AuditTrail.version` and sets `PublicationState::Published.revision` to the new `AuditTrail.version`.
+ - In code: `DocumentContent::new` initializes `publication_state` to `Draft { revision: 0 }` (in-memory default), while `DocumentInstance::new` sets `AuditTrail.version = 1` for newly constructed instances.
+ - Persisted rows in the database use `revision = 1` and `version = 1` for new documents; when loading from the DB the loader returns `PublicationState::Draft { revision: 1 }` for draft rows.
+ - Editing a document increments `AuditTrail.version`.
+ - Publishing increments `AuditTrail.version` and sets `PublicationState::Published.revision` to the `AuditTrail.version` used for the publish operation (the runtime sets `Published.revision = audit.version` then increments `audit.version`).
+ 
+
 ### AuditTrail and system metadata
 
 `AuditTrail` captures infrastructure-level metadata:
