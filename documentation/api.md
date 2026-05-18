@@ -172,8 +172,8 @@ Query documents based on their publication state using the `status` parameter. T
 
 Supported values:
 
-- `published` (default) — Returns only published document versions
-- `draft` — Include draft versions in addition to published versions when a draft exists
+- `published` (default) — Returns only published document versions. This returns only published row at any level of relations
+- `draft` — Returns the latest editorial state of the document and all populated relations — the draft row if unpublished changes exist, otherwise the published row.
 
 Examples:
 

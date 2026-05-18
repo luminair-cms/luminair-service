@@ -160,6 +160,23 @@ This means connected collections are versioned along with the document instance:
 
 If the related document type also has draft-and-publish enabled, then the service should resolve relation visibility according to each document's own publication state. In practice, published documents and published related items are what end users see, while editors can preview draft relation changes before publishing.
 
+### Clarification rules for connections and Draft-Publish
+
+1. **Relations are versioned per document, not per relation.**
+
+A relation addition/removal is part of the owning document's draft. Publishing the owning document is what "approves" the relation change. The related document's state is irrelevant to this.
+
+2. **At query time, resolve visibility by the requester's context.**
+
+status=published → only return relations where the related document also has a published row
+status=draft → return all relations including those pointing at draft-only targets
+
+This is already implied in your draft-publish.md but worth making it an explicit rule rather than a footnote.
+
+3. **Connecting two published documents does NOT change their publication state.**
+
+The connection is recorded on the owning document's draft row. If that document has no pending draft yet, creating the relation implicitly creates a new draft revision. Publishing that draft then makes the connection visible in the published graph. This is the key insight — you never mutate the published row directly.
+
 ## Schema Configuration
 
 Document types enable draft-and-publish in their schema:
