@@ -1,7 +1,28 @@
 use std::collections::HashMap;
 
-use serde::{Deserialize, Serialize};
-use sqlx::types::uuid;
+use nutype::nutype;
+use rust_decimal::Decimal;
+use luminair_common::AttributeId;
+use crate::domain::document::lifecycle::PublicationState;
+
+/// The actual data payload of a document
+#[derive(Debug, Clone)]
+pub struct DocumentContent {
+    /// All fields with their values
+    pub fields: HashMap<AttributeId, ContentValue>,
+
+    /// Publishing state (if draft_and_publish is enabled)
+    pub publication_state: PublicationState,
+}
+
+impl DocumentContent {
+    pub fn new(fields: HashMap<AttributeId, ContentValue>) -> Self {
+        Self {
+            fields,
+            publication_state: PublicationState::Draft { revision: 0 },
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
 pub enum ContentValue {
@@ -10,11 +31,9 @@ pub enum ContentValue {
 
     /// Localized text: map of locale → text
     LocalizedText(HashMap<String, String>),
-    // Reference to another document
-    // Reference(DocumentInstanceId),
-
-    // References to multiple documents
-    // References(Vec<DocumentInstanceId>),
+    
+    /// Null value
+    Null,
 }
 
 /// The actual domain value types your content can have
@@ -28,7 +47,7 @@ pub enum DomainValue {
     Integer(i64),
 
     /// Decimal/float field
-    Decimal(f64),
+    Decimal(Decimal),
 
     /// Boolean field
     Boolean(bool),
@@ -48,78 +67,41 @@ pub enum DomainValue {
     /// UUID
     Uuid(uuid::Uuid),
 
-    /// JSON blob (still needed sometimes, but wrapped)
-    Json(JsonBlob),
-
-    /// Null value
-    Null,
+    /// JSON now very simple
+    Json(HashMap<String, String>),
 }
 
-/// Newtype wrapper for email - enforces validation at domain level
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct Email(String);
-
-impl Email {
-    pub fn new(value: String) -> Result<Self, EmailError> {
-        // Validate email format
-        if value.contains('@') && value.len() > 5 {
-            Ok(Email(value))
-        } else {
-            Err(EmailError::InvalidFormat)
-        }
-    }
-
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
+// Validate email format
+fn is_valid_email(s: &str) -> bool {
+    use email_address::EmailAddress;
+    use std::str::FromStr;
+    EmailAddress::from_str(s).is_ok()
 }
 
-/// Newtype wrapper for URL
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct Url(String);
+#[nutype(
+    // Sanitize by trimming whitespace and converting to lowercase
+    sanitize(trim, lowercase),
+    // Validate using our custom function
+    validate(predicate = is_valid_email),
+    // Derive useful traits like Debug, Clone, PartialEq, and optional Serde traits
+    derive(Debug, Clone, PartialEq, Eq, AsRef, Hash, FromStr, Serialize, Deserialize)
+)]
+struct Email(String);
 
-impl Url {
-    pub fn new(value: String) -> Result<Self, UrlError> {
-        if value.starts_with("http://") || value.starts_with("https://") {
-            Ok(Url(value))
-        } else {
-            Err(UrlError::InvalidScheme)
-        }
-    }
-
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
+// A custom validation function that tries to parse the string into a valid Url
+fn is_valid_url(s: &str) -> bool {
+    use url::Url;
+    use std::str::FromStr;
+    Url::from_str(s).is_ok()
 }
 
-// Wrapper for JSON blobs - typed but flexible when needed
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct JsonBlob {
-    inner: serde_json::Value,
-}
+#[nutype(
+    // You might want some sanitization like trim
+    sanitize(trim),
+    // Validate using our custom function
+    validate(predicate = is_valid_url),
+    // Derive useful traits
+    derive(Debug, Clone, PartialEq, Eq, AsRef, Hash, FromStr, Serialize, Deserialize)
+)]
+struct Url(String);
 
-impl JsonBlob {
-    pub fn new(value: serde_json::Value) -> Result<Self, JsonError> {
-        // Validate JSON structure if needed
-        Ok(JsonBlob { inner: value })
-    }
-
-    pub fn as_value(&self) -> &serde_json::Value {
-        &self.inner
-    }
-}
-
-#[derive(Debug)]
-pub enum EmailError {
-    InvalidFormat,
-}
-
-#[derive(Debug)]
-pub enum UrlError {
-    InvalidScheme,
-}
-
-#[derive(Debug)]
-pub enum JsonError {
-    InvalidStructure,
-}

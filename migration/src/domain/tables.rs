@@ -1,3 +1,5 @@
+pub(crate) use luminair_common::entities::IntegerSize;
+
 /// Represents table in a database, used for ddl generation
 #[derive(Debug)]
 pub struct Table {
@@ -19,15 +21,20 @@ pub struct Column {
     pub default_value: Option<String>,
 }
 
+// TODO: contextual column properties depends on column type:
+
 /// Represents Column types
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ColumnType {
     Serial,
     Uuid,
     Text,
     Varchar,
-    Integer,
-    Decimal,
+    Integer(IntegerSize),
+    Decimal{
+        precision: usize,
+        scale: u32
+    },
     Date,
     TimestampTZ,
     Boolean,

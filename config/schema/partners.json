@@ -1,5 +1,5 @@
 {
-  "type": "Collection",
+  "type": "collection",
   "info": {
     "title": "Partners",
     "singularName": "partner",
@@ -11,28 +11,28 @@
   },
   "attributes": {
     "idno": {
-      "type": "Text",
+      "type": "text",
       "unique": true,
       "required": true,
-      "constraints": {
-        "pattern": "^[0-9]{13}$"
-      }
+      "constraints": [
+        { "pattern": "^[0-9]{13}$" }
+      ]
     },
     "legal_entity": {
-      "type": "Text",
+      "type": "text",
       "unique": true,
       "required": true
     },
     "brands": {
-      "relation": "HasMany",
+      "relation": "hasMany",
       "target": "brands"
     },
     "category": {
-      "relation": "HasOne",
+      "relation": "hasOne",
       "target": "partner-categories"
     },
     "points-of-sale": {
-      "relation": "HasMany",
+      "relation": "hasMany",
       "target": "points-of-sale"
     }
   }

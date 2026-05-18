@@ -1,7 +1,7 @@
 use luminair_common::DocumentTypesRegistry;
 
 use crate::domain::DocumentTables;
-use crate::domain::tables::{Column, ColumnType, ForeignKeyConstraint, Index, Table};
+use crate::domain::tables::{Column, ColumnType, ForeignKeyConstraint, Index, IntegerSize, Table};
 use crate::domain::persistence::Persistence;
 
 #[derive(Clone)]
@@ -14,6 +14,28 @@ pub trait MigrationStep {
     fn ctx(&self) -> &'static str;
     fn ddls(self) -> Vec<String>;
 }
+
+enum MigrationStepItem {
+    Create(CreateTableStep),
+    Drop(DropTableStep),
+}
+
+impl MigrationStep for MigrationStepItem {
+    fn ctx(&self) -> &'static str {
+        match self {
+            MigrationStepItem::Create(step) => step.ctx(),
+            MigrationStepItem::Drop(step) => step.ctx(),
+        }
+    }
+
+    fn ddls(self) -> Vec<String> {
+        match self {
+            MigrationStepItem::Create(step) => step.ddls(),
+            MigrationStepItem::Drop(step) => step.ddls(),
+        }
+    }
+}
+
 
 struct CreateTableStep {
     ddls: Vec<String>,
@@ -36,6 +58,30 @@ impl MigrationStep for CreateTableStep {
     }
 }
 
+struct DropTableStep {
+    table_name: String,
+    schema: String,
+}
+
+impl DropTableStep {
+    fn new(database_schema: &str, table_name: &str) -> Self {
+        Self {
+            table_name: table_name.to_string(),
+            schema: database_schema.to_string(),
+        }
+    }
+}
+
+impl MigrationStep for DropTableStep {
+    fn ctx(&self) -> &'static str {
+        "DROP TABLE"
+    }
+
+    fn ddls(self) -> Vec<String> {
+        vec![drop_table_ddl(&self.schema, &self.table_name)]
+    }
+}
+
 impl<P: Persistence> Migration<P> {
     pub fn new(documents: &'static dyn DocumentTypesRegistry, persistence: P) -> Self {
         Self {
@@ -47,22 +93,62 @@ impl<P: Persistence> Migration<P> {
     // working with SERIAL types: https://www.bytebase.com/reference/postgres/how-to/how-to-use-serial-postgres/
     /// migrate database schema conform documents configuration
     pub async fn migrate(&self) -> Result<(), anyhow::Error> {
+        // sorted conform dependency order
         let needed_schema = documents_into_tables(self.documents);
         let actual_schema = self.persistence.load().await?;
 
+        let needed_names: std::collections::HashSet<String> = needed_schema
+            .iter()
+            .map(|table| table.name.clone())
+            .collect();
+
         let mut migration_steps = Vec::new();
+
+        let mut obsolete_tables: Vec<String> = actual_schema
+            .iter()
+            .cloned()
+            .filter(|name| !needed_names.contains(name))
+            .collect();
+
+        obsolete_tables.sort_by(|a, b| drop_name_order(a, b));
+        for table_name in obsolete_tables {
+            migration_steps.push(MigrationStepItem::Drop(DropTableStep::new(
+                self.persistence.database_schema(),
+                &table_name,
+            )));
+        }
+
+        // create missing tables in needed order
         for table in needed_schema {
             if !actual_schema.contains(&table.name) {
-                migration_steps.push(CreateTableStep::new(
+                migration_steps.push(MigrationStepItem::Create(CreateTableStep::new(
                     self.persistence.database_schema(),
                     &table,
-                ));
+                )));
             }
         }
 
         self.persistence.apply_migration_steps(migration_steps).await?;
 
         Ok(())
+    }
+}
+
+fn drop_table_ddl(schema: &str, table_name: &str) -> String {
+    format!(
+        "DROP TABLE IF EXISTS \"{}\".\"{}\" CASCADE",
+        schema, table_name
+    )
+}
+
+fn drop_name_order(a: &str, b: &str) -> std::cmp::Ordering {
+    let a_is_relation = a.ends_with("_relation");
+    let b_is_relation = b.ends_with("_relation");
+
+    match (a_is_relation, b_is_relation) {
+        (true, false) => std::cmp::Ordering::Less,
+        (false, true) => std::cmp::Ordering::Greater,
+        _ => a.cmp(b),
     }
 }
 
@@ -104,8 +190,12 @@ fn column_ddl(column: &Column) -> String {
         ColumnType::Uuid => "UUID",
         ColumnType::Text => "TEXT",
         ColumnType::Varchar => "VARCHAR",
-        ColumnType::Integer => "INTEGER",
-        ColumnType::Decimal => "DECIMAL",
+        ColumnType::Integer(size) => match size {
+            IntegerSize::Int16 => "SMALLINT",
+            IntegerSize::Int32 => "INT",
+            IntegerSize::Int64 => "BIGINT",
+        },
+        ColumnType::Decimal { precision, scale } => &format!("DECIMAL({},{})", precision, scale),
         ColumnType::Date => "DATE",
         ColumnType::TimestampTZ => "TIMESTAMPTZ",
         ColumnType::Boolean => "BOOLEAN",

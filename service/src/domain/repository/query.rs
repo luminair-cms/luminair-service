@@ -2,13 +2,32 @@ use luminair_common::DocumentTypeId;
 
 use crate::domain::document::content::DomainValue;
 
+/// Represents the publication status filter for document queries
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DocumentStatus {
+    /// Include only published documents
+    Published,
+    /// Include only draft documents (with published instances)
+    Draft,
+}
+
+impl Default for DocumentStatus {
+    fn default() -> Self {
+        DocumentStatus::Published
+    }
+}
+
+impl DocumentStatus {
+    /// Convert status to include_drafts flag
+    pub fn to_include_drafts(self) -> bool {
+        matches!(self, DocumentStatus::Draft)
+    }
+}
+
 /// Query for finding DocumentInstances
 #[derive(Debug, Clone)]
 pub struct DocumentInstanceQuery {
-    /// Which DocumentType are we querying?
-    pub document_type_id: DocumentTypeId,
-
-    pub filter: FilterExpression,
+   pub filter: FilterExpression,
     pub sort: Vec<(String, SortDirection)>,
     pub limit: Option<i64>,
     pub offset: Option<i64>,
@@ -19,9 +38,8 @@ pub struct DocumentInstanceQuery {
 
 impl DocumentInstanceQuery {
     /// Create a new query builder for the given document type
-    pub fn new(document_type_id: DocumentTypeId) -> Self {
+    pub fn new() -> Self {
         Self {
-            document_type_id,
             filter: FilterExpression::None,
             sort: Vec::new(),
             limit: None,
@@ -126,6 +144,12 @@ impl DocumentInstanceQuery {
     /// Exclude draft instances in results (default)
     pub fn exclude_drafts(mut self) -> Self {
         self.include_drafts = false;
+        self
+    }
+
+    /// Set publication status filter
+    pub fn with_status(mut self, status: DocumentStatus) -> Self {
+        self.include_drafts = status.to_include_drafts();
         self
     }
 }

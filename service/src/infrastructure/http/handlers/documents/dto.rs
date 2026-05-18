@@ -1,18 +1,19 @@
 use luminair_common::{
-    AttributeId, DocumentType,
+    DocumentType,
     entities::{
-        AttributeConstraints, AttributeType, DocumentField, DocumentKind, DocumentRelation,
+        FieldType, DocumentField, DocumentKind, DocumentRelation,
         DocumentTypeInfo, DocumentTypeOptions, RelationType,
     },
 };
 use serde::Serialize;
+use luminair_common::entities::FieldConstraint;
 
 /// Response for list documents route
 #[derive(Debug, Clone, Serialize)]
 pub struct DocumentResponse {
     id: String,
     title: String,
-    #[serde(alias = "type")]
+    #[serde(rename = "type")]
     kind: DocumentKind,
     description: Option<String>,
 }
@@ -40,7 +41,7 @@ impl From<&DocumentType> for DocumentResponse {
 pub struct DetailedDocumentResponse {
     id: String,
     title: String,
-    #[serde(alias = "type")]
+    #[serde(rename = "type")]
     kind: DocumentKind,
     info: DocumentInfoResponse,
     options: Option<DocumentOptionsResponse>,
@@ -77,16 +78,15 @@ pub struct AttributeResponse {
 #[serde(rename_all = "camelCase", untagged)]
 pub enum AttribteBodyResponse {
     Field {
-        attribute_type: AttributeType,
+        #[serde(rename = "type")]
+        attribute_type: FieldType,
         unique: bool,
         #[serde(default)]
         required: bool,
-        #[serde(default)]
-        localized: bool,
-        constraints: Option<AttributeConstraints>,
+        constraints: Vec<FieldConstraint>,
     },
     Relation {
-        #[serde(alias = "relation")]
+        #[serde(rename = "relation")]
         relation_type: RelationType,
         target: String,
     },
@@ -141,29 +141,26 @@ impl From<&DocumentTypeOptions> for DocumentOptionsResponse {
     }
 }
 
-impl From<(&AttributeId, &DocumentField)> for AttributeResponse {
-    fn from(value: (&AttributeId, &DocumentField)) -> Self {
-        let id = value.0.to_string();
-        let body = value.1;
-        let constraints = body.constraints.as_ref().map(|c| c.clone());
+impl From<&DocumentField> for AttributeResponse {
+    fn from(value: &DocumentField) -> Self {
+        let id = value.id.to_string();
+        let constraints = value.constraints.iter().map(|c| c.clone()).collect();
         let body = AttribteBodyResponse::Field {
-            attribute_type: body.attribute_type.clone(),
-            unique: body.unique,
-            required: body.required,
-            localized: body.localized,
+            attribute_type: value.field_type.clone(),
+            unique: value.unique,
+            required: value.required,
             constraints,
         };
         Self { id, body }
     }
 }
 
-impl From<(&AttributeId, &DocumentRelation)> for AttributeResponse {
-    fn from(value: (&AttributeId, &DocumentRelation)) -> Self {
-        let id = value.0.to_string();
-        let body = value.1;
-        let target = body.target.to_string();
+impl From<&DocumentRelation> for AttributeResponse {
+    fn from(value: &DocumentRelation) -> Self {
+        let id = value.id.to_string();
+        let target = value.target.to_string();
         let body = AttribteBodyResponse::Relation {
-            relation_type: body.relation_type.clone(),
+            relation_type: value.relation_type.clone(),
             target,
         };
         Self { id, body }

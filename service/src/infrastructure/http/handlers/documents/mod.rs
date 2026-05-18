@@ -11,7 +11,7 @@ pub async fn documents_metadata<S: AppState>(
     State(state): State<S>,
 ) -> Result<ApiSuccess<Vec<DocumentResponse>>, ApiError> {
     let result = state
-        .document_types_registry()
+        .document_types()
         .iterate()
         .map(DocumentResponse::from)
         .collect::<Vec<_>>();
@@ -23,17 +23,14 @@ pub async fn one_document_metadata<S: AppState>(
     Path(id): Path<String>,
     State(state): State<S>,
 ) -> Result<ApiSuccess<DetailedDocumentResponse>, ApiError> {
-    let document_id =
+    let document_type_id =
         DocumentTypeId::try_new(id).map_err(|err| ApiError::UnprocessableEntity(err.to_string()))?;
 
     let result = state
-        .document_types_registry()
-        .get(&document_id)
-        .map(DetailedDocumentResponse::from);
+        .document_types()
+        .get(&document_type_id)
+        .map(DetailedDocumentResponse::from)
+        .ok_or(ApiError::NotFound)?;
 
-    if let Some(document) = result {
-        Ok(ApiSuccess::new(StatusCode::OK, document))
-    } else {
-        Err(ApiError::NotFound)
-    }
+    Ok(ApiSuccess::new(StatusCode::OK, result))
 }

@@ -1,5 +1,5 @@
 {
-  "type": "Collection",
+  "type": "collection",
   "info": {
     "title": "PartnerCategory",
     "singularName": "partner-category",
@@ -12,16 +12,17 @@
   },
   "attributes": {
     "uid": {
-      "type": "Uid",
+      "type": "uid",
       "required": true
     },
     "name": {
-      "type": "Text",
-      "required": true,
-      "localized": true
+      "type": "localizedText",
+      "required": true
     },
     "priority": {
-      "type": "Integer",
+      "type": {
+        "integer": "int32"
+      },
       "unique": true,
       "required": true
     }

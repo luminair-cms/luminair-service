@@ -1,6 +1,5 @@
 mod domain;
 mod infratructure;
-pub mod test_utils;
 
 // Persisted documents field names
 
@@ -18,6 +17,9 @@ pub const PUBLISHED_BY_FIELD_NAME: &'static str = "published_by_id";
 
 pub const VERSION_FIELD_NAME: &'static str = "version";
 pub const REVISION_FIELD_NAME: &'static str = "revision";
+
+pub const OWNING_ID_FIELD_NAME: &'static str = "owning_id";
+pub const INVERSE_ID_FIELD_NAME: &'static str = "inverse_id";
 
 // expose domain module
 

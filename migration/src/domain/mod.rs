@@ -1,11 +1,9 @@
 use crate::domain::tables::{Column, ColumnType, ForeignKeyConstraint, Index, Table};
 
 use luminair_common::{
-    AttributeId, CREATED_BY_FIELD_NAME, CREATED_FIELD_NAME, DOCUMENT_ID_FIELD_NAME, DocumentType,
-    DocumentTypesRegistry, ID_FIELD_NAME, PUBLISHED_BY_FIELD_NAME, PUBLISHED_FIELD_NAME,
-    RELATION_ID_FIELD_NAME, REVISION_FIELD_NAME, UPDATED_BY_FIELD_NAME, UPDATED_FIELD_NAME,
-    entities::{AttributeType, DocumentRelation},
+    CREATED_BY_FIELD_NAME, CREATED_FIELD_NAME, DOCUMENT_ID_FIELD_NAME, DocumentType, DocumentTypesRegistry, ID_FIELD_NAME, INVERSE_ID_FIELD_NAME, OWNING_ID_FIELD_NAME, PUBLISHED_BY_FIELD_NAME, PUBLISHED_FIELD_NAME, RELATION_ID_FIELD_NAME, REVISION_FIELD_NAME, UPDATED_BY_FIELD_NAME, UPDATED_FIELD_NAME, VERSION_FIELD_NAME, entities::{FieldType, DocumentRelation}
 };
+use luminair_common::entities::{DocumentField, FieldConstraint, IntegerSize};
 
 pub mod migration;
 pub mod persistence;
@@ -23,9 +21,9 @@ impl DocumentTables {
 
         handle_document_fields(document, &mut main_table_builder);
 
-        for (id, relation) in document.relations.iter() {
+        for relation in document.relations.iter() {
             if relation.relation_type.is_owning() {
-                relation_tables_builder.push(id, relation, documents);
+                relation_tables_builder.push(relation, documents);
             }
         }
 
@@ -47,7 +45,6 @@ struct MainTableBuilder {
 
 struct RelationTablesBuilder {
     main_table_name: String,
-    owning_column_name: String,
     relation_tables: Vec<Table>,
 }
 
@@ -110,6 +107,13 @@ impl MainTableBuilder {
                 false,
                 false,
                 None,
+            ),Column::new(
+                VERSION_FIELD_NAME,
+                ColumnType::Integer(IntegerSize::Int32),
+                None,
+                false,
+                false,
+                None,
             ),
         ]);
 
@@ -133,7 +137,7 @@ impl MainTableBuilder {
                 ),
                 Column::new(
                     REVISION_FIELD_NAME,
-                    ColumnType::Integer,
+                    ColumnType::Integer(IntegerSize::Int32),
                     None,
                     false,
                     false,
@@ -142,47 +146,54 @@ impl MainTableBuilder {
             ]);
         }
 
-        Table::new(self.table_name, self.columns, Vec::new(), Vec::new())
+        let document_id_index = Index::new(
+            &self.table_name as &str,
+            vec![DOCUMENT_ID_FIELD_NAME],
+            false,
+        );
+
+        Table::new(
+            self.table_name,
+            self.columns,
+            Vec::new(),
+            vec![document_id_index],
+        )
     }
 }
 
 impl RelationTablesBuilder {
     fn new(document: &DocumentType) -> Self {
         let main_table_name = document.id.normalized();
-        let owning_column_name = format!("{}_id", main_table_name);
         let relation_tables = Vec::new();
 
         Self {
             main_table_name,
-            owning_column_name,
             relation_tables,
         }
     }
 
     fn push(
         &mut self,
-        id: &AttributeId,
         relation: &DocumentRelation,
         documents: &dyn DocumentTypesRegistry,
     ) {
         let target_document = documents.get(&relation.target).unwrap();
         let target_table_name = target_document.id.normalized();
-        let relation_table_name = format!("{}_{}_relation", self.main_table_name, id.normalized());
-        let inverse_column_name = format!("{}_id", target_table_name);
+        let relation_table_name = format!("{}_{}_relation", self.main_table_name, relation.id.normalized());
 
         let columns = vec![
             Column::primary_key(RELATION_ID_FIELD_NAME, ColumnType::Serial, None),
             Column::new(
-                &self.owning_column_name as &str,
-                ColumnType::Integer,
+                OWNING_ID_FIELD_NAME,
+                ColumnType::Integer(IntegerSize::Int32),
                 None,
                 true,
                 false,
                 None,
             ),
             Column::new(
-                &inverse_column_name,
-                ColumnType::Integer,
+                INVERSE_ID_FIELD_NAME,
+                ColumnType::Integer(IntegerSize::Int32),
                 None,
                 true,
                 false,
@@ -193,27 +204,27 @@ impl RelationTablesBuilder {
         let foreign_keys = vec![
             ForeignKeyConstraint::new(
                 &relation_table_name as &str,
-                &self.owning_column_name,
+                OWNING_ID_FIELD_NAME,
                 &self.main_table_name,
-                DOCUMENT_ID_FIELD_NAME,
+                ID_FIELD_NAME,
             ),
             ForeignKeyConstraint::new(
                 &relation_table_name as &str,
-                &inverse_column_name,
+                INVERSE_ID_FIELD_NAME,
                 &target_table_name,
-                DOCUMENT_ID_FIELD_NAME,
+                ID_FIELD_NAME,
             ),
         ];
 
         let indexes = vec![
             Index::new(
                 &relation_table_name as &str,
-                vec![&self.owning_column_name as &str],
+                vec![OWNING_ID_FIELD_NAME],
                 false,
             ),
             Index::new(
                 &relation_table_name as &str,
-                vec![&inverse_column_name],
+                vec![INVERSE_ID_FIELD_NAME],
                 false,
             ),
         ];
@@ -228,31 +239,33 @@ impl RelationTablesBuilder {
 }
 
 fn handle_document_fields(document: &DocumentType, main_table_builder: &mut MainTableBuilder) {
-    for (id, persisted) in document.fields.iter() {
-        let column_type = if persisted.localized {
-            ColumnType::JsonB
-        } else {
-            match persisted.attribute_type {
-                AttributeType::Uid => ColumnType::Text,
-                AttributeType::Uuid => ColumnType::Uuid,
-                AttributeType::Text => ColumnType::Text,
-                AttributeType::Integer => ColumnType::Integer,
-                AttributeType::Decimal => ColumnType::Decimal,
-                AttributeType::Date => ColumnType::Date,
-                AttributeType::DateTime => ColumnType::TimestampTZ,
-                AttributeType::Boolean => ColumnType::Boolean,
-            }
-        };
+    for field in document.fields.iter() {
+        let column_type = infer_column_type(field);
 
         let column = Column::new(
-            id.normalized(),
+            field.id.normalized(),
             column_type,
             None,
-            persisted.required,
-            persisted.unique,
+            field.required,
+            field.unique,
             None,
         );
 
         main_table_builder.push(column);
+    }
+}
+
+fn infer_column_type(field: &DocumentField) -> ColumnType {
+    match field.field_type {
+        FieldType::Uid => ColumnType::Text,
+        FieldType::Uuid => ColumnType::Uuid,
+        FieldType::Text => ColumnType::Text,
+        FieldType::LocalizedText => ColumnType::JsonB,
+        FieldType::Integer(size) => ColumnType::Integer(size),
+        FieldType::Decimal { precision, scale } => ColumnType::Decimal { precision, scale },
+        FieldType::Date => ColumnType::Date,
+        FieldType::DateTime => ColumnType::TimestampTZ,
+        FieldType::Boolean => ColumnType::Boolean,
+        FieldType::Json => ColumnType::JsonB
     }
 }

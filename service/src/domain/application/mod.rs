@@ -1,0 +1,59 @@
+pub mod implementation;
+
+use crate::domain::document::content::ContentValue;
+use crate::domain::document::{DatabaseRowId, DocumentInstance, DocumentInstanceId};
+use crate::domain::repository::query::DocumentInstanceQuery;
+use crate::domain::repository::RepositoryError;
+use luminair_common::{AttributeId, DocumentType};
+use std::collections::HashMap;
+
+pub trait DocumentsService: Send + Sync + 'static {
+    /// Find instances matching query
+    fn find(
+        &self,
+        document_type: &DocumentType,
+        populate: Option<Vec<AttributeId>>,
+        query: DocumentInstanceQuery,
+    ) -> impl Future<Output = Result<Vec<DocumentInstance>, RepositoryError>> + Send;
+
+    /// Find a single instance by ID
+    fn find_by_id(
+        &self,
+        document_type: &DocumentType,
+        populate: Option<Vec<AttributeId>>,
+        query: DocumentInstanceQuery,
+        id: DocumentInstanceId,
+    ) -> impl Future<Output = Result<Vec<DocumentInstance>, RepositoryError>> + Send;
+    
+    /// Create a new instance
+    fn create(
+        &self,
+        document_type: &DocumentType,
+        fields: HashMap<AttributeId, ContentValue>,
+    ) -> impl Future<Output = Result<DocumentInstanceId, RepositoryError>> + Send;
+
+    /// Delete instance by ID
+    fn delete(
+        &self,
+        document_type: &DocumentType,
+        id: DocumentInstanceId,
+    ) -> impl Future<Output = Result<(), RepositoryError>> + Send;
+
+    /// Connect two related document instances for an owning relation
+    fn connect(
+        &self,
+        document_type: &DocumentType,
+        relation_attr: &AttributeId,
+        owning_id: DatabaseRowId,
+        inverse_id: DatabaseRowId,
+    ) -> impl Future<Output = Result<(), RepositoryError>> + Send;
+
+    /// Disconnect two related document instances for an owning relation
+    fn disconnect(
+        &self,
+        document_type: &DocumentType,
+        relation_attr: &AttributeId,
+        owning_id: DatabaseRowId,
+        inverse_id: DatabaseRowId,
+    ) -> impl Future<Output = Result<(), RepositoryError>> + Send;
+}
