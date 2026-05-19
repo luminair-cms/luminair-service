@@ -5,7 +5,7 @@ use luminair_common::{
     REVISION_FIELD_NAME, UPDATED_BY_FIELD_NAME, UPDATED_FIELD_NAME, VERSION_FIELD_NAME,
 };
 use crate::domain::document::DatabaseRowId;
-use crate::domain::repository::query::{FilterExpression, SortDirection, DocumentInstanceQuery};
+use crate::domain::repository::query::{FilterExpression, SortDirection, DocumentInstanceQuery, DocumentStatus};
 use sea_query::extension::postgres::PgExpr;
 use sea_query::{
     ColumnRef, Condition, DynIden, Expr, ExprTrait, Iden, InsertStatement, IntoColumnRef, JoinType, Order,
@@ -28,7 +28,7 @@ pub fn query_find_document_by_id(
     let mut select = Query::select();
     select.columns(columns).from(table).and_where(document_id_column.eq(id));
 
-    if document.has_draft_and_publish() && !query.include_drafts {
+    if document.has_draft_and_publish() && query.status == DocumentStatus::Published {
         select.and_where(Expr::col(("m", PUBLISHED_FIELD_NAME)).is_not_null());
     }
 
@@ -50,7 +50,7 @@ pub fn query_find_document_by_criteria(
     let mut select = Query::select();
     select.columns(columns).from(table);
 
-    if document.has_draft_and_publish() && !query.include_drafts {
+    if document.has_draft_and_publish() && query.status == DocumentStatus::Published {
         select.and_where(Expr::col(("m", PUBLISHED_FIELD_NAME)).is_not_null());
     }
 

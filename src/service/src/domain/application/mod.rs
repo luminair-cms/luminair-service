@@ -23,7 +23,7 @@ pub trait DocumentsService: Send + Sync + 'static {
         populate: Option<Vec<AttributeId>>,
         query: DocumentInstanceQuery,
         id: DocumentInstanceId,
-    ) -> impl Future<Output = Result<Vec<DocumentInstance>, RepositoryError>> + Send;
+    ) -> impl Future<Output = Result<Option<DocumentInstance>, RepositoryError>> + Send;
     
     /// Create a new instance
     fn create(

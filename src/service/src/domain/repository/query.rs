@@ -7,20 +7,13 @@ use crate::domain::document::content::DomainValue;
 pub enum DocumentStatus {
     /// Include only published documents
     Published,
-    /// Include only draft documents (with published instances)
+    /// Include only draft documents (or published if draft doesn't exist)
     Draft,
 }
 
 impl Default for DocumentStatus {
     fn default() -> Self {
         DocumentStatus::Published
-    }
-}
-
-impl DocumentStatus {
-    /// Convert status to include_drafts flag
-    pub fn to_include_drafts(self) -> bool {
-        matches!(self, DocumentStatus::Draft)
     }
 }
 
@@ -33,7 +26,7 @@ pub struct DocumentInstanceQuery {
     pub offset: Option<i64>,
 
     /// Include draft instances?
-    pub include_drafts: bool,
+    pub status: DocumentStatus,
 }
 
 impl DocumentInstanceQuery {
@@ -44,7 +37,7 @@ impl DocumentInstanceQuery {
             sort: Vec::new(),
             limit: None,
             offset: None,
-            include_drafts: false,
+            status: DocumentStatus::default(),
         }
     }
 
@@ -186,21 +179,9 @@ impl DocumentInstanceQuery {
         self
     }
 
-    /// Include draft instances in results
-    pub fn include_drafts(mut self) -> Self {
-        self.include_drafts = true;
-        self
-    }
-
-    /// Exclude draft instances in results (default)
-    pub fn exclude_drafts(mut self) -> Self {
-        self.include_drafts = false;
-        self
-    }
-
     /// Set publication status filter
     pub fn with_status(mut self, status: DocumentStatus) -> Self {
-        self.include_drafts = status.to_include_drafts();
+        self.status = status;
         self
     }
 }

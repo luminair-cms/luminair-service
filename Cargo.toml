@@ -1,7 +1,7 @@
 [workspace]
 members = [
-    "common",
-    "migration",
-    "service"
+    "src/common",
+    "src/migration",
+    "src/service"
 ]
 resolver = "3" # Recommended for newer Cargo features

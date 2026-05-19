@@ -3,7 +3,7 @@ use crate::domain::application::{DocumentsService};
 use crate::domain::document::{DocumentInstanceId};
 use crate::domain::repository::query::{DocumentInstanceQuery, DocumentStatus};
 use crate::infrastructure::http::api::{ApiError, ApiSuccess};
-use crate::infrastructure::http::handlers::data::response::ManyDocumentsResponse;
+use crate::infrastructure::http::handlers::data::response::{ManyDocumentsResponse, OneDocumentResponse};
 
 use crate::infrastructure::http::querystring::QueryString;
 use axum::Json;
@@ -47,7 +47,7 @@ pub async fn find_document_by_id<S: AppState>(
     State(state): State<S>,
     Path((api_type, id)): Path<(String, String)>,
     QueryString(params): QueryString<QueryParams>,
-) -> Result<ApiSuccess<ManyDocumentsResponse>, ApiError> {
+) -> Result<ApiSuccess<OneDocumentResponse>, ApiError> {
     if params.pagination.is_some() {
         return Err(ApiError::UnprocessableEntity(
             "Pagination param isn't eligible for find_by_id query".to_string(),
@@ -84,20 +84,16 @@ pub async fn find_document_by_id<S: AppState>(
 
     let query = DocumentInstanceQuery::new().with_status(status);
 
-    let document_instances = state
+    let document_instance = state
         .documents_service()
         .find_by_id(document_type, populate_attributes, query, document_instance_id)
         .await
         .map_err(|err| ApiError::from(err))?;
 
-    if document_instances.is_empty() {
-        return Err(ApiError::NotFound);
-    }
-
-    Ok(ApiSuccess::new(
-        StatusCode::OK,
-        ManyDocumentsResponse::from(document_instances),
-    ))
+    OneDocumentResponse::try_from(document_instance)
+        .map(|response|
+            ApiSuccess::new(StatusCode::OK, response)
+        ).map_err(|_| ApiError::NotFound)
 }
 
 pub async fn find_all_documents<S: AppState>(
