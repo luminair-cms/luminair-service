@@ -29,6 +29,7 @@ pub fn query_find_document_by_id(
     select.columns(columns).from(table).and_where(document_id_column.eq(id));
 
     if document.has_draft_and_publish() && query.status == DocumentStatus::Published {
+        // for find-by-id: only published OR published+draft
         select.and_where(Expr::col(("m", PUBLISHED_FIELD_NAME)).is_not_null());
     }
 
@@ -50,9 +51,16 @@ pub fn query_find_document_by_criteria(
     let mut select = Query::select();
     select.columns(columns).from(table);
 
-    if document.has_draft_and_publish() && query.status == DocumentStatus::Published {
-        select.and_where(Expr::col(("m", PUBLISHED_FIELD_NAME)).is_not_null());
+    if document.has_draft_and_publish() {
+        // for find by example: only published OR only draft
+        let col = Expr::col(("m", DOCUMENT_ID_FIELD_NAME));
+        if query.status == DocumentStatus::Published {
+            select.and_where(col.is_not_null());
+        } else {
+            select.and_where(col.is_null());
+        }
     }
+
 
     // Apply custom filters
     if let Some(condition) = build_condition(&query.filter, document) {
@@ -113,7 +121,7 @@ fn build_condition(filter: &FilterExpression, document: &DocumentType) -> Option
     }
 }
 
-fn build_filter_expr(filter: &FilterExpression, document: &DocumentType) -> Option<SimpleExpr> {
+fn build_filter_expr(filter: &FilterExpression, document: &DocumentType) -> Option<Expr> {
     match filter {
         FilterExpression::Equals { field, value } => {
             Some(get_column_expr(field, document).eq(Expr::from(value)))
@@ -168,7 +176,8 @@ fn build_filter_expr(filter: &FilterExpression, document: &DocumentType) -> Opti
     }
 }
 
-fn get_column_expr(field_path: &str, document: &DocumentType) -> SimpleExpr {
+fn get_column_expr(field_path: &str, document: &DocumentType) -> Expr {
+    // TODO: name1.name2.name3
     let parts: Vec<&str> = field_path.split('.').collect();
     let base_field = parts[0];
     
@@ -180,16 +189,7 @@ fn get_column_expr(field_path: &str, document: &DocumentType) -> SimpleExpr {
     };
 
     let col = Expr::col(("m", column_name));
-
-    if parts.len() > 1 {
-        let mut expr = col.into_simple_expr();
-        for part in &parts[1..] {
-            expr = PgExpr::json_get_path_text(expr, vec![part.to_string()]);
-        }
-        expr
-    } else {
-        col.into_simple_expr()
-    }
+    col
 }
 
 /// SELECT r.owning_id, m.id, m.document_id, ...

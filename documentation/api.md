@@ -8,27 +8,40 @@ This documentation describes the REST API exposed by the Luminair service. It is
 
 All endpoints are served under the `/api` prefix.
 
-- Collection routes: `/api/:pluralApiId`
-- Single-item routes: `/api/:pluralApiId/:documentId`
-- Singleton routes: `/api/:singularApiId`
+There are 2 types of routes:
+- `meta` routes
+- `documents` routes
+
+### Meta routes
+
+| Method | URL                     | Description |
+| ------ |-------------------------| ----------- |
+| GET | /api/meta/documents     | list all documents |
+| GET | /api/meta/documents/:id | Get full metainfo about document by ID |
+
+### Documents routes
+
+- Collection routes: `/api/documents/:pluralApiId`
+- Single-item routes: `/api/documents/:pluralApiId/:documentId`
+- Singleton routes: `/api/documents/:singularApiId`
 
 ### Plural collection example
 
 | Method | URL | Description |
 | ------ | --- | ----------- |
-| GET | `/api/restaurants` | Get a list of restaurants |
-| POST | `/api/restaurants` | Create a restaurant |
-| GET | `/api/restaurants/:documentId` | Get a specific restaurant |
-| PUT | `/api/restaurants/:documentId` | Update a restaurant |
-| DELETE | `/api/restaurants/:documentId` | Delete a restaurant |
+| GET | `/api/documents/restaurants` | Get a list of restaurants |
+| POST | `/api/documents/restaurants` | Create a restaurant |
+| GET | `/api/documents/restaurants/:documentId` | Get a specific restaurant |
+| PUT | `/api/documents/restaurants/:documentId` | Update a restaurant |
+| DELETE | `/api/documents/restaurants/:documentId` | Delete a restaurant |
 
 ### Singleton example
 
 | Method | URL | Description |
 | ------ | --- | ----------- |
-| GET | `/api/homepage` | Get the homepage content |
-| PUT | `/api/homepage` | Create or update the homepage content |
-| DELETE | `/api/homepage` | Delete the homepage content |
+| GET | `/api/documents/homepage` | Get the homepage content |
+| PUT | `/api/documents/homepage` | Create or update the homepage content |
+| DELETE | `/api/documents/homepage` | Delete the homepage content |
 
 ## Response structure
 

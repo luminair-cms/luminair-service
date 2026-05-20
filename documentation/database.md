@@ -6,34 +6,50 @@ This document describes how Luminair generates database schema from document typ
 
 The migration logic builds two kinds of tables from each document schema:
 
-- **Main document table** for document fields and lifecycle metadata
+- **Document identity table** for document instances due to draft-and-publish
+- **Collection table** for document data fields and lifecycle metadata
 - **Relation tables** for owning-side relations between document types
 
 The table generation is implemented in `migration/src/domain/mod.rs` using `MainTableBuilder` and `RelationTablesBuilder`.
 
-## Main Document Table
+## Document Identity Tables
 
-Each document type produces one main table named after the normalized document ID.
+Each document type produces one main table named after the normalized ID plus `_documents` suffix.
+Example: a document with ID `partner-categories` uses table name `partner_categories_documents`.
 
+Model:
+
+{collection}_documents
+- document_id primary key
+- status: DRAFT | PUBLISHED | MODIFIED
+- document-level metadata (created_at, created_by_id)
+
+### Collection table
+
+Name of this table is derived from the document type's normalized ID.
 Example: a document with ID `partner-categories` uses table name `partner_categories`.
 
-### Main table columns
+**Model:**
 
-All main tables include these base columns:
+{collection}
+- id primary key
+- document_id references {collection}_documents(document_id)
+- publication_state: doesn't exists, derived from published_at field
+- content fields
+- version metadata fields
+- publication state fields (in case of draft-and-publish)
 
-- `id` — primary key, `serial`
-- `document_id` — `uuid`, identifies the document instance
-- `created_at` — `timestamp with time zone`, defaults to `now()`
-- `updated_at` — `timestamp with time zone`
-- `created_by_id` — `text`
-- `updated_by_id` — `text`
-- `version` — `integer`
+**Version metadata**
 
-In addition, when `draftAndPublish` is enabled for a document type, the following publication columns are added:
+      updated_at timestamptz NOT NULL,
+      updated_by_id text NULL,
+      version integer NOT NULL,
 
-- `published_at` — `timestamp with time zone`
-- `published_by_id` — `text`
-- `revision` — `integer`
+**Publication state (in case of draft-and-publish):**
+   
+      revision integer NOT NULL,
+      published_at timestamptz NULL,
+      published_by_id text NULL,
 
 ### Field columns
 
@@ -50,11 +66,26 @@ Document fields are converted to columns according to the field type mapping in 
 - `boolean` → `boolean`
 - `json` → `jsonb`
 
+Field column names are derived from schema attribute IDs.
 Each field column preserves the schema's `required` and `unique` flags.
 
 ### Main table indexes
 
 A non-unique index is created on `document_id` for every main document table.
+
+Constraints:
+
+```sql
+CREATE UNIQUE INDEX articles_one_draft_per_document
+ON articles (document_id)
+WHERE published_at IS NULL;
+
+CREATE UNIQUE INDEX articles_one_published_per_document
+ON articles (document_id)
+WHERE published_at IS NOT NULL;
+```
+
+where `articles` is the main table name.
 
 ## Relation Tables
 
@@ -75,7 +106,7 @@ Each relation table contains:
 
 - `relation_id` — primary key, `serial`
 - `owning_id` — `integer`, foreign key to the owning document's main table `id`
-- `inverse_id` — `integer`, foreign key to the related document's main table `id`
+- `target_document_id references` — `uuid`, foreign key to {target}_documents(document_id)
 
 ### Relation lifecycle with draft-and-publish
 
@@ -101,30 +132,6 @@ In practice:
 
 If `draftAndPublish` is disabled, there is only one main row per document instance and relations are managed directly on that single row.
 
-### Foreign keys and indexes
-
-Each relation table includes:
-
-- foreign key from `owning_id` to the owning table's `id`
-- foreign key from `inverse_id` to the inverse/target table's `id`
-- index on `owning_id`
-- index on `inverse_id`
-
-## Naming conventions
-
-- Main table names are derived from the document type's normalized ID.
-- Relation table names append the relation attribute name and `_relation` suffix.
-- Field column names are derived from schema attribute IDs.
-
-## Example
-
-Given a `partners` document with an owning relation attribute `brands`, migration creates:
-
-- Main table: `partners`
-- Relation table: `partners_brands_relation`
-
-The relation table links `partners.id` to `brands.id` through `owning_id` and `inverse_id`.
-
 ## Migration Strategy
 
 The migration system compares the target schema (derived from document configuration) with the actual database schema and generates DDL statements to reconcile them. The migration process is idempotent and only executes changes when needed.
@@ -132,24 +139,6 @@ The migration system compares the target schema (derived from document configura
 ### MVP: Core Migration Cases
 
 #### Case 1: Adding a New Collection
-
-When a new document type is added to the schema configuration:
-
-1. **Main table creation**: A new main table is created with all base columns (id, document_id, created_at, updated_at, etc.) and field-specific columns.
-2. **Index creation**: A non-unique index is created on `document_id` for efficient queries.
-3. **Publication columns** (if enabled): If the document has `draftAndPublish` enabled, publication columns (`published_at`, `published_by_id`, `revision`) are included.
-
-Example DDL flow:
-```sql
-CREATE TABLE "public"."new_collection" (
-  "id" SERIAL,
-  "document_id" UUID NOT NULL,
-  "field1" TEXT,
-  ...
-  PRIMARY KEY(id)
-);
-CREATE INDEX "new_collection_document_id_idx" ON "public"."new_collection" ("document_id");
-```
 
 Implementation location: `migration/src/domain/migration.rs` - `CreateTableStep`
 
@@ -161,37 +150,9 @@ When a document type is removed from the schema configuration:
 2. **Main table removal**: The main collection table is dropped.
 3. **Data preservation option**: Pre-migration backups are recommended before removing collections (responsibility of deployment pipeline).
 
-Expected DDL flow:
-```sql
-DROP TABLE IF EXISTS "public"."collection_relation_name_relation" CASCADE;
-DROP TABLE "public"."collection_name" CASCADE;
-```
-
 #### Case 3: Adding a New Relation Between Collections
 
 When a new relation is declared in a document's schema (e.g., `hasOne` or `hasMany`):
-
-1. **Relation table creation**: A dedicated relation table named `{main_table}_{relation_name}_relation` is created.
-2. **Foreign key constraints**: Two foreign keys are created:
-   - `owning_id` → owning collection's main table `id` (ON DELETE CASCADE)
-   - `inverse_id` → related collection's main table `id` (ON DELETE CASCADE)
-3. **Index creation**: Indexes are created on both `owning_id` and `inverse_id` for query performance.
-
-Example DDL flow:
-```sql
-CREATE TABLE "public"."partners_brands_relation" (
-  "relation_id" SERIAL,
-  "owning_id" INT NOT NULL,
-  "inverse_id" INT NOT NULL,
-  PRIMARY KEY(relation_id)
-);
-ALTER TABLE "public"."partners_brands_relation" ADD CONSTRAINT "partners_brands_relation_owning_id_fkey"
-  FOREIGN KEY ("owning_id") REFERENCES "public"."partners" ("id") ON DELETE CASCADE;
-ALTER TABLE "public"."partners_brands_relation" ADD CONSTRAINT "partners_brands_relation_inverse_id_fkey"
-  FOREIGN KEY ("inverse_id") REFERENCES "public"."brands" ("id") ON DELETE CASCADE;
-CREATE INDEX "partners_brands_relation_owning_id_idx" ON "public"."partners_brands_relation" ("owning_id");
-CREATE INDEX "partners_brands_relation_inverse_id_idx" ON "public"."partners_brands_relation" ("inverse_id");
-```
 
 Implementation location: `migration/src/domain/mod.rs` - `RelationTablesBuilder`
 
@@ -202,13 +163,6 @@ When a relation is removed from a document's schema:
 1. **Foreign key removal**: Constraints referencing both collections are dropped.
 2. **Relation table removal**: The relation table is dropped, cascading any dependent data.
 3. **Dependent data cleanup**: All relation records are automatically removed via CASCADE.
-
-Expected DDL flow:
-```sql
-ALTER TABLE "public"."partners_brands_relation" DROP CONSTRAINT "partners_brands_relation_inverse_id_fkey";
-ALTER TABLE "public"."partners_brands_relation" DROP CONSTRAINT "partners_brands_relation_owning_id_fkey";
-DROP TABLE "public"."partners_brands_relation" CASCADE;
-```
 
 ### Migration Execution
 
@@ -222,7 +176,7 @@ The migration process:
 1. Loads document schemas from `config/schema/` directory
 2. Establishes database connection
 3. Loads existing database schema
-4. Compares needed schema vs. actual schema
+4. Compares the necessary schema vs. actual schema
 5. Generates and executes DDL statements for differences
 6. Logs migration progress
 

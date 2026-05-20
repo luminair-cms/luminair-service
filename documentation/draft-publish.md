@@ -81,23 +81,6 @@ Draft (in-memory: rev: 0, audit.version: 1) → [Persist] → Draft (persisted: 
 6. Publish: Published.revision = 4, audit.version -> 5
 ```
 
-## Database Schema
-
-For document types with draft-and-publish enabled, the database table includes additional columns:
-
-| Field | Type | Description |
-|-------|------|-------------|
-| id | serial | Primary key |
-| document_id | uuid | Document instance identifier |
-| published_at | timestamp | Publication timestamp |
-| published_by_id | text | User who performed publish (stored as string UserId) |
-| revision | integer | Publication revision number |
-| created_at | timestamp | Creation timestamp |
-| updated_at | timestamp | Last update timestamp |
-| created_by_id | text | User who created (stored as string UserId) |
-| updated_by_id | text | User who last updated (stored as string UserId) |
-| version | integer | Overall version number |
-
 ## Publishing Logic
 
 The `publish()` method on `DocumentInstance` handles the state transition:
@@ -136,10 +119,10 @@ Key behaviors:
 ### Query Parameters
 
 APIs should support filtering by publication state:
-- `?status=published` — Return published versions only (default)
-- `?status=draft` — Include draft versions in addition to published versions when a draft exists
-
-When querying a specific document by ID, `status=draft` can return both the published and draft variants for the same document instance.
+- `?status=published` — Return published versions only (default). Used by public api
+- `?status=draft`:
+   - For filter many documents. Returns a draft version if it exists.  Use case: give me documents what need to approve
+   - For find by ID: Returns a draft version if it exists. Also returns a published version. Use case: UI for editing a single document
 
 ### Relations and Draft-Publish
 

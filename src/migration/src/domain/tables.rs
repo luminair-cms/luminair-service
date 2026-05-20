@@ -31,14 +31,11 @@ pub enum ColumnType {
     Text,
     Varchar,
     Integer(IntegerSize),
-    Decimal{
-        precision: usize,
-        scale: u32
-    },
+    Decimal { precision: usize, scale: u32 },
     Date,
     TimestampTZ,
     Boolean,
-    JsonB
+    JsonB,
 }
 
 /// Represents foreign key constraint in the database table
@@ -56,6 +53,7 @@ pub struct Index {
     pub table_name: String,
     pub columns: Vec<String>,
     pub unique: bool,
+    pub where_clause: Option<String>,
 }
 
 impl Table {
@@ -95,7 +93,11 @@ impl Column {
         }
     }
 
-    pub fn primary_key<T: Into<String>>(name: T, column_type: ColumnType, column_length: Option<usize>) -> Self {
+    pub fn primary_key<T: Into<String>>(
+        name: T,
+        column_type: ColumnType,
+        column_length: Option<usize>,
+    ) -> Self {
         Self {
             name: name.into(),
             column_type,
@@ -130,6 +132,12 @@ impl Index {
             table_name: table_name.into(),
             columns: columns.into_iter().map(T::into).collect(),
             unique,
+            where_clause: None,
         }
+    }
+
+    pub fn with_where<T: Into<String>>(mut self, where_clause: T) -> Self {
+        self.where_clause = Some(where_clause.into());
+        self
     }
 }

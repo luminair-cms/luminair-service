@@ -7,6 +7,9 @@ pub const ID_FIELD_NAME: &'static str = "id";
 pub const DOCUMENT_ID_FIELD_NAME: &'static str = "document_id";
 pub const RELATION_ID_FIELD_NAME: &'static str = "relation_id";
 
+pub const STATUS_FIELD_NAME: &'static str = "status";
+pub const TARGET_DOCUMENT_ID_FIELD_NAME: &'static str = "target_document_id";
+
 pub const CREATED_FIELD_NAME: &'static str = "created_at";
 pub const UPDATED_FIELD_NAME: &'static str = "updated_at";
 pub const PUBLISHED_FIELD_NAME: &'static str = "published_at";

@@ -1,8 +1,8 @@
 use luminair_common::DocumentTypesRegistry;
 
 use crate::domain::DocumentTables;
-use crate::domain::tables::{Column, ColumnType, ForeignKeyConstraint, Index, IntegerSize, Table};
 use crate::domain::persistence::Persistence;
+use crate::domain::tables::{Column, ColumnType, ForeignKeyConstraint, Index, IntegerSize, Table};
 
 #[derive(Clone)]
 pub struct Migration<P: Persistence> {
@@ -35,7 +35,6 @@ impl MigrationStep for MigrationStepItem {
         }
     }
 }
-
 
 struct CreateTableStep {
     ddls: Vec<String>,
@@ -128,7 +127,9 @@ impl<P: Persistence> Migration<P> {
             }
         }
 
-        self.persistence.apply_migration_steps(migration_steps).await?;
+        self.persistence
+            .apply_migration_steps(migration_steps)
+            .await?;
 
         Ok(())
     }
@@ -145,9 +146,18 @@ fn drop_name_order(a: &str, b: &str) -> std::cmp::Ordering {
     let a_is_relation = a.ends_with("_relation");
     let b_is_relation = b.ends_with("_relation");
 
+    let a_is_identity = a.ends_with("_documents");
+    let b_is_identity = b.ends_with("_documents");
+
     match (a_is_relation, b_is_relation) {
-        (true, false) => std::cmp::Ordering::Less,
-        (false, true) => std::cmp::Ordering::Greater,
+        (true, false) => return std::cmp::Ordering::Less,
+        (false, true) => return std::cmp::Ordering::Greater,
+        _ => {}
+    }
+
+    match (a_is_identity, b_is_identity) {
+        (true, false) => std::cmp::Ordering::Greater,
+        (false, true) => std::cmp::Ordering::Less,
         _ => a.cmp(b),
     }
 }
@@ -199,7 +209,7 @@ fn column_ddl(column: &Column) -> String {
         ColumnType::Date => "DATE",
         ColumnType::TimestampTZ => "TIMESTAMPTZ",
         ColumnType::Boolean => "BOOLEAN",
-        ColumnType::JsonB => "JSONB"
+        ColumnType::JsonB => "JSONB",
     };
     let mut sql = format!("\"{}\" {}", column.name, ct);
     if let Some(length) = column.column_length {
@@ -233,7 +243,7 @@ fn create_fk_ddl(schema: &str, fk: &ForeignKeyConstraint) -> String {
 
 fn create_index_ddl(schema: &str, index: &Index) -> String {
     let columns_sql = index.columns.join(", ");
-    format!(
+    let mut ddl = format!(
         "CREATE {} INDEX \"{}_{}_idx\" ON \"{}\".\"{}\" ({})",
         if index.unique { "UNIQUE" } else { "" },
         index.table_name,
@@ -241,20 +251,30 @@ fn create_index_ddl(schema: &str, index: &Index) -> String {
         schema,
         index.table_name,
         columns_sql
-    )
+    );
+    if let Some(where_clause) = &index.where_clause {
+        ddl.push_str(&format!(" WHERE {}", where_clause));
+    }
+    ddl
 }
 
 // returns database persistence for given documents schema, sorted conform dependency order
 fn documents_into_tables(documents: &dyn DocumentTypesRegistry) -> Vec<Table> {
     let mut tables = Vec::new();
+    let mut identity_tables = Vec::new();
     let mut relation_tables = Vec::new();
 
     for d in documents.iterate() {
         let d = DocumentTables::new(d, documents);
-        tables.push(d.main_table);
+        identity_tables.push(d.identity_table);
+        tables.push(d.collection_table);
         relation_tables.extend(d.relation_tables);
     }
-    tables.extend(relation_tables);
 
-    tables
+    let mut result = Vec::new();
+    result.extend(identity_tables);
+    result.extend(tables);
+    result.extend(relation_tables);
+
+    result
 }
