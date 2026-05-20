@@ -5,7 +5,7 @@ use luminair_common::{
     CREATED_BY_FIELD_NAME, CREATED_FIELD_NAME, DOCUMENT_ID_FIELD_NAME, DocumentType,
     DocumentTypesRegistry, ID_FIELD_NAME, OWNING_ID_FIELD_NAME, PUBLISHED_BY_FIELD_NAME,
     PUBLISHED_FIELD_NAME, RELATION_ID_FIELD_NAME, REVISION_FIELD_NAME, STATUS_FIELD_NAME,
-    TARGET_DOCUMENT_ID_FIELD_NAME, UPDATED_BY_FIELD_NAME, UPDATED_FIELD_NAME, VERSION_FIELD_NAME,
+    UPDATED_BY_FIELD_NAME, UPDATED_FIELD_NAME, VERSION_FIELD_NAME,
     entities::{DocumentRelation, FieldType},
 };
 
@@ -258,6 +258,7 @@ impl RelationTablesBuilder {
             self.main_table_name,
             relation.id.normalized()
         );
+        let target_document_id_column = format!("{}_document_id", target_table_name);
 
         let columns = vec![
             Column::primary_key(RELATION_ID_FIELD_NAME, ColumnType::Serial, None),
@@ -270,7 +271,7 @@ impl RelationTablesBuilder {
                 None,
             ),
             Column::new(
-                TARGET_DOCUMENT_ID_FIELD_NAME,
+                target_document_id_column.clone(),
                 ColumnType::Uuid,
                 None,
                 true,
@@ -283,13 +284,13 @@ impl RelationTablesBuilder {
             ForeignKeyConstraint::new(
                 &relation_table_name as &str,
                 OWNING_ID_FIELD_NAME,
-                &self.main_table_name,
+                &self.main_table_name as &str,
                 ID_FIELD_NAME,
             ),
             ForeignKeyConstraint::new(
                 &relation_table_name as &str,
-                TARGET_DOCUMENT_ID_FIELD_NAME,
-                &target_identity_table_name,
+                &target_document_id_column as &str,
+                &target_identity_table_name as &str,
                 DOCUMENT_ID_FIELD_NAME,
             ),
         ];
@@ -302,7 +303,7 @@ impl RelationTablesBuilder {
             ),
             Index::new(
                 &relation_table_name as &str,
-                vec![TARGET_DOCUMENT_ID_FIELD_NAME],
+                vec![&target_document_id_column as &str],
                 false,
             ),
         ];

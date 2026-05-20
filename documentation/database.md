@@ -34,7 +34,7 @@ Example: a document with ID `partner-categories` uses table name `partner_catego
 {collection}
 - id primary key
 - document_id references {collection}_documents(document_id)
-- publication_state: doesn't exists, derived from published_at field
+- publication_state: DOESN'T exists, derived from published_at field
 - content fields
 - version metadata fields
 - publication state fields (in case of draft-and-publish)
@@ -106,7 +106,13 @@ Each relation table contains:
 
 - `relation_id` — primary key, `serial`
 - `owning_id` — `integer`, foreign key to the owning document's main table `id`
-- `target_document_id references` — `uuid`, foreign key to {target}_documents(document_id)
+- `{target}_document_id` — `uuid`, foreign key to `{target}_documents(document_id)`
+
+### Referential Integrity
+
+Luminair maintains strict database-level referential integrity using standard PostgreSQL foreign keys with cascade constraints:
+- **Owner Side:** The `owning_id` column references the concrete row PK `{main_table}(id)` using `ON DELETE CASCADE`. If a content version row is removed, its associated relations are automatically cascade-deleted.
+- **Target Side:** The `{target}_document_id` column references `{target}_documents(document_id)` using `ON DELETE CASCADE`. If the target document is deleted (deleting its identity row), the relation row is automatically cascade-deleted at the SQL level.
 
 ### Relation lifecycle with draft-and-publish
 
@@ -115,7 +121,7 @@ When `draftAndPublish` is enabled, the same document instance is identified by `
 - one row represents the published version
 - another row represents the current draft version
 
-Because relation tables join by concrete main table row IDs (`owning_id` and `inverse_id`), connecting or disconnecting documents happens against a specific row version.
+Because relation tables join by concrete main table row IDs (`owning_id`), connecting or disconnecting documents happens against a specific row version.
 
 - **Connect**: add a relation row for the draft/main row that is currently being edited.
 - **Disconnect**: remove the relation row from the draft/main row representing the next state.
@@ -126,11 +132,43 @@ A published document can keep its last-live relation rows until the next publish
 In practice:
 
 - The published row and draft row share the same `document_id`.
-- The relation table stores `owning_id` and `inverse_id` values that reference a specific main row.
-- Draft-time relation updates should be made against the draft row.
-- Publishing should synchronize the published row with the draft row, including relation additions and removals.
+- The relation table stores `owning_id` and `{target}_document_id` values.
+- Draft-time relation updates are made against the draft row's `id`.
+- Publishing synchronizes the published row with the draft row by copying all relation records from the draft's `owning_id` to the published's `owning_id` in a single database transaction.
 
 If `draftAndPublish` is disabled, there is only one main row per document instance and relations are managed directly on that single row.
+
+### Polymorphic Relations (Post-MVP)
+
+For polymorphic relations (where a field can point to different document types dynamically, such as a `"relatedContent"` field linking to either `articles` or `categories`), Luminair has selected the **Payload CMS pattern**. 
+
+While polymorphic relations are **excluded from the MVP**, the architecture for post-MVP implementation is specified as follows:
+
+1. **Junction Table Design:**
+   Rather than using a generic, type-unsafe string column (such as `target_type` + `target_id`), the relation table will contain **explicit, nullable foreign key columns** targeting each possible target collection's identity table.
+
+   For example, if `article_related_content_relation` can link to `articles` or `categories`:
+   ```sql
+   CREATE TABLE article_related_content_relation (
+       relation_id serial PRIMARY KEY,
+       owning_id bigint NOT NULL REFERENCES articles(id) ON DELETE CASCADE,
+       
+       -- Polymorphic target columns referencing target identity tables
+       article_document_id uuid NULL REFERENCES article_documents(document_id) ON DELETE CASCADE,
+       category_document_id uuid NULL REFERENCES category_documents(document_id) ON DELETE CASCADE,
+       
+       -- Database-level check constraint to ensure mutual exclusivity
+       CONSTRAINT check_only_one_target CHECK (
+           (article_document_id IS NOT NULL)::int + 
+           (category_document_id IS NOT NULL)::int = 1
+       )
+   );
+   ```
+
+2. **Benefits of this Pattern:**
+   - **Strict Referential Integrity:** Retains native PostgreSQL foreign keys for all polymorphic targets.
+   - **Database-Level Cascades:** Deleting an article or category automatically and cleanly cascade-deletes all polymorphic relation records pointing to it.
+   - **Type Safety:** Eliminates string-based lookups and provides strong relational integrity at the SQL level.
 
 ## Migration Strategy
 
