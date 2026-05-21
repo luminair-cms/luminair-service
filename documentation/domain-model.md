@@ -174,18 +174,20 @@ Publication is modeled in the service crate by `PublicationState`:
 - `Draft { revision: i32 }`
 - `Published { revision: i32, published_at: DateTime<Utc>, published_by: Option<UserId> }`
 
-This models the draft-publish lifecycle and revision progression.
+`revision` and `AuditTrail.version` are **independent counters** serving different purposes:
+
+| Counter | Increments on | Meaning |
+|---------|---------------|---------|
+| `AuditTrail.version` | every save (edit, publish, unpublish) | how many times the document was modified |
+| `PublicationState.revision` | publish only | which publication of this document this is |
 
 Semantics and initial values:
 
-- New `DocumentInstance` values start with `AuditTrail.version = 0` and `PublicationState::Draft { revision: 0 }`.
-- Editing a document increments `AuditTrail.version`.
-- Publishing increments `AuditTrail.version` and sets `PublicationState::Published.revision` to the new `AuditTrail.version`.
- - In code: `DocumentContent::new` initializes `publication_state` to `Draft { revision: 0 }` (in-memory default), while `DocumentInstance::new` sets `AuditTrail.version = 1` for newly constructed instances.
- - Persisted rows in the database use `revision = 1` and `version = 1` for new documents; when loading from the DB the loader returns `PublicationState::Draft { revision: 1 }` for draft rows.
- - Editing a document increments `AuditTrail.version`.
- - Publishing increments `AuditTrail.version` and sets `PublicationState::Published.revision` to the `AuditTrail.version` used for the publish operation (the runtime sets `Published.revision = audit.version` then increments `audit.version`).
- 
+- `DocumentContent::new` initialises `Draft { revision: 0 }`. `revision = 0` means the document has never been published.
+- `DocumentInstance::new` sets `AuditTrail.version = 1` (first save).
+- Editing increments `AuditTrail.version` only; `revision` is unchanged.
+- Publishing increments `revision` from its current Draft value (`0 → 1` on first publish, `N → N+1` on subsequent publishes) and independently increments `AuditTrail.version` because publish is also a save.
+- After publishing, further edits return the document to `Draft { revision: N }` where `N` is the last published revision. `revision` is frozen at `N` until the next publish.
 
 ### AuditTrail and system metadata
 

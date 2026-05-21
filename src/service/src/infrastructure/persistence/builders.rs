@@ -1,15 +1,17 @@
+use crate::domain::document::DatabaseRowId;
+use crate::domain::query::{
+    DocumentInstanceQuery, DocumentStatus, FilterExpression, SortDirection,
+};
 use luminair_common::persistence::TableNameProvider;
 use luminair_common::{
     CREATED_BY_FIELD_NAME, CREATED_FIELD_NAME, DOCUMENT_ID_FIELD_NAME, DocumentType, ID_FIELD_NAME,
     INVERSE_ID_FIELD_NAME, OWNING_ID_FIELD_NAME, PUBLISHED_BY_FIELD_NAME, PUBLISHED_FIELD_NAME,
     REVISION_FIELD_NAME, UPDATED_BY_FIELD_NAME, UPDATED_FIELD_NAME, VERSION_FIELD_NAME,
 };
-use crate::domain::document::DatabaseRowId;
-use crate::domain::repository::query::{FilterExpression, SortDirection, DocumentInstanceQuery, DocumentStatus};
 use sea_query::extension::postgres::PgExpr;
 use sea_query::{
-    ColumnRef, Condition, DynIden, Expr, ExprTrait, Iden, InsertStatement, IntoColumnRef, JoinType, Order,
-    PostgresQueryBuilder, Query, SimpleExpr, TableRef,
+    ColumnRef, Condition, DynIden, Expr, ExprTrait, Iden, InsertStatement, IntoColumnRef, JoinType,
+    Order, PostgresQueryBuilder, Query, SimpleExpr, TableRef,
 };
 use sea_query_sqlx::{SqlxBinder, SqlxValues};
 use std::convert::Into;
@@ -26,7 +28,10 @@ pub fn query_find_document_by_id(
     let document_id_column = Expr::col(("m", DOCUMENT_ID_FIELD_NAME));
 
     let mut select = Query::select();
-    select.columns(columns).from(table).and_where(document_id_column.eq(id));
+    select
+        .columns(columns)
+        .from(table)
+        .and_where(document_id_column.eq(id));
 
     if document.has_draft_and_publish() && query.status == DocumentStatus::Published {
         // for find-by-id: only published OR published+draft
@@ -53,14 +58,12 @@ pub fn query_find_document_by_criteria(
 
     if document.has_draft_and_publish() {
         // for find by example: only published OR only draft
-        let col = Expr::col(("m", DOCUMENT_ID_FIELD_NAME));
         if query.status == DocumentStatus::Published {
-            select.and_where(col.is_not_null());
+            select.and_where(Expr::col(("m", PUBLISHED_FIELD_NAME)).is_not_null());
         } else {
-            select.and_where(col.is_null());
+            select.and_where(Expr::col(("m", PUBLISHED_FIELD_NAME)).is_null());
         }
     }
-
 
     // Apply custom filters
     if let Some(condition) = build_condition(&query.filter, document) {
@@ -161,9 +164,7 @@ fn build_filter_expr(filter: &FilterExpression, document: &DocumentType) -> Opti
             let pattern = format!("%{}", value);
             Some(get_column_expr(field, document).like(pattern))
         }
-        FilterExpression::IsNull { field } => {
-            Some(get_column_expr(field, document).is_null())
-        }
+        FilterExpression::IsNull { field } => Some(get_column_expr(field, document).is_null()),
         FilterExpression::IsNotNull { field } => {
             Some(get_column_expr(field, document).is_not_null())
         }
@@ -180,13 +181,14 @@ fn get_column_expr(field_path: &str, document: &DocumentType) -> Expr {
     // TODO: name1.name2.name3
     let parts: Vec<&str> = field_path.split('.').collect();
     let base_field = parts[0];
-    
+
     // Check if it's a known field to get the correct column name (normalized)
-    let column_name = if let Some(field) = document.fields.iter().find(|f| f.id.as_ref() == base_field) {
-        field.id.normalized()
-    } else {
-        base_field.to_string()
-    };
+    let column_name =
+        if let Some(field) = document.fields.iter().find(|f| f.id.as_ref() == base_field) {
+            field.id.normalized()
+        } else {
+            base_field.to_string()
+        };
 
     let col = Expr::col(("m", column_name));
     col
@@ -238,7 +240,7 @@ pub fn insert_document(document: &DocumentType, params: Vec<Expr>) -> (String, S
 pub fn delete_document(document: &DocumentType, id: Uuid) -> (String, SqlxValues) {
     let table: TableNameProvider = document.into();
     let document_id_column = Expr::col(("m", DOCUMENT_ID_FIELD_NAME));
-    
+
     Query::delete()
         .from_table(table)
         .and_where(document_id_column.eq(id))
@@ -253,10 +255,7 @@ pub fn insert_relation_entry(
 ) -> (String, SqlxValues) {
     let relation_table: TableNameProvider = (document, relation_attr).into();
 
-    let columns: Vec<DynIden> = vec![
-        OWNING_ID_FIELD_NAME.into(),
-        INVERSE_ID_FIELD_NAME.into(),
-    ];
+    let columns: Vec<DynIden> = vec![OWNING_ID_FIELD_NAME.into(), INVERSE_ID_FIELD_NAME.into()];
 
     Query::insert()
         .into_table(relation_table)
@@ -282,6 +281,61 @@ pub fn delete_relation_entry(
         .build_sqlx(PostgresQueryBuilder)
 }
 
+/// SELECT COUNT(*) FROM {table} — with the same WHERE conditions as `query_find_document_by_criteria`.
+/// Used for accurate pagination metadata.
+pub fn query_count_documents(
+    document: &DocumentType,
+    query: &DocumentInstanceQuery,
+) -> (String, SqlxValues) {
+    let table: TableNameProvider = document.into();
+
+    let mut select = Query::select();
+    select
+        .expr(Expr::col(("m", ID_FIELD_NAME)).count())
+        .from(table);
+
+    if document.has_draft_and_publish() {
+        if query.status == DocumentStatus::Published {
+            select.and_where(Expr::col(("m", PUBLISHED_FIELD_NAME)).is_not_null());
+        } else {
+            select.and_where(Expr::col(("m", PUBLISHED_FIELD_NAME)).is_null());
+        }
+    }
+
+    if let Some(condition) = build_condition(&query.filter, document) {
+        select.cond_where(condition);
+    }
+
+    select.build_sqlx(PostgresQueryBuilder)
+}
+
+/// SELECT id FROM {table} WHERE document_id = $uuid
+/// Used by `apply_relation_ops` to resolve a single UUID to its database row ID.
+pub fn query_row_id_by_document_uuid(document: &DocumentType, uuid: Uuid) -> (String, SqlxValues) {
+    let table: TableNameProvider = document.into();
+
+    Query::select()
+        .column(("m", ID_FIELD_NAME))
+        .from(table)
+        .and_where(Expr::col(("m", DOCUMENT_ID_FIELD_NAME)).eq(uuid))
+        .build_sqlx(PostgresQueryBuilder)
+}
+
+/// SELECT id FROM {table} WHERE document_id = ANY($uuids)
+/// Used by `apply_relation_ops` to batch-resolve related document UUIDs to row IDs.
+pub fn query_row_ids_by_document_uuids(
+    document: &DocumentType,
+    uuids: Vec<Uuid>,
+) -> (String, SqlxValues) {
+    let table: TableNameProvider = document.into();
+
+    Query::select()
+        .column(("m", ID_FIELD_NAME))
+        .from(table)
+        .and_where(Expr::col(("m", DOCUMENT_ID_FIELD_NAME)).eq_any(uuids))
+        .build_sqlx(PostgresQueryBuilder)
+}
+
 const STANDARD_SELECT_COLUMNS: [(&str, &str); 7] = [
     ("m", ID_FIELD_NAME),
     ("m", DOCUMENT_ID_FIELD_NAME),
@@ -293,8 +347,10 @@ const STANDARD_SELECT_COLUMNS: [(&str, &str); 7] = [
 ];
 
 fn main_select_columns(document: &DocumentType) -> Vec<ColumnRef> {
-    let mut columns: Vec<ColumnRef> = STANDARD_SELECT_COLUMNS.iter()
-        .map(|c| (*c).into()).collect();
+    let mut columns: Vec<ColumnRef> = STANDARD_SELECT_COLUMNS
+        .iter()
+        .map(|c| (*c).into())
+        .collect();
 
     if document.has_draft_and_publish() {
         columns.push(("m", PUBLISHED_FIELD_NAME).into());

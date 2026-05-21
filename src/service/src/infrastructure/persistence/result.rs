@@ -1,10 +1,4 @@
-use std::collections::HashMap;
-use std::str::FromStr;
-use chrono::{DateTime, Utc};
-use rust_decimal::Decimal;
-use luminair_common::{CREATED_BY_FIELD_NAME, CREATED_FIELD_NAME, DOCUMENT_ID_FIELD_NAME, DocumentType, ID_FIELD_NAME, PUBLISHED_BY_FIELD_NAME, PUBLISHED_FIELD_NAME, REVISION_FIELD_NAME, UPDATED_BY_FIELD_NAME, UPDATED_FIELD_NAME, VERSION_FIELD_NAME, entities::{FieldType, DocumentField}, AttributeId};
-use sqlx::{Row, postgres::PgRow, types::{Uuid, Json}, ValueRef, decode::Decode, Postgres, Type};
-use sqlx::postgres::PgValueRef;
+use crate::domain::document::content::DocumentContent;
 use crate::domain::{
     document::{
         DatabaseRowId, DocumentInstance, DocumentInstanceId,
@@ -13,7 +7,23 @@ use crate::domain::{
     },
     repository::RepositoryError,
 };
-use crate::domain::document::content::DocumentContent;
+use chrono::{DateTime, Utc};
+use luminair_common::{
+    AttributeId, CREATED_BY_FIELD_NAME, CREATED_FIELD_NAME, DOCUMENT_ID_FIELD_NAME, DocumentType,
+    ID_FIELD_NAME, PUBLISHED_BY_FIELD_NAME, PUBLISHED_FIELD_NAME, REVISION_FIELD_NAME,
+    UPDATED_BY_FIELD_NAME, UPDATED_FIELD_NAME, VERSION_FIELD_NAME,
+    entities::{DocumentField, FieldType},
+};
+use rust_decimal::Decimal;
+use sqlx::postgres::PgValueRef;
+use sqlx::{
+    Postgres, Row, Type, ValueRef,
+    decode::Decode,
+    postgres::PgRow,
+    types::{Json, Uuid},
+};
+use std::collections::HashMap;
+use std::str::FromStr;
 
 pub fn row_to_document(
     row: &PgRow,
@@ -69,11 +79,8 @@ fn decode_value<'r, T>(value: PgValueRef<'r>) -> Result<T, RepositoryError>
 where
     T: Decode<'r, Postgres> + Type<Postgres>,
 {
-    T::decode(value).map_err(|e| {
-        RepositoryError::DatabaseError(format!(
-            "Failed to decode value: {}", e
-        ))
-    })
+    T::decode(value)
+        .map_err(|e| RepositoryError::DatabaseError(format!("Failed to decode value: {}", e)))
 }
 
 pub fn parse_field_value(
@@ -81,12 +88,8 @@ pub fn parse_field_value(
     field: &DocumentField,
     column_name: &str,
 ) -> Result<ContentValue, RepositoryError> {
-    let value_ref = row.try_get_raw(column_name)
-        .map_err(|e| {
-        RepositoryError::DatabaseError(format!(
-            "Failed to parse field {}: {}",
-            column_name, e
-        ))
+    let value_ref = row.try_get_raw(column_name).map_err(|e| {
+        RepositoryError::DatabaseError(format!("Failed to parse field {}: {}", column_name, e))
     })?;
 
     if value_ref.is_null() {
@@ -125,7 +128,13 @@ pub fn parse_field_value(
             let value: DateTime<Utc> = decode_value(value_ref)?;
             ContentValue::Scalar(DomainValue::DateTime(value))
         }
-        FieldType::Uid | FieldType::Uuid => {
+        // Uid is a human-readable slug stored as a text column — not a UUID column.
+        // This mirrors the from_json codec: FieldType::Uid → DomainValue::Text.
+        FieldType::Uid => {
+            let value: String = decode_value(value_ref)?;
+            ContentValue::Scalar(DomainValue::Text(value))
+        }
+        FieldType::Uuid => {
             let value: Uuid = decode_value(value_ref)?;
             ContentValue::Scalar(DomainValue::Uuid(value))
         }
@@ -159,9 +168,11 @@ fn parse_audit_trail(
 
     let audit = AuditTrail {
         created_at,
-        created_by: created_by.map(UserId),
+        // UserId::try_new trims and rejects empty strings. DB values that are
+        // somehow empty are treated as missing rather than panicking.
+        created_by: created_by.and_then(|s| UserId::try_new(s).ok()),
         updated_at,
-        updated_by: updated_by.map(UserId),
+        updated_by: updated_by.and_then(|s| UserId::try_new(s).ok()),
         version,
     };
     Ok(audit)
@@ -189,7 +200,7 @@ fn parse_publication_state(
             Some(pub_at) => PublicationState::Published {
                 revision,
                 published_at: pub_at,
-                published_by: published_by.map(UserId),
+                published_by: published_by.and_then(|s| UserId::try_new(s).ok()),
             },
             None => PublicationState::Draft { revision: 1 },
         }

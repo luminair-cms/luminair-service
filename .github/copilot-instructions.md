@@ -9,6 +9,7 @@ For detailed information, see:
 - [Schema Formats](../documentation/schemas.md)
 - [Database structure](../documentation/database.md)
 - [Draft and Publishing Workflow](../documentation/draft-publish.md)
+- [Service Refactoring Plan](../documentation/service-refactoring-plan.md) — **read before making any changes to the `service` crate**
 
 > If these instructions conflict with the actual codebase, the code is the
 > source of truth. Flag any discrepancy you notice.

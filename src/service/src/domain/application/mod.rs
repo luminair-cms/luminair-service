@@ -1,14 +1,37 @@
 pub mod implementation;
 
-use crate::domain::document::content::ContentValue;
-use crate::domain::document::{DatabaseRowId, DocumentInstance, DocumentInstanceId};
-use crate::domain::repository::query::DocumentInstanceQuery;
-use crate::domain::repository::RepositoryError;
-use luminair_common::{AttributeId, DocumentType};
 use std::collections::HashMap;
+use std::future::Future;
 
+use luminair_common::{AttributeId, DocumentType, DocumentTypesRegistry};
+
+use crate::domain::document::{DocumentInstance, DocumentInstanceId, content::ContentValue};
+use crate::domain::query::DocumentInstanceQuery;
+use crate::domain::repository::{RelationOps, RepositoryError};
+
+/// The global application state shared between all HTTP request handlers.
+///
+/// `AppState` is a composition-root concern: it wires the HTTP adapters to the
+/// application service layer. It lives here rather than in the domain root because
+/// it references [`DocumentsService`], which is an application-layer contract.
+pub trait AppState: Clone + Send + Sync + 'static {
+    type D: DocumentsService;
+
+    fn document_types(&self) -> &'static dyn DocumentTypesRegistry;
+
+    fn documents_service(&self) -> &Self::D;
+}
+
+/// Application-layer service contract for document operations.
+///
+/// This trait is the primary entry point for all document lifecycle operations.
+/// It sits between the HTTP adapters (which call it) and the repository port
+/// (which it calls). Business rules — validation, publication state, relation
+/// ownership checks — live here, not in the handlers or the repository.
 pub trait DocumentsService: Send + Sync + 'static {
-    /// Find instances matching query
+    /// Return all instances matching the query, together with the total count
+    /// for pagination metadata. The total reflects all matching rows, not just
+    /// the current page.
     fn find(
         &self,
         document_type: &DocumentType,
@@ -16,7 +39,7 @@ pub trait DocumentsService: Send + Sync + 'static {
         query: DocumentInstanceQuery,
     ) -> impl Future<Output = Result<Vec<DocumentInstance>, RepositoryError>> + Send;
 
-    /// Find a single instance by ID
+    /// Return the single instance identified by `id`, or `None` if not found.
     fn find_by_id(
         &self,
         document_type: &DocumentType,
@@ -24,36 +47,33 @@ pub trait DocumentsService: Send + Sync + 'static {
         query: DocumentInstanceQuery,
         id: DocumentInstanceId,
     ) -> impl Future<Output = Result<Option<DocumentInstance>, RepositoryError>> + Send;
-    
-    /// Create a new instance
+
+    /// Create a new document instance from the supplied field values.
+    /// Returns the stable UUID assigned to the new instance.
     fn create(
         &self,
         document_type: &DocumentType,
         fields: HashMap<AttributeId, ContentValue>,
     ) -> impl Future<Output = Result<DocumentInstanceId, RepositoryError>> + Send;
 
-    /// Delete instance by ID
+    /// Delete the instance identified by `id`.
     fn delete(
         &self,
         document_type: &DocumentType,
         id: DocumentInstanceId,
     ) -> impl Future<Output = Result<(), RepositoryError>> + Send;
 
-    /// Connect two related document instances for an owning relation
-    fn connect(
+    /// Apply connect / disconnect relation operations for a document instance.
+    ///
+    /// The `document_id` is the stable UUID of the owning document. All related
+    /// document IDs in `ops` are also UUIDs — no internal row IDs are exposed.
+    ///
+    /// The service validates that every attribute in `ops` is a declared owning
+    /// relation before delegating to the repository.
+    fn modify_relations(
         &self,
         document_type: &DocumentType,
-        relation_attr: &AttributeId,
-        owning_id: DatabaseRowId,
-        inverse_id: DatabaseRowId,
-    ) -> impl Future<Output = Result<(), RepositoryError>> + Send;
-
-    /// Disconnect two related document instances for an owning relation
-    fn disconnect(
-        &self,
-        document_type: &DocumentType,
-        relation_attr: &AttributeId,
-        owning_id: DatabaseRowId,
-        inverse_id: DatabaseRowId,
+        document_id: DocumentInstanceId,
+        ops: HashMap<AttributeId, RelationOps>,
     ) -> impl Future<Output = Result<(), RepositoryError>> + Send;
 }

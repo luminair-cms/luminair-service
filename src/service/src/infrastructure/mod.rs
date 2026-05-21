@@ -1,9 +1,7 @@
-use crate::{
-    domain::{AppState},
-};
-use luminair_common::DocumentTypesRegistry;
+use crate::domain::application::AppState;
 use crate::domain::application::implementation::DocumentsServiceImpl;
 use crate::infrastructure::persistence::repository::PostgresDocumentsRepository;
+use luminair_common::DocumentTypesRegistry;
 
 pub mod http;
 pub mod persistence;

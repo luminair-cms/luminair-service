@@ -1,14 +1,11 @@
+use crate::domain::document::lifecycle::PublicationState;
+use crate::domain::document::{DocumentInstance, content::ContentValue};
 use chrono::{DateTime, Utc};
 use luminair_common::AttributeId;
+
 use serde::Serialize;
 use serde_json::Value as JsonValue;
 use std::{collections::HashMap, io::ErrorKind};
-use rust_decimal::prelude::ToPrimitive;
-use crate::domain::document::{
-    DocumentInstance,
-    content::{ContentValue, DomainValue},
-};
-use crate::domain::document::lifecycle::PublicationState;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ManyDocumentsResponse {
@@ -19,7 +16,13 @@ pub struct ManyDocumentsResponse {
 impl From<Vec<DocumentInstance>> for ManyDocumentsResponse {
     fn from(value: Vec<DocumentInstance>) -> Self {
         let meta = MetadataResponse { total: value.len() };
-        Self { data: value.into_iter().map(DocumentInstanceResponse::from).collect(), meta }
+        Self {
+            data: value
+                .into_iter()
+                .map(DocumentInstanceResponse::from)
+                .collect(),
+            meta,
+        }
     }
 }
 
@@ -44,7 +47,9 @@ impl TryFrom<Option<DocumentInstance>> for OneDocumentResponse {
 
     fn try_from(value: Option<DocumentInstance>) -> Result<Self, Self::Error> {
         value
-            .map(|row| OneDocumentResponse { data: DocumentInstanceResponse::from(row) })
+            .map(|row| OneDocumentResponse {
+                data: DocumentInstanceResponse::from(row),
+            })
             .ok_or_else(|| std::io::Error::new(ErrorKind::NotFound, "Document not found"))
     }
 }
@@ -107,30 +112,6 @@ impl PartialEq for DocumentInstanceResponse {
     }
 }
 
-impl From<DomainValue> for JsonValue {
-    fn from(value: DomainValue) -> Self {
-        match value {
-            DomainValue::Text(text) => JsonValue::String(text),
-            DomainValue::Integer(num) => JsonValue::Number(num.into()),
-            DomainValue::Decimal(num) => serde_json::Number::from_f64(num.to_f64().unwrap())
-                .map(JsonValue::Number)
-                .unwrap_or(JsonValue::Null),
-            DomainValue::Boolean(b) => JsonValue::Bool(b),
-            DomainValue::Date(date) => JsonValue::String(date.to_string()),
-            DomainValue::DateTime(dt) => JsonValue::String(dt.to_rfc3339()),
-            DomainValue::Email(email) => JsonValue::String(email.into_inner()),
-            DomainValue::Url(url) => JsonValue::String(url.into_inner()),
-            DomainValue::Uuid(uuid) => JsonValue::String(uuid.to_string()),
-            DomainValue::Json(json_blob) => JsonValue::Object(
-                json_blob
-                    .into_iter()
-                    .map(|(k,v)|(k, JsonValue::String(v)))
-                    .collect()
-            )
-        }
-    }
-}
-
 impl From<DocumentInstance> for DocumentInstanceResponse {
     fn from(value: DocumentInstance) -> Self {
         let id = value.id.0;
@@ -139,26 +120,29 @@ impl From<DocumentInstance> for DocumentInstanceResponse {
         let audit = value.audit;
         let created_at = audit.created_at;
         let updated_at = audit.updated_at;
-        
+
         let audit = DocumentInstanceAudit {
             created_at,
             updated_at,
-            created_by: audit.created_by.map(String::from),
-            updated_by: audit.updated_by.map(String::from),
+            created_by: audit.created_by.map(|u| u.into()),
+            updated_by: audit.updated_by.map(|u| u.into()),
             version: audit.version,
         };
-        
+
         let published = match value.content.publication_state {
             PublicationState::Draft { revision: _ } => None,
-            PublicationState::Published { revision, published_at, published_by } => {
-                Some(DocumentInstancePublicationState {
-                    revision,
-                    published_at,
-                    published_by: published_by.map(String::from),
-                })
-            }
+            PublicationState::Published {
+                revision,
+                published_at,
+                published_by,
+            } => Some(DocumentInstancePublicationState {
+                revision,
+                published_at,
+                published_by: published_by.map(|u| u.into()),
+            }),
         };
 
+        // ContentValue → JsonValue is handled by the domain codec (From<&ContentValue>).
         let fields: HashMap<String, AttributeResponse> = value
             .content
             .fields
@@ -166,22 +150,7 @@ impl From<DocumentInstance> for DocumentInstanceResponse {
             .map(|(k, v)| {
                 (
                     k.as_ref().to_owned(),
-                    match v {
-                        ContentValue::Scalar(domain_value) => {
-                            AttributeResponse::Field(JsonValue::from(domain_value.clone()))
-                        }
-                        ContentValue::LocalizedText(value) => {
-                            let json_value = JsonValue::Object(
-                                value.into_iter()
-                                    .map(|(k,v)| (k.to_owned(), JsonValue::String(v.to_owned())))
-                                    .collect()
-                            );
-                            AttributeResponse::Field(json_value)
-                        }
-                        ContentValue::Null => {
-                            AttributeResponse::Field(JsonValue::Null)
-                        }
-                    },
+                    AttributeResponse::Field(JsonValue::from(v)),
                 )
             })
             .collect();
@@ -191,8 +160,7 @@ impl From<DocumentInstance> for DocumentInstanceResponse {
             document_id,
             audit,
             published,
-            fields
+            fields,
         }
     }
 }
-

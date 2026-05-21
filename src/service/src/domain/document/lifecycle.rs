@@ -1,12 +1,61 @@
 use chrono::{DateTime, Utc};
+use nutype::nutype;
 
+/// A validated user identifier.
+///
+/// Leading and trailing whitespace is trimmed before validation.
+/// Empty strings are rejected — a meaningful user identity can never be blank.
+///
+/// # Construction
+///
+/// ```rust
+/// let id = UserId::try_new("alice".to_string()).expect("non-empty");
+/// ```
+///
+/// # Conversion
+///
+/// `UserId` implements `Into<String>`, so `.into()` gives the owned string.
+/// `AsRef<str>` gives a borrowed view.
+#[nutype(
+    sanitize(trim),
+    validate(not_empty),
+    derive(
+        Debug,
+        Clone,
+        Hash,
+        Eq,
+        PartialEq,
+        AsRef,
+        Into,
+        Display,
+        Serialize,
+        Deserialize
+    )
+)]
+pub struct UserId(String);
 
+/// Publication lifecycle state of a document.
+///
+/// `revision` and `AuditTrail.version` are **independent counters** with
+/// different purposes:
+///
+/// | Counter | Increments on | Answers |
+/// |---------|---------------|---------|
+/// | `AuditTrail.version` | every save (edit, publish, unpublish) | *how many times was this document modified?* |
+/// | `revision` | publish only | *which publication of this document is this?* |
 #[derive(Debug, Clone)]
 pub enum PublicationState {
-    /// Still being edited
+    /// The document is being edited and has not yet been (re-)published.
+    ///
+    /// `revision` holds the revision number of the **last publication this draft
+    /// is based on**. For a document that has never been published, `revision = 0`.
+    /// After unpublishing revision 3, the resulting draft carries `revision = 3`.
     Draft { revision: i32 },
 
-    /// Published, changes create new revision
+    /// The document is live and publicly accessible.
+    ///
+    /// `revision` is a monotonically increasing publication counter starting at 1
+    /// for the first publish. It is independent of `AuditTrail.version`.
     Published {
         revision: i32,
         published_at: DateTime<Utc>,
@@ -25,25 +74,4 @@ pub struct AuditTrail {
     pub updated_by: Option<UserId>,
 
     pub version: i32,
-}
-
-#[derive(Debug, Clone, Hash, Eq, PartialEq)]
-pub struct UserId(pub String);
-
-impl From<String> for UserId {
-    fn from(value: String) -> Self {
-        Self(value)
-    }
-}
-
-impl From<&str> for UserId {
-    fn from(value: &str) -> Self {
-        Self(value.to_string())
-    }
-}
-
-impl From<UserId> for String {
-    fn from(value: UserId) -> Self {
-        value.0
-    }
 }

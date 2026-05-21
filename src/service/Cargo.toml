@@ -6,11 +6,12 @@ edition = "2024"
 [dependencies]
 luminair_common= { path = "../common", package="common" }
 
-anyhow = "1.0.100"
-axum = { version = "0.8.8", features = ["macros"] }
-axum-prometheus = "0.9.0"
-config = { version = "0.15.19", features = ["yaml"] }
-chrono = { version = "0.4.42", features = ["serde"] }
+anyhow = "1.0.102"
+thiserror = "2"
+axum = { version = "0.8.9", features = ["macros"] }
+axum-prometheus = "0.10.0"
+config = { version = "0.15.23", features = ["yaml"] }
+chrono = { version = "0.4.44", features = ["serde"] }
 dotenvy = "0.15"
 futures = "0.3.31"
 itertools = "0.14.0"
@@ -38,23 +39,23 @@ features = [
 ]
 
 [dependencies.sea-query]
-version = "1.0.0-rc.31"
+version = "1.0.0-rc.34"
 features = ["backend-postgres", "sqlx-utils", "with-chrono", "with-json", "with-rust_decimal", "with-uuid", "postgres-array", "postgres-interval", "postgres-vector"]
 
 [dependencies.sea-query-sqlx]
-version = "0.8.0-rc.14"
+version = "0.8.0-rc.16"
 features = ["sqlx-postgres", "postgres-array", "postgres-vector", "with-chrono", "with-json", "with-rust_decimal", "with-uuid"]
 
 [profile.release]
-# Optimization level: 
-# 3 is the default for release, aiming for speed. 
+# Optimization level:
+# 3 is the default for release, aiming for speed.
 # "s" or "z" can be used to optimize for binary size instead.
-opt-level = 3 
+opt-level = 3
 
-# Enables Link-Time Optimization (LTO), which performs whole-program analysis 
+# Enables Link-Time Optimization (LTO), which performs whole-program analysis
 # and can lead to smaller, faster binaries. "fat" or true is the most aggressive.
 lto = true
 
-# Reduces the number of code generation units to 1 for more thorough optimization, 
+# Reduces the number of code generation units to 1 for more thorough optimization,
 # at the cost of significantly longer compile times.
-codegen-units = 1 
+codegen-units = 1

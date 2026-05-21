@@ -1,19 +1,22 @@
-use crate::domain::AppState;
-use crate::domain::application::{DocumentsService};
-use crate::domain::document::{DocumentInstanceId};
-use crate::domain::repository::query::{DocumentInstanceQuery, DocumentStatus};
+use crate::domain::application::AppState;
+use crate::domain::application::DocumentsService;
+use crate::domain::document::DocumentInstanceId;
+use crate::domain::query::{DocumentInstanceQuery, DocumentStatus};
+use crate::domain::repository::RelationOps;
 use crate::infrastructure::http::api::{ApiError, ApiSuccess};
-use crate::infrastructure::http::handlers::data::response::{ManyDocumentsResponse, OneDocumentResponse};
-
+use crate::infrastructure::http::handlers::data::response::{
+    ManyDocumentsResponse, OneDocumentResponse,
+};
 use crate::infrastructure::http::querystring::QueryString;
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
+use luminair_common::DocumentTypeApiId;
 use serde::Deserialize;
+use std::collections::HashMap;
 use std::collections::HashSet;
 use std::str::FromStr;
-use luminair_common::DocumentTypeApiId;
 
 mod request;
 mod response;
@@ -56,7 +59,9 @@ pub async fn find_document_by_id<S: AppState>(
 
     let api_id = DocumentTypeApiId::from_str(&api_type)
         .map_err(|_| ApiError::UnprocessableEntity(format!("Invalid api_type: {}", api_type)))?;
-    let document_type = state.document_types().lookup(&api_id)
+    let document_type = state
+        .document_types()
+        .lookup(&api_id)
         .ok_or(ApiError::NotFound)?;
 
     let document_instance_id = DocumentInstanceId::try_from(&id)?;
@@ -77,23 +82,29 @@ pub async fn find_document_by_id<S: AppState>(
     let status = match params.status.as_str() {
         "draft" => DocumentStatus::Draft,
         "published" => DocumentStatus::Published,
-        _ => return Err(ApiError::UnprocessableEntity(
-            "status must be 'published' (default) or 'draft'".to_string(),
-        )),
+        _ => {
+            return Err(ApiError::UnprocessableEntity(
+                "status must be 'published' (default) or 'draft'".to_string(),
+            ));
+        }
     };
 
     let query = DocumentInstanceQuery::new().with_status(status);
 
     let document_instance = state
         .documents_service()
-        .find_by_id(document_type, populate_attributes, query, document_instance_id)
+        .find_by_id(
+            document_type,
+            populate_attributes,
+            query,
+            document_instance_id,
+        )
         .await
         .map_err(|err| ApiError::from(err))?;
 
     OneDocumentResponse::try_from(document_instance)
-        .map(|response|
-            ApiSuccess::new(StatusCode::OK, response)
-        ).map_err(|_| ApiError::NotFound)
+        .map(|response| ApiSuccess::new(StatusCode::OK, response))
+        .map_err(|_| ApiError::NotFound)
 }
 
 pub async fn find_all_documents<S: AppState>(
@@ -103,7 +114,9 @@ pub async fn find_all_documents<S: AppState>(
 ) -> Result<ApiSuccess<ManyDocumentsResponse>, ApiError> {
     let api_id = DocumentTypeApiId::from_str(&api_type)
         .map_err(|_| ApiError::UnprocessableEntity(format!("Invalid api_type: {}", api_type)))?;
-    let document_type = state.document_types().lookup(&api_id)
+    let document_type = state
+        .document_types()
+        .lookup(&api_id)
         .ok_or(ApiError::NotFound)?;
 
     // Extract pagination params with defaults
@@ -129,9 +142,11 @@ pub async fn find_all_documents<S: AppState>(
     let status = match params.status.as_str() {
         "draft" => DocumentStatus::Draft,
         "published" => DocumentStatus::Published,
-        _ => return Err(ApiError::UnprocessableEntity(
-            "status must be 'published' (default) or 'draft'".to_string(),
-        )),
+        _ => {
+            return Err(ApiError::UnprocessableEntity(
+                "status must be 'published' (default) or 'draft'".to_string(),
+            ));
+        }
     };
 
     // Build query using builder pattern - pagination guards are enforced by the query
@@ -165,12 +180,17 @@ pub async fn create_new_document<S: AppState>(
 ) -> Result<impl IntoResponse, ApiError> {
     let api_id = DocumentTypeApiId::from_str(&api_type)
         .map_err(|_| ApiError::UnprocessableEntity(format!("Invalid api_type: {}", api_type)))?;
-    let document_type = state.document_types().lookup(&api_id)
+    let document_type = state
+        .document_types()
+        .lookup(&api_id)
         .ok_or(ApiError::NotFound)?;
 
     // Validate and build fields from the payload using document type metadata
-    let fields = request::build_fields_from_payload(document_type, &payload)
-        .map_err(|err| ApiError::UnprocessableEntity(err.to_string()))?;
+    let fields = request::build_fields_from_payload(document_type, &payload).map_err(
+        |err: crate::domain::document::error::DocumentError| {
+            ApiError::UnprocessableEntity(err.to_string())
+        },
+    )?;
 
     let created_document_id = state
         .documents_service()
@@ -197,9 +217,11 @@ pub async fn delete_existing_document<S: AppState>(
 ) -> Result<impl IntoResponse, ApiError> {
     let api_id = DocumentTypeApiId::from_str(&api_type)
         .map_err(|_| ApiError::UnprocessableEntity(format!("Invalid api_type: {}", api_type)))?;
-    let document_type = state.document_types().lookup(&api_id)
+    let document_type = state
+        .document_types()
+        .lookup(&api_id)
         .ok_or(ApiError::NotFound)?;
-    
+
     let instance_id = DocumentInstanceId::try_from(&id)?;
 
     state
@@ -211,166 +233,95 @@ pub async fn delete_existing_document<S: AppState>(
     Ok((StatusCode::NO_CONTENT, ()))
 }
 
-/// Request body for connect/disconnect operations
-#[derive(Deserialize, Debug)]
-pub struct RelationModifyRequest {
-    pub data: serde_json::Value,
-}
-
-/// Handle connect/disconnect relation operations
+/// Handle connect/disconnect relation operations.
+///
+/// Accepts the same `{ "fieldName": { "connect": [...], "disconnect": [...] } }` payload
+/// format described in the API docs. Both shorthand (UUID string) and longhand
+/// (`{ "documentId": "…" }`) formats are supported for each entry.
 pub async fn modify_relations<S: AppState>(
     State(state): State<S>,
     Path((api_type, id)): Path<(String, String)>,
-    Json(payload): Json<RelationModifyRequest>,
+    Json(payload): Json<serde_json::Value>,
 ) -> Result<impl IntoResponse, ApiError> {
     let api_id = DocumentTypeApiId::from_str(&api_type)
         .map_err(|_| ApiError::UnprocessableEntity(format!("Invalid api_type: {}", api_type)))?;
-    let document_type = state.document_types().lookup(&api_id)
+    let document_type = state
+        .document_types()
+        .lookup(&api_id)
         .ok_or(ApiError::NotFound)?;
 
-    // Parse main document ID
-    let main_instance_id = DocumentInstanceId::try_from(&id)?;
-    
-    // Fetch main document to get its DatabaseRowId
-    let main_docs = state
-        .documents_service()
-        .find_by_id(
-            document_type,
-            None,
-            DocumentInstanceQuery::new(),
-            main_instance_id,
-        )
-        .await
-        .map_err(|err| ApiError::from(err))?;
+    let document_id = DocumentInstanceId::try_from(&id)?;
 
-    let main_doc = main_docs.first().ok_or(ApiError::NotFound)?;
-    let owning_row_id = main_doc.id;
+    let data_obj = payload.as_object().ok_or(ApiError::UnprocessableEntity(
+        "body must be a JSON object".into(),
+    ))?;
 
-    // Extract relation field operations from data object
-    let data_obj = payload
-        .data
-        .as_object()
-        .ok_or(ApiError::UnprocessableEntity("data must be an object".to_string()))?;
+    let mut ops: HashMap<luminair_common::AttributeId, RelationOps> = HashMap::new();
 
-    // Process each relation field
     for (field_name, field_value) in data_obj {
-        let attr_id = luminair_common::AttributeId::try_new(field_name)
-            .map_err(|_| {
-                ApiError::UnprocessableEntity(format!("Invalid relation field: {}", field_name))
-            })?;
-
-        let relation_metadata = document_type.relations.get(&attr_id).ok_or_else(|| {
-            ApiError::UnprocessableEntity(format!("Relation not found: {}", field_name))
+        let attr_id = luminair_common::AttributeId::try_new(field_name).map_err(|_| {
+            ApiError::UnprocessableEntity(format!("Invalid relation field: {}", field_name))
         })?;
 
-        if !relation_metadata.relation_type.is_owning() {
-            return Err(ApiError::UnprocessableEntity(format!(
-                "Relation {} is not owning",
-                field_name
-            )));
-        }
+        let field_obj = field_value.as_object().ok_or_else(|| {
+            ApiError::UnprocessableEntity(format!("Field '{}' must be an object", field_name))
+        })?;
 
-        let related_document_type = state
-            .document_types()
-            .get(&relation_metadata.target)
-            .ok_or(ApiError::NotFound)?;
+        let connect = parse_ids_from_list(
+            field_obj
+                .get("connect")
+                .unwrap_or(&serde_json::Value::Array(vec![])),
+        )?;
+        let disconnect = parse_ids_from_list(
+            field_obj
+                .get("disconnect")
+                .unwrap_or(&serde_json::Value::Array(vec![])),
+        )?;
 
-        let field_obj = field_value
-            .as_object()
-            .ok_or(ApiError::UnprocessableEntity(
-                format!("Field {} must be an object", field_name),
-            ))?;
-
-        // Process connect operations
-        if let Some(connect_list) = field_obj.get("connect") {
-            let connect_ids = parse_document_id_list(connect_list)?;
-            for doc_id_str in connect_ids {
-                let related_instance_id = DocumentInstanceId::try_from(&doc_id_str)?;
-                let related_docs = state
-                    .documents_service()
-                    .find_by_id(
-                        related_document_type,
-                        None,
-                        DocumentInstanceQuery::new(),
-                        related_instance_id,
-                    )
-                    .await
-                    .map_err(|err| ApiError::from(err))?;
-
-                let related_doc = related_docs.first().ok_or(ApiError::NotFound)?;
-                let inverse_row_id = related_doc.id;
-
-                state
-                    .documents_service()
-                    .connect(document_type, &attr_id, owning_row_id, inverse_row_id)
-                    .await
-                    .map_err(|err| ApiError::from(err))?;
-            }
-        }
-
-        // Process disconnect operations
-        if let Some(disconnect_list) = field_obj.get("disconnect") {
-            let disconnect_ids = parse_document_id_list(disconnect_list)?;
-            for doc_id_str in disconnect_ids {
-                let related_instance_id = DocumentInstanceId::try_from(&doc_id_str)?;
-                let related_docs = state
-                    .documents_service()
-                    .find_by_id(
-                        related_document_type,
-                        None,
-                        DocumentInstanceQuery::new(),
-                        related_instance_id,
-                    )
-                    .await
-                    .map_err(|err| ApiError::from(err))?;
-
-                let related_doc = related_docs.first().ok_or(ApiError::NotFound)?;
-                let inverse_row_id = related_doc.id;
-
-                state
-                    .documents_service()
-                    .disconnect(document_type, &attr_id, owning_row_id, inverse_row_id)
-                    .await
-                    .map_err(|err| ApiError::from(err))?;
-            }
-        }
+        ops.insert(
+            attr_id,
+            RelationOps {
+                connect,
+                disconnect,
+            },
+        );
     }
 
-    Ok((StatusCode::NO_CONTENT, ()))
+    state
+        .documents_service()
+        .modify_relations(document_type, document_id, ops)
+        .await
+        .map_err(ApiError::from)?;
+
+    Ok(StatusCode::NO_CONTENT)
 }
 
-/// Parse document IDs from either shorthand or longhand format
-fn parse_document_id_list(value: &serde_json::Value) -> Result<Vec<String>, ApiError> {
-    match value {
-        serde_json::Value::Array(arr) => {
-            let mut ids = Vec::new();
-            for item in arr {
-                match item {
-                    // Shorthand: direct string ID
-                    serde_json::Value::String(id) => ids.push(id.clone()),
-                    // Longhand: object with documentId field
-                    serde_json::Value::Object(obj) => {
-                        let id = obj
-                            .get("documentId")
-                            .and_then(|v| v.as_str())
-                            .ok_or_else(|| {
-                                ApiError::UnprocessableEntity(
-                                    "documentId must be a string".to_string(),
-                                )
-                            })?;
-                        ids.push(id.to_string());
-                    }
-                    _ => {
-                        return Err(ApiError::UnprocessableEntity(
-                            "Each item must be a string or object with documentId".to_string(),
-                        ))
-                    }
+/// Parse a JSON array of document IDs in shorthand (`"uuid-string"`) or
+/// longhand (`{ "documentId": "uuid-string" }`) format into `DocumentInstanceId`s.
+fn parse_ids_from_list(value: &serde_json::Value) -> Result<Vec<DocumentInstanceId>, ApiError> {
+    let arr = value.as_array().ok_or_else(|| {
+        ApiError::UnprocessableEntity("connect/disconnect must be an array".into())
+    })?;
+
+    arr.iter()
+        .map(|item| {
+            let uuid_str = match item {
+                serde_json::Value::String(s) => s.as_str(),
+                serde_json::Value::Object(obj) => obj
+                    .get("documentId")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| {
+                        ApiError::UnprocessableEntity("documentId must be a string".into())
+                    })?,
+                _ => {
+                    return Err(ApiError::UnprocessableEntity(
+                        "each entry must be a UUID string or { documentId: '...' }".into(),
+                    ));
                 }
-            }
-            Ok(ids)
-        }
-        _ => Err(ApiError::UnprocessableEntity(
-            "connect/disconnect must be an array".to_string(),
-        )),
-    }
+            };
+            DocumentInstanceId::try_from(uuid_str).map_err(|_| {
+                ApiError::UnprocessableEntity(format!("'{}' is not a valid UUID", uuid_str))
+            })
+        })
+        .collect()
 }

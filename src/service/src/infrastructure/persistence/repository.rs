@@ -1,18 +1,20 @@
-use std::collections::HashMap;
-use chrono::{DateTime, Utc};
-use sea_query::Expr;
-use sqlx::Row;
-use uuid::{Timestamp, Uuid};
+use crate::domain::document::lifecycle::PublicationState;
+use crate::domain::document::{DatabaseRowId, DocumentInstance, DocumentInstanceId};
+use crate::domain::query::DocumentInstanceQuery;
+use crate::domain::repository::{DocumentsRepository, RelationMap, RelationOps, RepositoryError};
+use crate::infrastructure::persistence::builders::{
+    delete_document, delete_relation_entry, insert_document, insert_relation_entry,
+    query_count_documents, query_find_document_by_criteria, query_find_document_by_id,
+    query_find_related_documents, query_row_id_by_document_uuid, query_row_ids_by_document_uuids,
+};
+use crate::infrastructure::persistence::result::row_to_document;
+use futures::TryStreamExt;
 use luminair_common::database::Database;
 use luminair_common::{AttributeId, DocumentType, DocumentTypesRegistry, ID_FIELD_NAME};
-use crate::domain::document::{DatabaseRowId, DocumentInstance, DocumentInstanceId};
-use crate::domain::document::content::{ContentValue, DocumentContent};
-use crate::domain::document::lifecycle::{PublicationState, UserId};
-use crate::domain::repository::{DocumentsRepository, RepositoryError};
-use crate::domain::repository::query::DocumentInstanceQuery;
-use crate::infrastructure::persistence::builders::{delete_document, delete_relation_entry, insert_document, insert_relation_entry, query_find_document_by_criteria, query_find_document_by_id, query_find_related_documents};
-use crate::infrastructure::persistence::CLOCK_SEQUENCE;
-use crate::infrastructure::persistence::result::row_to_document;
+use sea_query::Expr;
+use sqlx::Row;
+use std::collections::HashMap;
+use uuid::Uuid;
 
 #[derive(Clone)]
 pub struct PostgresDocumentsRepository {
@@ -30,28 +32,19 @@ impl PostgresDocumentsRepository {
             database,
         }
     }
-
-    pub fn uuid_timestamp_from_chrono(datetime: &DateTime<Utc>) -> Timestamp {
-        let secs = datetime.timestamp();
-        let nanos = datetime.timestamp_subsec_nanos();
-        Timestamp::from_unix(CLOCK_SEQUENCE, secs as u64, nanos)
-    }
 }
 
 impl DocumentsRepository for PostgresDocumentsRepository {
-    
     async fn find(
         &self,
         document_type: &DocumentType,
-        query: DocumentInstanceQuery,
+        query: &DocumentInstanceQuery,
     ) -> Result<Vec<DocumentInstance>, RepositoryError> {
-        let (sql, values) = query_find_document_by_criteria(document_type, &query);
+        let (sql, values) = query_find_document_by_criteria(document_type, query);
         let query_object = sqlx::query_with(&sql, values);
 
         let mut rows = query_object.fetch(self.database.database_pool());
-
         let mut documents = Vec::new();
-        use futures::TryStreamExt;
 
         while let Some(row) = rows
             .try_next()
@@ -63,21 +56,36 @@ impl DocumentsRepository for PostgresDocumentsRepository {
         }
 
         Ok(documents)
+    }
+
+    async fn count(
+        &self,
+        document_type: &DocumentType,
+        query: &DocumentInstanceQuery,
+    ) -> Result<u64, RepositoryError> {
+        let (sql, values) = query_count_documents(document_type, query);
+        let row = sqlx::query_with(&sql, values)
+            .fetch_one(self.database.database_pool())
+            .await
+            .map_err(|e| RepositoryError::DatabaseError(e.to_string()))?;
+        let count: i64 = row
+            .try_get(0)
+            .map_err(|e| RepositoryError::DatabaseError(e.to_string()))?;
+        Ok(count as u64)
     }
 
     async fn find_by_id(
         &self,
         document_type: &DocumentType,
-        query: DocumentInstanceQuery,
         id: DocumentInstanceId,
-    ) -> Result<Vec<DocumentInstance>, RepositoryError> {
-        let (sql, values) = query_find_document_by_id(document_type, id.0, &query);
+        query: &DocumentInstanceQuery,
+    ) -> Result<Option<DocumentInstance>, RepositoryError> {
+        let (sql, values) = query_find_document_by_id(document_type, id.0, query);
         let query_object = sqlx::query_with(&sql, values);
 
         let mut rows = query_object.fetch(self.database.database_pool());
         let mut documents = Vec::new();
 
-        use futures::TryStreamExt;
         while let Some(row) = rows
             .try_next()
             .await
@@ -87,44 +95,21 @@ impl DocumentsRepository for PostgresDocumentsRepository {
             documents.push(document);
         }
 
-        Ok(documents)
+        Ok(documents.into_iter().next())
     }
 
-    async fn fetch_relations_for_one(
+    async fn fetch_relations(
         &self,
-        main_document_type: &DocumentType,
-        main_table_id: DatabaseRowId,
-        relation_fields: &[AttributeId],
-    ) -> Result<HashMap<AttributeId, Vec<DocumentInstance>>, RepositoryError> {
-        let ids = vec![main_table_id];
-        let result = self
-            .fetch_relations_for_many(main_document_type, &ids, relation_fields)
-            .await?;
-
-        let result = result
-            .into_iter()
-            .map(|(k, v)| {
-                let v = v.into_values().next().unwrap();
-                (k, v)
-            })
-            .collect();
-
-        Ok(result)
-    }
-
-    async fn fetch_relations_for_many(
-        &self,
-        main_document_type: &DocumentType,
-        main_table_ids: &[DatabaseRowId],
-        relation_fields: &[AttributeId],
-    ) -> Result<HashMap<AttributeId, HashMap<DatabaseRowId, Vec<DocumentInstance>>>, RepositoryError>
-    {
+        document_type: &DocumentType,
+        row_ids: &[DatabaseRowId],
+        fields: &[AttributeId],
+    ) -> Result<RelationMap, RepositoryError> {
         let mut result = HashMap::new();
 
-        let params: Vec<i64> = main_table_ids.iter().map(|id| id.0).collect();
+        let params: Vec<i64> = row_ids.iter().map(|id| id.0).collect();
 
-        for attr_id in relation_fields {
-            let rel_metadata = main_document_type.relations.get(attr_id).ok_or_else(|| {
+        for attr_id in fields {
+            let rel_metadata = document_type.relations.get(attr_id).ok_or_else(|| {
                 RepositoryError::ValidationFailed(format!("Relation not found: {}", attr_id))
             })?;
 
@@ -141,20 +126,18 @@ impl DocumentsRepository for PostgresDocumentsRepository {
                 .ok_or(RepositoryError::DocumentInstanceNotFound)?;
 
             let (sql, values) = query_find_related_documents(
-                main_document_type,
+                document_type,
                 related_document_type,
-                &attr_id,
+                attr_id,
                 params.clone(),
             );
             let query_object = sqlx::query_with(&sql, values);
 
             // Group related docs by their owning main document id
-            // For MVP simplicity, assume 1-to-N relations
             let mut grouped: HashMap<DatabaseRowId, Vec<DocumentInstance>> = HashMap::new();
 
             let mut rows = query_object.fetch(self.database.database_pool());
 
-            use futures::TryStreamExt;
             while let Some(row) = rows
                 .try_next()
                 .await
@@ -175,30 +158,24 @@ impl DocumentsRepository for PostgresDocumentsRepository {
         Ok(result)
     }
 
-    async fn create(
+    async fn insert(
         &self,
         document_type: &DocumentType,
-        content: DocumentContent,
-        user_id: Option<UserId>,
-    ) -> Result<DocumentInstanceId, RepositoryError> {
-        let now = chrono::Utc::now();
-        let ts = Self::uuid_timestamp_from_chrono(&now);
-
-        let document_id = DocumentInstanceId(Uuid::new_v7(ts));
-
+        instance: &DocumentInstance,
+    ) -> Result<(), RepositoryError> {
         let mut params: Vec<Expr> = vec![
-            document_id.0.into(),
-            now.into(),  // CREATED
-            now.into(),  // UPDATED
-            1i32.into(), // VERSION
+            instance.document_id.0.into(),
+            instance.audit.created_at.into(),
+            instance.audit.updated_at.into(),
+            instance.audit.version.into(),
         ];
 
         if document_type.has_draft_and_publish() {
-            match &content.publication_state {
+            match &instance.content.publication_state {
                 PublicationState::Published {
                     revision,
                     published_at,
-                    published_by,
+                    ..
                 } => {
                     params.push((*published_at).into());
                     params.push((*revision).into());
@@ -210,31 +187,26 @@ impl DocumentsRepository for PostgresDocumentsRepository {
             }
         }
 
-        for field in &document_type.fields {
-            let val = content.fields.get(&field.id);
-            if let Some(val) = val {
-                params.push(val.into());
-            } else {
-                params.push(Expr::null());
+        for field in document_type.fields.iter() {
+            match instance.content.fields.get(&field.id) {
+                Some(val) => params.push(val.into()),
+                None => params.push(Expr::null()),
             }
         }
 
         let (sql, values) = insert_document(document_type, params);
-
         sqlx::query_with(&sql, values)
             .execute(self.database.database_pool())
             .await
             .map_err(|e| RepositoryError::DatabaseError(e.to_string()))?;
-
-        Ok(document_id)
+        Ok(())
     }
 
     async fn update(
         &self,
-        id: DocumentInstanceId,
-        content_updates: HashMap<String, ContentValue>,
-        user_id: Option<UserId>,
-    ) -> Result<DocumentInstance, RepositoryError> {
+        _document_type: &DocumentType,
+        _instance: &DocumentInstance,
+    ) -> Result<(), RepositoryError> {
         todo!()
     }
 
@@ -251,74 +223,108 @@ impl DocumentsRepository for PostgresDocumentsRepository {
         Ok(())
     }
 
-    async fn publish(
-        &self,
-        id: DocumentInstanceId,
-        user_id: Option<UserId>,
-    ) -> Result<DocumentInstance, RepositoryError> {
-        todo!()
-    }
-
-    async fn connect(
+    async fn apply_relation_ops(
         &self,
         document_type: &DocumentType,
-        relation_attr: &AttributeId,
-        owning_id: DatabaseRowId,
-        inverse_id: DatabaseRowId,
+        document_id: DocumentInstanceId,
+        ops: &HashMap<AttributeId, RelationOps>,
     ) -> Result<(), RepositoryError> {
-        let relation_metadata = document_type.relations.get(relation_attr).ok_or_else(|| {
-            RepositoryError::ValidationFailed(format!("Relation not found: {}", relation_attr))
-        })?;
-
-        if !relation_metadata.relation_type.is_owning() {
-            return Err(RepositoryError::ValidationFailed(format!(
-                "Relation is not owning: {}",
-                relation_attr
-            )));
+        if ops.is_empty() {
+            return Ok(());
         }
 
-        self.schema_registry
-            .get(&relation_metadata.target)
-            .ok_or(RepositoryError::DocumentTypeNotFound)?;
+        // 1. Resolve the owning document UUID → internal row ID
+        let owning_row_id = self.resolve_row_id(document_type, document_id).await?;
 
-        let (sql, values) = insert_relation_entry(document_type, relation_attr, owning_id, inverse_id);
-        sqlx::query_with(&sql, values)
-            .execute(self.database.database_pool())
-            .await
-            .map_err(|e| RepositoryError::DatabaseError(e.to_string()))?;
+        // 2. For each relation attribute apply connect / disconnect
+        for (attr_id, rel_ops) in ops {
+            let rel_meta = document_type.relations.get(attr_id).ok_or_else(|| {
+                RepositoryError::ValidationFailed(format!("Relation not found: {}", attr_id))
+            })?;
+
+            let related_type = self
+                .schema_registry
+                .get(&rel_meta.target)
+                .ok_or(RepositoryError::DocumentTypeNotFound)?;
+
+            if !rel_ops.connect.is_empty() {
+                let uuids: Vec<Uuid> = rel_ops.connect.iter().map(|id| id.0).collect();
+                let row_ids = self.resolve_row_ids(related_type, uuids).await?;
+                for inverse_row_id in row_ids {
+                    let (sql, values) = insert_relation_entry(
+                        document_type,
+                        attr_id,
+                        owning_row_id,
+                        inverse_row_id,
+                    );
+                    sqlx::query_with(&sql, values)
+                        .execute(self.database.database_pool())
+                        .await
+                        .map_err(|e| RepositoryError::DatabaseError(e.to_string()))?;
+                }
+            }
+
+            if !rel_ops.disconnect.is_empty() {
+                let uuids: Vec<Uuid> = rel_ops.disconnect.iter().map(|id| id.0).collect();
+                let row_ids = self.resolve_row_ids(related_type, uuids).await?;
+                for inverse_row_id in row_ids {
+                    let (sql, values) = delete_relation_entry(
+                        document_type,
+                        attr_id,
+                        owning_row_id,
+                        inverse_row_id,
+                    );
+                    sqlx::query_with(&sql, values)
+                        .execute(self.database.database_pool())
+                        .await
+                        .map_err(|e| RepositoryError::DatabaseError(e.to_string()))?;
+                }
+            }
+        }
 
         Ok(())
     }
+}
 
-    async fn disconnect(
+impl PostgresDocumentsRepository {
+    /// SELECT id WHERE document_id = $uuid → single DatabaseRowId
+    async fn resolve_row_id(
         &self,
         document_type: &DocumentType,
-        relation_attr: &AttributeId,
-        owning_id: DatabaseRowId,
-        inverse_id: DatabaseRowId,
-    ) -> Result<(), RepositoryError> {
-        let relation_metadata = document_type.relations.get(relation_attr).ok_or_else(|| {
-            RepositoryError::ValidationFailed(format!("Relation not found: {}", relation_attr))
-        })?;
+        document_id: DocumentInstanceId,
+    ) -> Result<DatabaseRowId, RepositoryError> {
+        let (sql, values) = query_row_id_by_document_uuid(document_type, document_id.0);
+        let row = sqlx::query_with(&sql, values)
+            .fetch_optional(self.database.database_pool())
+            .await
+            .map_err(|e| RepositoryError::DatabaseError(e.to_string()))?
+            .ok_or(RepositoryError::DocumentInstanceNotFound)?;
+        let id: i64 = row
+            .try_get(ID_FIELD_NAME)
+            .map_err(|e| RepositoryError::DatabaseError(e.to_string()))?;
+        Ok(DatabaseRowId(id))
+    }
 
-        if !relation_metadata.relation_type.is_owning() {
-            return Err(RepositoryError::ValidationFailed(format!(
-                "Relation is not owning: {}",
-                relation_attr
-            )));
+    /// SELECT id WHERE document_id = ANY($uuids) → Vec<DatabaseRowId>
+    async fn resolve_row_ids(
+        &self,
+        document_type: &DocumentType,
+        uuids: Vec<Uuid>,
+    ) -> Result<Vec<DatabaseRowId>, RepositoryError> {
+        if uuids.is_empty() {
+            return Ok(vec![]);
         }
-
-        self.schema_registry
-            .get(&relation_metadata.target)
-            .ok_or(RepositoryError::DocumentTypeNotFound)?;
-
-        let (sql, values) = delete_relation_entry(document_type, relation_attr, owning_id, inverse_id);
-
-        sqlx::query_with(&sql, values)
-            .execute(self.database.database_pool())
+        let (sql, values) = query_row_ids_by_document_uuids(document_type, uuids);
+        let rows = sqlx::query_with(&sql, values)
+            .fetch_all(self.database.database_pool())
             .await
             .map_err(|e| RepositoryError::DatabaseError(e.to_string()))?;
-
-        Ok(())
+        rows.iter()
+            .map(|row| {
+                row.try_get::<i64, _>(ID_FIELD_NAME)
+                    .map(DatabaseRowId)
+                    .map_err(|e| RepositoryError::DatabaseError(e.to_string()))
+            })
+            .collect()
     }
 }
