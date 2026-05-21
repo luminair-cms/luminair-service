@@ -1,4 +1,5 @@
 pub mod implementation;
+pub mod error;
 
 use std::collections::HashMap;
 use std::future::Future;

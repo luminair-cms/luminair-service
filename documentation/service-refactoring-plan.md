@@ -317,6 +317,10 @@ pub enum ServiceError {
 impl From<RepositoryError> for ServiceError { ... }
 ```
 
+**Changes made:**
+
+- `domain/application/error.rs` - Added `ServiceError` enum and `From<RepositoryError>` impl.
+
 ### 2.3 — Define command structs in `application/commands.rs`
 
 Commands are typed inputs for each use case.
