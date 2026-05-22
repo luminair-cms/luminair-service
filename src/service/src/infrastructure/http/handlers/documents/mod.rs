@@ -1,4 +1,4 @@
-use crate::domain::application::AppState;
+use crate::application::AppState;
 use crate::infrastructure::http::api::{ApiError, ApiSuccess};
 use crate::infrastructure::http::handlers::documents::dto::{
     DetailedDocumentResponse, DocumentResponse,

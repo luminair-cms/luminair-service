@@ -1,5 +1,7 @@
 pub mod implementation;
 pub mod error;
+pub mod commands;
+pub mod service;
 
 use std::collections::HashMap;
 use std::future::Future;

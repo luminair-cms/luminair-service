@@ -1,5 +1,5 @@
-use crate::domain::application::AppState;
-use crate::domain::application::DocumentsService;
+use crate::application::AppState;
+use crate::application::DocumentsService;
 use crate::domain::document::DocumentInstanceId;
 use crate::domain::query::{DocumentInstanceQuery, DocumentStatus};
 use crate::domain::repository::RelationOps;

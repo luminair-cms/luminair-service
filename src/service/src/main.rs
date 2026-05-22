@@ -8,6 +8,7 @@ use crate::infrastructure::persistence::repository::PostgresDocumentsRepository;
 
 mod domain;
 mod infrastructure;
+pub mod application;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {

@@ -383,6 +383,11 @@ pub enum RelationOperation {
 }
 ```
 
+**Changes made:**
+
+- `domain/application/commands.rs` - Added commands structs and `RelationOperation` enum.
+
+
 ### 2.4 — Redefine `DocumentsService` trait in `application/service.rs`
 
 ```rust
@@ -411,6 +416,12 @@ pub trait DocumentsService: Send + Sync + 'static {
         -> impl Future<Output = Result<(), ServiceError>> + Send;
 }
 ```
+
+**Changes made:**
+
+- `domain/application/service.rs` - Added definition of `DocumentsService` trait.
+- Moved `application` module from `domain` module as seperate top-level module.
+
 
 ### 2.5 — Implement `DocumentsServiceImpl` with real business logic
 

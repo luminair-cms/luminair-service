@@ -1,4 +1,4 @@
-use crate::domain::application::AppState;
+use crate::application::AppState;
 use crate::infrastructure::http::handlers::data::{
     create_new_document, delete_existing_document, find_all_documents, find_document_by_id,
     modify_relations,

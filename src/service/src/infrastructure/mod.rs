@@ -1,5 +1,5 @@
-use crate::domain::application::AppState;
-use crate::domain::application::implementation::DocumentsServiceImpl;
+use crate::application::AppState;
+use crate::application::implementation::DocumentsServiceImpl;
 use crate::infrastructure::persistence::repository::PostgresDocumentsRepository;
 use luminair_common::DocumentTypesRegistry;
 

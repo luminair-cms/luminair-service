@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use luminair_common::{AttributeId, DocumentType};
 
-use crate::domain::application::DocumentsService;
+use crate::application::DocumentsService;
 use crate::domain::document::{
     DatabaseRowId, DocumentInstance, DocumentInstanceId,
     content::{ContentValue, DocumentContent},
