@@ -446,6 +446,8 @@ calls `repository.update()`.
 builds the `HashMap<AttributeId, RelationOps>`, calls `repository.apply_relation_ops()` once.
 The N+1 loop disappears.
 
+**Implemented**
+
 ---
 
 ## Phase 3 — Fix the Persistence Layer
