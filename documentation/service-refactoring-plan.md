@@ -468,11 +468,15 @@ ColumnRef::from(("r", INVERSE_ID_FIELD_NAME))
     .equals(ColumnRef::from(("m", ID_FIELD_NAME)))
 ```
 
+**Fixed**
+
 ### 3.2 — Fix Bug: Wrong column for draft/published filter in `query_find_document_by_criteria`
 
 The filter uses `DOCUMENT_ID_FIELD_NAME IS NULL` to detect drafts, but `document_id` is a
 UUIDv7 primary key and is never `NULL`. Replace with `PUBLISHED_FIELD_NAME` (`published_at`)
 to match the already-correct implementation in `query_find_document_by_id`.
+
+**Already fixed**
 
 ### 3.3 — Fix Bug: Draft `revision` hardcoded to `1` in `parse_publication_state`
 
@@ -485,6 +489,8 @@ None => PublicationState::Draft { revision: 1 },
 // CORRECT — use the value already fetched from the DB:
 None => PublicationState::Draft { revision },
 ```
+
+**Fixed**
 
 ### 3.4 — Reorganise into `queries/` and `mapping/`
 

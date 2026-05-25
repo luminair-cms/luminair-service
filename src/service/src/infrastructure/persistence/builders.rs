@@ -219,7 +219,7 @@ pub fn query_find_related_documents(
         .join(
             JoinType::LeftJoin,
             related_table,
-            ColumnRef::from(("r", OWNING_ID_FIELD_NAME))
+            ColumnRef::from(("m", ID_FIELD_NAME))
                 .equals(ColumnRef::from(("r", INVERSE_ID_FIELD_NAME))),
         )
         .and_where(Expr::col(owning_id_column).eq_any(params))

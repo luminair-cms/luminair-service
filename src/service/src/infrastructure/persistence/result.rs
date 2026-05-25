@@ -202,7 +202,7 @@ fn parse_publication_state(
                 published_at: pub_at,
                 published_by: published_by.and_then(|s| UserId::try_new(s).ok()),
             },
-            None => PublicationState::Draft { revision: 1 },
+            None => PublicationState::Draft { revision },
         }
     } else {
         PublicationState::Published {
