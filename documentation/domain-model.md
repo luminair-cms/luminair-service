@@ -62,6 +62,12 @@ It includes:
 - `relation_type: RelationType` — one of `HasOne`, `HasMany`, `BelongsToOne`, or `BelongsToMany`.
 - `target: DocumentTypeId` — the related document type.
 
+***Relation type ManyToMany moved out of MVP***
+
+This is because of `ManyToMany` requires shared owning model, especially in case of DraftAndPublish mode.
+
+Reduced implementation of ManyToMany modeled after combination of `HasMany` + `BelongsToMany` and assumes management of connection ONLY from owning side.
+
 ## FieldType
 
 `FieldType` defines allowed field data kinds:
