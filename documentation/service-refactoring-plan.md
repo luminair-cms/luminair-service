@@ -578,6 +578,18 @@ pub fn resolve_document_type<S: AppState>(
 ) -> Result<&'static DocumentType, ApiError>;
 ```
 
+**Implemented**
+
+`infrastructure/http/handlers/content/params.rs` now hosts `parse_status`,
+`parse_populate`, and `resolve_document_type`. `parse_populate` expands the
+`populate=*` token to every owning relation declared on the document type
+(Phase 5 wildcard requirement folded in here). All five content handlers
+(`find_document_by_id`, `find_all_documents`, `create_new_document`,
+`delete_existing_document`, `modify_relations`) call the helpers instead of
+inlining the lookup/parse logic, and the previously duplicated
+`DocumentTypeApiId::from_str` + `document_types().lookup()` chain is gone from
+`mod.rs`.
+
 ### 4.3 — Move JSON → Command conversion to `request.rs`
 
 `request.rs` constructs typed `Command` structs from HTTP inputs.

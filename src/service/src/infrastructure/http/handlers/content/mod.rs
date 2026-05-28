@@ -1,9 +1,12 @@
 use crate::application::AppState;
 use crate::application::service::DocumentsService;
 use crate::domain::document::DocumentInstanceId;
-use crate::domain::query::{DocumentInstanceQuery, DocumentStatus};
+use crate::domain::query::DocumentInstanceQuery;
 use crate::domain::repository::RelationOps;
 use crate::infrastructure::http::api::{ApiError, ApiSuccess};
+use crate::infrastructure::http::handlers::content::params::{
+    parse_populate, parse_status, resolve_document_type,
+};
 use crate::infrastructure::http::handlers::content::response::{
     ManyDocumentsResponse, OneDocumentResponse,
 };
@@ -12,12 +15,11 @@ use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
-use luminair_common::DocumentTypeApiId;
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::collections::HashSet;
-use std::str::FromStr;
 
+mod params;
 mod request;
 mod response;
 
@@ -57,37 +59,10 @@ pub async fn find_document_by_id<S: AppState>(
         ));
     }
 
-    let api_id = DocumentTypeApiId::from_str(&api_type)
-        .map_err(|_| ApiError::UnprocessableEntity(format!("Invalid api_type: {}", api_type)))?;
-    let document_type = state
-        .document_types()
-        .lookup(&api_id)
-        .ok_or(ApiError::NotFound)?;
-
+    let document_type = resolve_document_type(&state, &api_type)?;
     let document_instance_id = DocumentInstanceId::try_from(&id)?;
-
-    let populate_attributes = if let Some(populate_fields) = params.populate {
-        let mut populate_attributes = Vec::with_capacity(populate_fields.len());
-        for name in populate_fields {
-            let attr = luminair_common::AttributeId::try_new(&name).map_err(|_| {
-                ApiError::UnprocessableEntity(format!("Invalid populate field: {}", name))
-            })?;
-            populate_attributes.push(attr);
-        }
-        Some(populate_attributes)
-    } else {
-        None
-    };
-
-    let status = match params.status.as_str() {
-        "draft" => DocumentStatus::Draft,
-        "published" => DocumentStatus::Published,
-        _ => {
-            return Err(ApiError::UnprocessableEntity(
-                "status must be 'published' (default) or 'draft'".to_string(),
-            ));
-        }
-    };
+    let populate_attributes = parse_populate(params.populate, document_type)?;
+    let status = parse_status(&params.status)?;
 
     let query = DocumentInstanceQuery::new().with_status(status);
 
@@ -112,42 +87,17 @@ pub async fn find_all_documents<S: AppState>(
     Path(api_type): Path<String>,
     QueryString(params): QueryString<QueryParams>,
 ) -> Result<ApiSuccess<ManyDocumentsResponse>, ApiError> {
-    let api_id = DocumentTypeApiId::from_str(&api_type)
-        .map_err(|_| ApiError::UnprocessableEntity(format!("Invalid api_type: {}", api_type)))?;
-    let document_type = state
-        .document_types()
-        .lookup(&api_id)
-        .ok_or(ApiError::NotFound)?;
+    let document_type = resolve_document_type(&state, &api_type)?;
 
     // Extract pagination params with defaults
     let (page, page_size) = params
         .pagination
+        .as_ref()
         .map(|p| (p.page, p.page_size))
         .unwrap_or((1, 25));
 
-    let populate_attributes = if let Some(populate_fields) = params.populate {
-        let mut populate_attributes = Vec::with_capacity(populate_fields.len());
-        for name in populate_fields {
-            let attr = luminair_common::AttributeId::try_new(&name).map_err(|_| {
-                ApiError::UnprocessableEntity(format!("Invalid populate field: {}", name))
-            })?;
-            populate_attributes.push(attr);
-        }
-        Some(populate_attributes)
-    } else {
-        None
-    };
-
-    // Parse status parameter and convert to include_drafts
-    let status = match params.status.as_str() {
-        "draft" => DocumentStatus::Draft,
-        "published" => DocumentStatus::Published,
-        _ => {
-            return Err(ApiError::UnprocessableEntity(
-                "status must be 'published' (default) or 'draft'".to_string(),
-            ));
-        }
-    };
+    let populate_attributes = parse_populate(params.populate, document_type)?;
+    let status = parse_status(&params.status)?;
 
     // Build query using builder pattern - pagination guards are enforced by the query
     let query = DocumentInstanceQuery::new()
@@ -178,12 +128,7 @@ pub async fn create_new_document<S: AppState>(
     Path(api_type): Path<String>,
     Json(payload): Json<serde_json::Value>,
 ) -> Result<impl IntoResponse, ApiError> {
-    let api_id = DocumentTypeApiId::from_str(&api_type)
-        .map_err(|_| ApiError::UnprocessableEntity(format!("Invalid api_type: {}", api_type)))?;
-    let document_type = state
-        .document_types()
-        .lookup(&api_id)
-        .ok_or(ApiError::NotFound)?;
+    let document_type = resolve_document_type(&state, &api_type)?;
 
     // Validate and build fields from the payload using document type metadata
     let fields = request::build_fields_from_payload(document_type, &payload).map_err(
@@ -215,13 +160,7 @@ pub async fn delete_existing_document<S: AppState>(
     State(state): State<S>,
     Path((api_type, id)): Path<(String, String)>,
 ) -> Result<impl IntoResponse, ApiError> {
-    let api_id = DocumentTypeApiId::from_str(&api_type)
-        .map_err(|_| ApiError::UnprocessableEntity(format!("Invalid api_type: {}", api_type)))?;
-    let document_type = state
-        .document_types()
-        .lookup(&api_id)
-        .ok_or(ApiError::NotFound)?;
-
+    let document_type = resolve_document_type(&state, &api_type)?;
     let instance_id = DocumentInstanceId::try_from(&id)?;
 
     state
@@ -243,13 +182,7 @@ pub async fn modify_relations<S: AppState>(
     Path((api_type, id)): Path<(String, String)>,
     Json(payload): Json<serde_json::Value>,
 ) -> Result<impl IntoResponse, ApiError> {
-    let api_id = DocumentTypeApiId::from_str(&api_type)
-        .map_err(|_| ApiError::UnprocessableEntity(format!("Invalid api_type: {}", api_type)))?;
-    let document_type = state
-        .document_types()
-        .lookup(&api_id)
-        .ok_or(ApiError::NotFound)?;
-
+    let document_type = resolve_document_type(&state, &api_type)?;
     let document_id = DocumentInstanceId::try_from(&id)?;
 
     let data_obj = payload.as_object().ok_or(ApiError::UnprocessableEntity(
