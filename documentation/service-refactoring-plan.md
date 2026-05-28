@@ -492,26 +492,51 @@ None => PublicationState::Draft { revision },
 
 **Fixed**
 
-### 3.4 — Reorganise into `queries/` and `mapping/`
+### 3.4 — Reorganise into `builders/` and `mapping/`
 
-| Current file | Moves to |
+The persistence module is reorganised so that SQL-building lives separately from
+DB ↔ Domain translation. The directory originally proposed as `queries/` is
+named `builders/` to match the existing terminology in the codebase.
+
+| Old location | New location |
 |---|---|
-| `builders.rs` SELECT functions | `queries/find.rs` |
-| `builders.rs` INSERT/UPDATE/DELETE functions | `queries/write.rs` |
-| `builders.rs` relation functions | `queries/relations.rs` |
+| `builders.rs` SELECT functions | `builders/find.rs` |
+| `builders.rs` INSERT/DELETE functions | `builders/write.rs` |
+| `builders.rs` relation functions (find / insert / delete / row-id resolution) | `builders/relations.rs` |
 | `result.rs` | `mapping/reader.rs` |
 | `params.rs` | `mapping/writer.rs` |
 
-`queries/relations.rs` additionally gains `build_apply_relation_ops()` which resolves all
-`DocumentInstanceId` values to `DatabaseRowId` via **two** batch `SELECT id FROM table WHERE
-document_id = ANY($1)` queries (one for owning, one for related), then applies
-connect / disconnect / set operations in a single transaction.
+**Fixed**
+
+`builders/relations.rs` now owns every relation-table SQL builder:
+`query_find_related_documents`, `insert_relation_entry`, `delete_relation_entry`,
+`query_row_id_by_document_uuid`, and `query_row_ids_by_document_uuids`.
+The row-ID resolution queries were moved out of `find.rs` because they only
+exist to support `apply_relation_ops`.
+
+`PostgresDocumentsRepository::apply_relation_ops` resolves all
+`DocumentInstanceId` values to `DatabaseRowId` via one single-row lookup for the
+owning document and one batch `SELECT id FROM table WHERE document_id = ANY($1)`
+for the related documents, then applies connect / disconnect operations via
+`insert_relation_entry` / `delete_relation_entry`. (Wrapping the DML in a single
+transaction is deferred — there is no per-call transaction yet.)
 
 ### 3.5 — Implement `insert`, `update`, `count`
 
 - `insert` accepts a full `DocumentInstance` (all fields pre-set by the service).
 - `update` builds `UPDATE SET ... WHERE document_id = $id` via sea-query.
 - `count` builds `SELECT COUNT(*) FROM table` sharing the same `WHERE` predicate as `find`.
+
+**Fixed**
+
+`builders/write.rs` gains `update_document(document, document_id, column_values)` —
+takes a `Vec<(DynIden, Expr)>` of writable columns and emits
+`UPDATE {table} SET ... WHERE document_id = $id`.
+
+`PostgresDocumentsRepository::update` mirrors `insert`: builds the column/value
+list from `updated_at`, `version`, the publication state (when applicable), and
+all dynamic fields, then executes via `update_document`. Returns
+`RepositoryError::DocumentInstanceNotFound` when zero rows are affected.
 
 ---
 
@@ -525,6 +550,8 @@ connect / disconnect / set operations in a single transaction.
 |---|---|---|
 | `handlers/data/` | `handlers/content/` | serves `/api/documents/` — content entries |
 | `handlers/documents/` | `handlers/schema/` | serves `/api/meta/documents/` — type metadata |
+
+**Implemented**
 
 ### 4.2 — Extract shared parsing helpers into `params.rs`
 

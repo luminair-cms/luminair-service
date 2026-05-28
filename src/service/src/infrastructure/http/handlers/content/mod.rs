@@ -1,10 +1,10 @@
 use crate::application::AppState;
-use crate::application::DocumentsService;
+use crate::application::service::DocumentsService;
 use crate::domain::document::DocumentInstanceId;
 use crate::domain::query::{DocumentInstanceQuery, DocumentStatus};
 use crate::domain::repository::RelationOps;
 use crate::infrastructure::http::api::{ApiError, ApiSuccess};
-use crate::infrastructure::http::handlers::data::response::{
+use crate::infrastructure::http::handlers::content::response::{
     ManyDocumentsResponse, OneDocumentResponse,
 };
 use crate::infrastructure::http::querystring::QueryString;

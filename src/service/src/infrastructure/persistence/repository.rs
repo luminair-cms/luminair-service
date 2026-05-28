@@ -1,20 +1,21 @@
-use crate::domain::document::lifecycle::PublicationState;
-use crate::domain::document::{DatabaseRowId, DocumentInstance, DocumentInstanceId};
-use crate::domain::query::DocumentInstanceQuery;
-use crate::domain::repository::{DocumentsRepository, RelationMap, RelationOps, RepositoryError};
-use crate::infrastructure::persistence::builders::{
-    delete_document, delete_relation_entry, insert_document, insert_relation_entry,
-    query_count_documents, query_find_document_by_criteria, query_find_document_by_id,
-    query_find_related_documents, query_row_id_by_document_uuid, query_row_ids_by_document_uuids,
+use crate::{
+    domain::document::lifecycle::PublicationState,
+    domain::document::{DatabaseRowId, DocumentInstance, DocumentInstanceId},
+    domain::query::DocumentInstanceQuery,
+    domain::repository::{DocumentsRepository, RelationMap, RelationOps, RepositoryError},
+    infrastructure::persistence::builders::find::{query_count_documents, query_find_document_by_criteria, query_find_document_by_id},
+    infrastructure::persistence::builders::relations::{delete_relation_entry, insert_relation_entry, query_find_related_documents, query_row_id_by_document_uuid, query_row_ids_by_document_uuids},
+    infrastructure::persistence::builders::write::{delete_document, insert_document, update_document}
 };
-use crate::infrastructure::persistence::result::row_to_document;
+
 use futures::TryStreamExt;
 use luminair_common::database::Database;
-use luminair_common::{AttributeId, DocumentType, DocumentTypesRegistry, ID_FIELD_NAME};
-use sea_query::Expr;
+use luminair_common::{AttributeId, DocumentType, DocumentTypesRegistry, ID_FIELD_NAME, PUBLISHED_FIELD_NAME, REVISION_FIELD_NAME, UPDATED_FIELD_NAME, VERSION_FIELD_NAME};
+use sea_query::{DynIden, Expr};
 use sqlx::Row;
 use std::collections::HashMap;
 use uuid::Uuid;
+use crate::infrastructure::persistence::mapping::reader::row_to_document;
 
 #[derive(Clone)]
 pub struct PostgresDocumentsRepository {
@@ -204,10 +205,49 @@ impl DocumentsRepository for PostgresDocumentsRepository {
 
     async fn update(
         &self,
-        _document_type: &DocumentType,
-        _instance: &DocumentInstance,
+        document_type: &DocumentType,
+        instance: &DocumentInstance,
     ) -> Result<(), RepositoryError> {
-        todo!()
+        let mut column_values: Vec<(DynIden, Expr)> = vec![
+            (UPDATED_FIELD_NAME.into(), instance.audit.updated_at.into()),
+            (VERSION_FIELD_NAME.into(), instance.audit.version.into()),
+        ];
+
+        if document_type.has_draft_and_publish() {
+            match &instance.content.publication_state {
+                PublicationState::Published {
+                    revision,
+                    published_at,
+                    ..
+                } => {
+                    column_values.push((PUBLISHED_FIELD_NAME.into(), (*published_at).into()));
+                    column_values.push((REVISION_FIELD_NAME.into(), (*revision).into()));
+                }
+                PublicationState::Draft { revision } => {
+                    column_values.push((PUBLISHED_FIELD_NAME.into(), Expr::null()));
+                    column_values.push((REVISION_FIELD_NAME.into(), (*revision).into()));
+                }
+            }
+        }
+
+        for field in document_type.fields.iter() {
+            let expr = match instance.content.fields.get(&field.id) {
+                Some(val) => val.into(),
+                None => Expr::null(),
+            };
+            column_values.push((field.id.normalized().into(), expr));
+        }
+
+        let (sql, values) = update_document(document_type, instance.document_id.0, column_values);
+        let result = sqlx::query_with(&sql, values)
+            .execute(self.database.database_pool())
+            .await
+            .map_err(|e| RepositoryError::DatabaseError(e.to_string()))?;
+
+        if result.rows_affected() == 0 {
+            return Err(RepositoryError::DocumentInstanceNotFound);
+        }
+        Ok(())
     }
 
     async fn delete(

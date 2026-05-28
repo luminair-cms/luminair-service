@@ -1,9 +1,9 @@
 use crate::application::AppState;
-use crate::infrastructure::http::handlers::data::{
+use crate::infrastructure::http::handlers::content::{
     create_new_document, delete_existing_document, find_all_documents, find_document_by_id,
     modify_relations,
 };
-use crate::infrastructure::http::handlers::documents::{documents_metadata, one_document_metadata};
+use crate::infrastructure::http::handlers::schema::{documents_metadata, one_document_metadata};
 use axum::Router;
 use axum::routing::{delete, get, post, put};
 

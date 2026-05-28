@@ -8,10 +8,10 @@ use crate::infrastructure::http::handlers::health_check;
 use crate::infrastructure::http::querystring::QueryStringConfig;
 use crate::infrastructure::http::routes::api_routes;
 use crate::infrastructure::{
-    http::handlers::data::{find_all_documents, find_document_by_id},
+    http::handlers::content::{find_all_documents, find_document_by_id},
     AppState,
 };
-use handlers::documents::{documents_metadata, one_document_metadata};
+use handlers::schema::{documents_metadata, one_document_metadata};
 use serde_querystring::ParseMode;
 use tokio::net;
 
