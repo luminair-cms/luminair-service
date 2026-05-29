@@ -3,8 +3,13 @@ use std::collections::HashMap;
 use luminair_common::{AttributeId, DocumentType};
 use serde_json::Value as JsonValue;
 
+use crate::application::commands::{CreateDocumentCommand, ModifyRelationsCommand, RelationOperation, UpdateDocumentCommand};
+use crate::domain::document::DocumentInstanceId;
 use crate::domain::document::content::ContentValue;
 use crate::domain::document::error::DocumentError;
+use crate::domain::document::lifecycle::UserId;
+use crate::infrastructure::http::api::ApiError;
+use crate::infrastructure::http::handlers::content::parse_ids_from_list;
 
 /// Parse and validate a JSON request body into a field map.
 ///
@@ -57,4 +62,87 @@ pub fn build_fields_from_payload(
     }
 
     Ok(fields)
+}
+
+pub fn parse_create_command(
+    document_type: &'static DocumentType,
+    payload: &serde_json::Value,
+    user_id: Option<UserId>,
+) -> Result<CreateDocumentCommand, ApiError> {
+    let fields = build_fields_from_payload(document_type, &payload).map_err(
+        |err: DocumentError| {
+            ApiError::UnprocessableEntity(err.to_string())
+        },
+    )?;
+    Ok(CreateDocumentCommand {
+        document_type,
+        fields,
+        user_id,
+    })
+}
+
+pub fn parse_update_command(
+    document_type: &'static DocumentType,
+    document_id: DocumentInstanceId,
+    payload: &serde_json::Value,
+    user_id: Option<UserId>,
+) -> Result<UpdateDocumentCommand, ApiError> {
+    let fields = build_fields_from_payload(document_type, &payload).map_err(
+        |err: DocumentError| {
+            ApiError::UnprocessableEntity(err.to_string())
+        },
+    )?;
+    Ok(UpdateDocumentCommand {
+        document_type,
+        document_id,
+        fields,
+        user_id
+    })
+}
+
+pub fn parse_modify_relations_command(
+    document_type: &'static DocumentType,
+    document_id: DocumentInstanceId,
+    payload: &serde_json::Value,
+) -> Result<ModifyRelationsCommand, ApiError> {
+    let data_obj = payload.as_object().ok_or(ApiError::UnprocessableEntity(
+        "body must be a JSON object".into(),
+    ))?;
+
+    let mut operations = HashMap::new();
+
+    for (field_name, field_value) in data_obj {
+        let attr_id = luminair_common::AttributeId::try_new(field_name).map_err(|_| {
+            ApiError::UnprocessableEntity(format!("Invalid relation field: {}", field_name))
+        })?;
+
+        let field_obj = field_value.as_object().ok_or_else(|| {
+            ApiError::UnprocessableEntity(format!("Field '{}' must be an object", field_name))
+        })?;
+
+        let connect = parse_ids_from_list(
+            field_obj
+                .get("connect")
+                .unwrap_or(&serde_json::Value::Array(vec![])),
+        )?;
+        let disconnect = parse_ids_from_list(
+            field_obj
+                .get("disconnect")
+                .unwrap_or(&serde_json::Value::Array(vec![])),
+        )?;
+
+        operations.insert(
+            attr_id,
+            RelationOperation::ConnectDisconnect {
+                connect,
+                disconnect,
+            },
+        );
+    }
+
+    Ok(ModifyRelationsCommand {
+        document_type,
+        document_id,
+        operations
+    })
 }

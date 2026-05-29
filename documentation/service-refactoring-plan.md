@@ -620,6 +620,8 @@ pub fn parse_modify_relations_command(
 ) -> Result<ModifyRelationsCommand, ApiError>;
 ```
 
+***Implemented***
+
 ### 4.4 — Fix camelCase field keys in `response.rs`
 
 Dynamic field keys in `DocumentInstanceResponse` are currently emitted as snake_case
