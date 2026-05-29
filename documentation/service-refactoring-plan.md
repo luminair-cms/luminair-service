@@ -647,6 +647,12 @@ fn to_api_key(snake: &str) -> String {
 Also fix `DomainValue::Decimal → JsonValue` precision loss:
 replace `num.to_f64().unwrap()` with `JsonValue::String(num.to_string())`.
 
+***Implemented***
+
+Added function `to_api_key` and field name generation changed from `k.as_ref().to_owned()` to `to_api_key(k.as_ref()`.
+
+I don't found occurence of `num.to_f64().unwrap()` and realization of `From<&DomainValue> for serde_json::Value` already has all necessary conversions.
+
 ### 4.5 — Thin handler bodies
 
 After all the above, each handler is ~20 lines:

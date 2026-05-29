@@ -148,9 +148,10 @@ impl From<DocumentInstance> for DocumentInstanceResponse {
             .fields
             .iter()
             .map(|(k, v)| {
+                let json_value = JsonValue::from(v);
                 (
-                    k.as_ref().to_owned(),
-                    AttributeResponse::Field(JsonValue::from(v)),
+                    to_api_key(k.as_ref()),
+                    AttributeResponse::Field(json_value),
                 )
             })
             .collect();
@@ -163,4 +164,16 @@ impl From<DocumentInstance> for DocumentInstanceResponse {
             fields,
         }
     }
+}
+
+fn to_api_key(snake: &str) -> String {
+    // "first_name" → "firstName"
+    let mut result = String::with_capacity(snake.len());
+    let mut next_upper = false;
+    for c in snake.chars() {
+        if c == '_' { next_upper = true; }
+        else if next_upper { result.extend(c.to_uppercase()); next_upper = false; }
+        else { result.push(c); }
+    }
+    result
 }
