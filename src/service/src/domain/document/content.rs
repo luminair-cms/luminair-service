@@ -336,7 +336,6 @@ impl From<&DomainValue> for serde_json::Value {
                 // Try to emit as a JSON number using the canonical decimal string.
                 // Falls back to a JSON string if the number cannot be represented
                 // (extremely rare for practical CMS content values).
-                // TODO: currently I don't understand difference between `serde_json::from_str(&d.to_string())` and `serde_json::Value::String(d.to_string())`
                 serde_json::from_str(&d.to_string())
                     .unwrap_or_else(|_| serde_json::Value::String(d.to_string()))
             }
