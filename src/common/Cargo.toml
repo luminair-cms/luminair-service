@@ -4,15 +4,12 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-anyhow = "1.0.100"
-futures = "0.3.31"
-nutype = { version = "0.6.2", features = ["regex","serde"] }
-regex = "1.12.2"
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "any", "migrate", "postgres", "uuid"] }
-tracing = "0.1"
-
-[dependencies.sea-query]
-version = "1.0.0-rc.31"
-features = ["backend-postgres", "with-chrono", "with-json", "with-rust_decimal", "with-uuid", "postgres-array", "postgres-interval", "postgres-vector"]
+anyhow = { workspace = true }
+futures = { workspace = true }
+nutype = { workspace = true }
+regex = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sqlx = { workspace = true }
+tracing = { workspace = true }
+sea-query = { workspace = true }
