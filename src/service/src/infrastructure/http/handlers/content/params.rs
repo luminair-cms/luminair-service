@@ -1,11 +1,37 @@
 use std::collections::HashSet;
 use std::str::FromStr;
-
+use serde::Deserialize;
 use luminair_common::{AttributeId, DocumentType, DocumentTypeApiId};
 
 use crate::application::AppState;
 use crate::domain::query::DocumentStatus;
 use crate::infrastructure::http::api::ApiError;
+use crate::infrastructure::http::handlers::content::PaginationParams;
+
+#[derive(Deserialize, Debug)]
+pub struct QueryParams {
+    /// A set of attribute IDs to populate in the response. If not provided, no relations will be populated.
+    pub populate: Option<HashSet<String>>,
+    /// Pagination parameters. Only eligible for find_all_documents query, not for find_by_id query.
+    /// If not provided, defaults to page=1 and page_size=25.
+    pub pagination: Option<PaginationParams>,
+    /// Document publication status: "published" (default) or "draft"
+    #[serde(default = "default_status")]
+    pub status: String,
+}
+
+impl QueryParams {
+    pub fn pagination_or_default(&self) -> (u16, u16) {
+        self.pagination
+            .as_ref()
+            .map(|p| (p.page, p.page_size))
+            .unwrap_or((1, 25))
+    }
+}
+
+fn default_status() -> String {
+    "published".to_string()
+}
 
 /// The wildcard token that, when supplied as the single `populate` value,
 /// expands to every owning relation declared on the document type.

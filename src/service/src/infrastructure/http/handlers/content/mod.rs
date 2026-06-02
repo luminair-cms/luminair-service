@@ -4,9 +4,7 @@ use crate::domain::document::DocumentInstanceId;
 use crate::domain::query::DocumentInstanceQuery;
 use crate::domain::repository::RelationOps;
 use crate::infrastructure::http::api::{ApiError, ApiSuccess};
-use crate::infrastructure::http::handlers::content::params::{
-    parse_populate, parse_status, resolve_document_type,
-};
+use crate::infrastructure::http::handlers::content::params::{parse_populate, parse_status, resolve_document_type, QueryParams};
 use crate::infrastructure::http::handlers::content::response::{
     ManyDocumentsResponse, OneDocumentResponse,
 };
@@ -18,26 +16,11 @@ use axum::response::IntoResponse;
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use crate::application::commands::FindDocumentsCommand;
 
 mod params;
 mod request;
 mod response;
-
-#[derive(Deserialize, Debug)]
-pub struct QueryParams {
-    /// A set of attribute IDs to populate in the response. If not provided, no relations will be populated.
-    pub populate: Option<HashSet<String>>,
-    /// Pagination parameters. Only eligible for find_all_documents query, not for find_by_id query.
-    /// If not provided, defaults to page=1 and page_size=25.
-    pub pagination: Option<PaginationParams>,
-    /// Document publication status: "published" (default) or "draft"
-    #[serde(default = "default_status")]
-    pub status: String,
-}
-
-fn default_status() -> String {
-    "published".to_string()
-}
 
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -91,36 +74,21 @@ pub async fn find_all_documents<S: AppState>(
 
     // Extract pagination params with defaults
     let (page, page_size) = params
-        .pagination
-        .as_ref()
-        .map(|p| (p.page, p.page_size))
-        .unwrap_or((1, 25));
+        .pagination_or_default();
+    
+    let cmd = FindDocumentsCommand {
+        document_type,
+        populate: parse_populate(params.populate, document_type)?,
+        query: DocumentInstanceQuery::new()
+            .paginate(page, page_size)
+            .with_status(parse_status(&params.status)?),
+    };
 
-    let populate_attributes = parse_populate(params.populate, document_type)?;
-    let status = parse_status(&params.status)?;
-
-    // Build query using builder pattern - pagination guards are enforced by the query
-    let query = DocumentInstanceQuery::new()
-        .paginate(page, page_size)
-        .with_status(status);
-
-    let documents: Vec<response::DocumentInstanceResponse> = state
-        .documents_service()
-        .find(document_type, populate_attributes, query)
-        .await
-        .map_err(|err| ApiError::from(err))?
-        .into_iter()
-        .map(Into::into)
-        .collect();
-
-    let total = documents.len();
+    let (documents, total) = state.documents_service().find(cmd).await?;
+    
     Ok(ApiSuccess::new(
         StatusCode::OK,
-        ManyDocumentsResponse {
-            data: documents,
-            meta: response::MetadataResponse { total },
-        },
-    ))
+        ManyDocumentsResponse::new(documents, page, page_size, total)))
 }
 
 pub async fn create_new_document<S: AppState>(
