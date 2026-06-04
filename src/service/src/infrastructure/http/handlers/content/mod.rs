@@ -2,7 +2,6 @@ use crate::application::AppState;
 use crate::application::service::DocumentsService;
 use crate::domain::document::DocumentInstanceId;
 use crate::domain::query::DocumentInstanceQuery;
-use crate::domain::repository::RelationOps;
 use crate::infrastructure::http::api::{ApiError, ApiSuccess};
 use crate::infrastructure::http::handlers::content::params::{parse_populate, parse_status, resolve_document_type, QueryParams};
 use crate::infrastructure::http::handlers::content::response::{
@@ -14,9 +13,7 @@ use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use serde::Deserialize;
-use std::collections::HashMap;
-use std::collections::HashSet;
-use crate::application::commands::FindDocumentsCommand;
+use crate::application::commands::{CreateDocumentCommand, DeleteDocumentCommand, FindByIdCommand, FindDocumentsCommand};
 
 mod params;
 mod request;
@@ -46,17 +43,18 @@ pub async fn find_document_by_id<S: AppState>(
     let document_instance_id = DocumentInstanceId::try_from(&id)?;
     let populate_attributes = parse_populate(params.populate, document_type)?;
     let status = parse_status(&params.status)?;
-
     let query = DocumentInstanceQuery::new().with_status(status);
+
+    let cmd = FindByIdCommand {
+        document_type,
+        document_instance_id,
+        populate: populate_attributes,
+        query
+    };
 
     let document_instance = state
         .documents_service()
-        .find_by_id(
-            document_type,
-            populate_attributes,
-            query,
-            document_instance_id,
-        )
+        .find_by_id(cmd)
         .await
         .map_err(|err| ApiError::from(err))?;
 
@@ -84,7 +82,8 @@ pub async fn find_all_documents<S: AppState>(
             .with_status(parse_status(&params.status)?),
     };
 
-    let (documents, total) = state.documents_service().find(cmd).await?;
+    let (documents, total) = state.documents_service()
+        .find(cmd).await?;
     
     Ok(ApiSuccess::new(
         StatusCode::OK,
@@ -105,9 +104,15 @@ pub async fn create_new_document<S: AppState>(
         },
     )?;
 
+    let cmd = CreateDocumentCommand {
+        document_type,
+        fields,
+        user_id: None
+    };
+
     let created_document_id = state
         .documents_service()
-        .create(document_type, fields)
+        .create(cmd)
         .await
         .map_err(|err| ApiError::from(err))?;
 
@@ -129,11 +134,16 @@ pub async fn delete_existing_document<S: AppState>(
     Path((api_type, id)): Path<(String, String)>,
 ) -> Result<impl IntoResponse, ApiError> {
     let document_type = resolve_document_type(&state, &api_type)?;
-    let instance_id = DocumentInstanceId::try_from(&id)?;
+    let document_instance_id = DocumentInstanceId::try_from(&id)?;
+
+    let cmd = DeleteDocumentCommand {
+        document_type,
+        document_instance_id
+    };
 
     state
         .documents_service()
-        .delete(document_type, instance_id)
+        .delete(cmd)
         .await
         .map_err(|err| ApiError::from(err))?;
 
@@ -151,46 +161,13 @@ pub async fn modify_relations<S: AppState>(
     Json(payload): Json<serde_json::Value>,
 ) -> Result<impl IntoResponse, ApiError> {
     let document_type = resolve_document_type(&state, &api_type)?;
-    let document_id = DocumentInstanceId::try_from(&id)?;
+    let document_instance_id = DocumentInstanceId::try_from(&id)?;
 
-    let data_obj = payload.as_object().ok_or(ApiError::UnprocessableEntity(
-        "body must be a JSON object".into(),
-    ))?;
-
-    let mut ops: HashMap<luminair_common::AttributeId, RelationOps> = HashMap::new();
-
-    for (field_name, field_value) in data_obj {
-        let attr_id = luminair_common::AttributeId::try_new(field_name).map_err(|_| {
-            ApiError::UnprocessableEntity(format!("Invalid relation field: {}", field_name))
-        })?;
-
-        let field_obj = field_value.as_object().ok_or_else(|| {
-            ApiError::UnprocessableEntity(format!("Field '{}' must be an object", field_name))
-        })?;
-
-        let connect = parse_ids_from_list(
-            field_obj
-                .get("connect")
-                .unwrap_or(&serde_json::Value::Array(vec![])),
-        )?;
-        let disconnect = parse_ids_from_list(
-            field_obj
-                .get("disconnect")
-                .unwrap_or(&serde_json::Value::Array(vec![])),
-        )?;
-
-        ops.insert(
-            attr_id,
-            RelationOps {
-                connect,
-                disconnect,
-            },
-        );
-    }
+    let cmd = request::parse_modify_relations_command(document_type, document_instance_id, &payload)?;
 
     state
         .documents_service()
-        .modify_relations(document_type, document_id, ops)
+        .modify_relations(cmd)
         .await
         .map_err(ApiError::from)?;
 

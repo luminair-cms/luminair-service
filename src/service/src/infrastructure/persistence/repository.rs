@@ -12,7 +12,8 @@ use futures::TryStreamExt;
 use luminair_common::database::Database;
 use luminair_common::{AttributeId, DocumentType, DocumentTypesRegistry, ID_FIELD_NAME, PUBLISHED_FIELD_NAME, REVISION_FIELD_NAME, UPDATED_FIELD_NAME, VERSION_FIELD_NAME};
 use sea_query::{DynIden, Expr};
-use sqlx::Row;
+use sea_query_sqlx::SqlxValues;
+use sqlx::{AssertSqlSafe, Row};
 use std::collections::HashMap;
 use uuid::Uuid;
 use crate::infrastructure::persistence::mapping::reader::row_to_document;
@@ -35,6 +36,10 @@ impl PostgresDocumentsRepository {
     }
 }
 
+fn sqlx_query_with<'q>(sql: String, values: SqlxValues) -> sqlx::query::Query<'q, sqlx::Postgres, SqlxValues> {
+    sqlx::query_with(AssertSqlSafe(sql), values)
+}
+
 impl DocumentsRepository for PostgresDocumentsRepository {
     async fn find(
         &self,
@@ -42,7 +47,7 @@ impl DocumentsRepository for PostgresDocumentsRepository {
         query: &DocumentInstanceQuery,
     ) -> Result<Vec<DocumentInstance>, RepositoryError> {
         let (sql, values) = query_find_document_by_criteria(document_type, query);
-        let query_object = sqlx::query_with(&sql, values);
+        let query_object = sqlx_query_with(sql, values);
 
         let mut rows = query_object.fetch(self.database.database_pool());
         let mut documents = Vec::new();
@@ -65,7 +70,7 @@ impl DocumentsRepository for PostgresDocumentsRepository {
         query: &DocumentInstanceQuery,
     ) -> Result<u64, RepositoryError> {
         let (sql, values) = query_count_documents(document_type, query);
-        let row = sqlx::query_with(&sql, values)
+        let row = sqlx_query_with(sql, values)
             .fetch_one(self.database.database_pool())
             .await
             .map_err(|e| RepositoryError::DatabaseError(e.to_string()))?;
@@ -82,7 +87,7 @@ impl DocumentsRepository for PostgresDocumentsRepository {
         query: &DocumentInstanceQuery,
     ) -> Result<Option<DocumentInstance>, RepositoryError> {
         let (sql, values) = query_find_document_by_id(document_type, id.0, query);
-        let query_object = sqlx::query_with(&sql, values);
+        let query_object = sqlx_query_with(sql, values);
 
         let mut rows = query_object.fetch(self.database.database_pool());
         let mut documents = Vec::new();
@@ -132,7 +137,7 @@ impl DocumentsRepository for PostgresDocumentsRepository {
                 attr_id,
                 params.clone(),
             );
-            let query_object = sqlx::query_with(&sql, values);
+            let query_object = sqlx_query_with(sql, values);
 
             // Group related docs by their owning main document id
             let mut grouped: HashMap<DatabaseRowId, Vec<DocumentInstance>> = HashMap::new();
@@ -196,7 +201,7 @@ impl DocumentsRepository for PostgresDocumentsRepository {
         }
 
         let (sql, values) = insert_document(document_type, params);
-        sqlx::query_with(&sql, values)
+        sqlx_query_with(sql, values)
             .execute(self.database.database_pool())
             .await
             .map_err(|e| RepositoryError::DatabaseError(e.to_string()))?;
@@ -239,7 +244,7 @@ impl DocumentsRepository for PostgresDocumentsRepository {
         }
 
         let (sql, values) = update_document(document_type, instance.document_id.0, column_values);
-        let result = sqlx::query_with(&sql, values)
+        let result = sqlx_query_with(sql, values)
             .execute(self.database.database_pool())
             .await
             .map_err(|e| RepositoryError::DatabaseError(e.to_string()))?;
@@ -256,7 +261,7 @@ impl DocumentsRepository for PostgresDocumentsRepository {
         id: DocumentInstanceId,
     ) -> Result<(), RepositoryError> {
         let (sql, values) = delete_document(document_type, id.0);
-        sqlx::query_with(&sql, values)
+        sqlx_query_with(sql, values)
             .execute(self.database.database_pool())
             .await
             .map_err(|e| RepositoryError::DatabaseError(e.to_string()))?;
@@ -297,7 +302,7 @@ impl DocumentsRepository for PostgresDocumentsRepository {
                         owning_row_id,
                         inverse_row_id,
                     );
-                    sqlx::query_with(&sql, values)
+                    sqlx_query_with(sql, values)
                         .execute(self.database.database_pool())
                         .await
                         .map_err(|e| RepositoryError::DatabaseError(e.to_string()))?;
@@ -314,7 +319,7 @@ impl DocumentsRepository for PostgresDocumentsRepository {
                         owning_row_id,
                         inverse_row_id,
                     );
-                    sqlx::query_with(&sql, values)
+                    sqlx_query_with(sql, values)
                         .execute(self.database.database_pool())
                         .await
                         .map_err(|e| RepositoryError::DatabaseError(e.to_string()))?;
@@ -334,7 +339,7 @@ impl PostgresDocumentsRepository {
         document_id: DocumentInstanceId,
     ) -> Result<DatabaseRowId, RepositoryError> {
         let (sql, values) = query_row_id_by_document_uuid(document_type, document_id.0);
-        let row = sqlx::query_with(&sql, values)
+        let row = sqlx_query_with(sql, values)
             .fetch_optional(self.database.database_pool())
             .await
             .map_err(|e| RepositoryError::DatabaseError(e.to_string()))?
@@ -355,7 +360,7 @@ impl PostgresDocumentsRepository {
             return Ok(vec![]);
         }
         let (sql, values) = query_row_ids_by_document_uuids(document_type, uuids);
-        let rows = sqlx::query_with(&sql, values)
+        let rows = sqlx_query_with(sql, values)
             .fetch_all(self.database.database_pool())
             .await
             .map_err(|e| RepositoryError::DatabaseError(e.to_string()))?;

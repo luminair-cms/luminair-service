@@ -78,7 +78,7 @@ impl<R: DocumentsRepository> DocumentsService for DocumentsServiceImpl<R> {
     async fn find_by_id(&self, cmd: FindByIdCommand) -> Result<Option<DocumentInstance>, ServiceError> {
         let opt = self
             .repository
-            .find_by_id(cmd.document_type, cmd.id, &cmd.query)
+            .find_by_id(cmd.document_type, cmd.document_instance_id, &cmd.query)
             .await?;
 
         // Wrap in a Vec to reuse the batch enrichment helper, then unwrap.
@@ -133,7 +133,7 @@ impl<R: DocumentsRepository> DocumentsService for DocumentsServiceImpl<R> {
     }
 
     async fn delete(&self, cmd: DeleteDocumentCommand) -> Result<(), ServiceError> {
-        self.repository.delete(cmd.document_type, cmd.document_id)
+        self.repository.delete(cmd.document_type, cmd.document_instance_id)
             .await
             .map_err(ServiceError::from)
     }

@@ -1,5 +1,4 @@
 use sea_query::{Condition, Expr, ExprTrait, Order, PostgresQueryBuilder, Query};
-use sea_query::extension::postgres::PgExpr;
 use sea_query_sqlx::{SqlxBinder, SqlxValues};
 use uuid::Uuid;
 use luminair_common::{DocumentType, DOCUMENT_ID_FIELD_NAME, ID_FIELD_NAME, PUBLISHED_FIELD_NAME};

@@ -13,7 +13,7 @@ pub struct FindDocumentsCommand {
 
 pub struct FindByIdCommand {
     pub document_type: &'static DocumentType,
-    pub id: DocumentInstanceId,
+    pub document_instance_id: DocumentInstanceId,
     pub populate: Option<Vec<AttributeId>>,
     pub query: DocumentInstanceQuery,
 }
@@ -33,7 +33,7 @@ pub struct UpdateDocumentCommand {
 
 pub struct DeleteDocumentCommand {
     pub document_type: &'static DocumentType,
-    pub document_id: DocumentInstanceId,
+    pub document_instance_id: DocumentInstanceId,
 }
 
 pub struct PublishDocumentCommand {

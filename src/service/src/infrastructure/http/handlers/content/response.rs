@@ -13,11 +13,11 @@ pub struct ManyDocumentsResponse {
     pub meta: MetadataResponse,
 }
 
-impl From<Vec<DocumentInstance>> for ManyDocumentsResponse {
-    fn from(value: Vec<DocumentInstance>) -> Self {
-        let meta = MetadataResponse { total: value.len() };
+impl ManyDocumentsResponse {
+    pub fn new(documents: Vec<DocumentInstance>, page: u16, page_size: u16, total: u64) -> Self {
+        let meta = MetadataResponse { page, page_size, total };
         Self {
-            data: value
+            data: documents
                 .into_iter()
                 .map(DocumentInstanceResponse::from)
                 .collect(),
@@ -28,7 +28,9 @@ impl From<Vec<DocumentInstance>> for ManyDocumentsResponse {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct MetadataResponse {
-    pub total: usize,
+    pub page: u16,
+    pub page_size: u16,
+    pub total: u64,
 }
 
 #[derive(Debug, Clone, Serialize)]

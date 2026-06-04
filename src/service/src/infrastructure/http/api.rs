@@ -3,7 +3,7 @@ use axum::Json;
 use axum::response::{IntoResponse, Response};
 use serde::Serialize;
 
-use crate::domain::repository::RepositoryError;
+use crate::application::error::ServiceError;
 
 // ApiSucess is a wrapper around a response that includes a status code.
 
@@ -38,51 +38,21 @@ impl From<anyhow::Error> for ApiError {
     }
 }
 
-impl From<RepositoryError> for ApiError {
-    fn from(value: RepositoryError) -> Self {
+impl From<ServiceError> for ApiError {
+    fn from(value: ServiceError) -> Self {
         match value {
-            RepositoryError::DocumentInstanceNotFound => {
-                Self::NotFound
-            }
-            RepositoryError::DocumentTypeNotFound => {
-                Self::NotFound
-            }
-            RepositoryError::ValidationFailed(cause) => {
-                Self::UnprocessableEntity(cause)
-            }
-            RepositoryError::UniqueViolation(cause) => {
-                Self::ConflictWithServerState(cause)
-            }
-            RepositoryError::DatabaseError(cause) => {
-                tracing::error!("{:?}", cause);
-                Self::InternalServerError("Database server error".to_string())
-            }
+            ServiceError::DocumentTypeNotFound
+            | ServiceError::DocumentNotFound
+            | ServiceError::RelationNotFound(_) => Self::NotFound,
+            ServiceError::NotOwningRelation(relation) => Self::UnprocessableEntity(
+                format!("Relation is not an owning relation: {}", relation),
+            ),
+            ServiceError::Validation(cause) => Self::UnprocessableEntity(cause.to_string()),
+            ServiceError::Conflict(cause) => Self::ConflictWithServerState(cause),
+            ServiceError::Internal(internal) => internal.into(),
         }
     }
 }
-
-/*
-impl From<CreateAuthorError> for ApiError {
-    fn from(e: CreateAuthorError) -> Self {
-        match e {
-            CreateAuthorError::Duplicate { name } => {
-                Self::UnprocessableEntity(format!("author with name {} already exists", name))
-            }
-            CreateAuthorError::Unknown(cause) => {
-                tracing::error!("{:?}\n{}", cause, cause.backtrace());
-                Self::InternalServerError("Internal server error".to_string())
-            }
-        }
-    }
-}
-
-impl From<AuthorNameEmptyError> for ApiError {
-    fn from(_: AuthorNameEmptyError) -> Self {
-        Self::UnprocessableEntity("author name cannot be empty".to_string())
-    }
-}
-
- */
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
