@@ -6,14 +6,6 @@ edition = "2024"
 [dependencies]
 luminair_common = { path = "../common", package = "common" }
 
-axum-prometheus = "0.10.0"
-rust_decimal = { version = "1.40", features = ["serde-float", "serde-with-float"] }
-serde-querystring = "=0.3.0"
-tower-http = { version = "0.6.6", features = ["add-extension", "trace"] }
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-email_address = "0.2.9"
-url = "2.5.8"
-
 anyhow = { workspace = true }
 thiserror = { workspace = true }
 axum = { workspace = true }
@@ -32,20 +24,14 @@ nutype = { workspace = true }
 uuid = { workspace = true }
 sea-query = { workspace = true }
 
+axum-prometheus = "0.10.0"
+rust_decimal = { version = "1.40", features = ["serde-float", "serde-with-float"] }
+serde-querystring = "=0.3.0"
+tower-http = { version = "0.6.6", features = ["add-extension", "trace"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+email_address = "0.2.9"
+url = "2.5.8"
+
 [dependencies.sea-query-sqlx]
 version = "0.9.1"
 features = ["sqlx-postgres", "postgres-array", "postgres-vector", "with-chrono", "with-json", "with-rust_decimal", "with-uuid"]
-
-[profile.release]
-# Optimization level:
-# 3 is the default for release, aiming for speed.
-# "s" or "z" can be used to optimize for binary size instead.
-opt-level = 3
-
-# Enables Link-Time Optimization (LTO), which performs whole-program analysis
-# and can lead to smaller, faster binaries. "fat" or true is the most aggressive.
-lto = true
-
-# Reduces the number of code generation units to 1 for more thorough optimization,
-# at the cost of significantly longer compile times.
-codegen-units = 1

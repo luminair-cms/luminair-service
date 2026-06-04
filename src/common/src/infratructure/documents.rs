@@ -4,7 +4,7 @@ use anyhow::{*, Context};
 use serde::Deserialize;
 
 use crate::{AttributeId, domain::{DocumentType, DocumentTypeId, DocumentTypesRegistry}, entities::{FieldType, DocumentField, DocumentKind, DocumentRelation, DocumentTitle, DocumentTypeInfo, DocumentTypeOptions, LocalizationId, LocalizationIdError, RelationType}, DocumentTypeApiId};
-use crate::entities::{FieldConstraint, IntegerSize};
+use crate::entities::FieldConstraint;
 
 pub fn load(schema_config_path: &str) -> Result<&'static dyn DocumentTypesRegistry, anyhow::Error> {
     let loaded = DocumentTypesRegistryAdapter::load(schema_config_path)?;
@@ -185,7 +185,7 @@ impl<'a> TryFrom<(&'a str, DocumentRecord<'a>)> for DocumentType {
                     required,
                     constraints,
                 } => {
-                    let mut field_type = *field_type;
+                    let field_type = *field_type;
 
                     let constraints_are_valid = constraints.iter().all(|constraint| 
                         constraint.is_applicable_for(field_type)

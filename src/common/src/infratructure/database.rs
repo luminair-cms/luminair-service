@@ -3,6 +3,7 @@ use std::time::Duration;
 
 use anyhow::Context;
 use serde::Deserialize;
+use sqlx::AssertSqlSafe;
 use sqlx::{
     Executor, PgPool,
     postgres::{PgConnectOptions, PgPoolOptions, PgSslMode},
@@ -91,8 +92,10 @@ impl Database {
         for ddl in queries {
             println!("{}", ddl);
 
+            let query = AssertSqlSafe(ddl);
+
             transaction
-                .execute(sqlx::query(&ddl))
+                .execute(query)
                 .await
                 .context(format!("failed to execute {} query", ctx))?;
         }
