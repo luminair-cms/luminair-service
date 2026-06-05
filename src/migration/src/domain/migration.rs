@@ -143,23 +143,39 @@ fn drop_table_ddl(schema: &str, table_name: &str) -> String {
 }
 
 fn drop_name_order(a: &str, b: &str) -> std::cmp::Ordering {
-    let a_is_relation = a.ends_with("_relation");
-    let b_is_relation = b.ends_with("_relation");
+    // Drop order: working relations < snapshot relations < snapshots < main tables
+    let a_is_working_relation = a.ends_with("_relation") && !a.contains("_relation_snapshots");
+    let b_is_working_relation = b.ends_with("_relation") && !b.contains("_relation_snapshots");
+    
+    let a_is_snapshot_relation = a.ends_with("_relation_snapshots");
+    let b_is_snapshot_relation = b.ends_with("_relation_snapshots");
+    
+    let a_is_snapshot = a.ends_with("_snapshots") && !a.ends_with("_relation_snapshots");
+    let b_is_snapshot = b.ends_with("_snapshots") && !b.ends_with("_relation_snapshots");
 
-    let a_is_identity = a.ends_with("_documents");
-    let b_is_identity = b.ends_with("_documents");
-
-    match (a_is_relation, b_is_relation) {
+    // Working relations drop first
+    match (a_is_working_relation, b_is_working_relation) {
+        (true, false) => return std::cmp::Ordering::Less,
+        (false, true) => return std::cmp::Ordering::Greater,
+        _ => {}
+    }
+    
+    // Then snapshot relations
+    match (a_is_snapshot_relation, b_is_snapshot_relation) {
+        (true, false) => return std::cmp::Ordering::Less,
+        (false, true) => return std::cmp::Ordering::Greater,
+        _ => {}
+    }
+    
+    // Then snapshot tables
+    match (a_is_snapshot, b_is_snapshot) {
         (true, false) => return std::cmp::Ordering::Less,
         (false, true) => return std::cmp::Ordering::Greater,
         _ => {}
     }
 
-    match (a_is_identity, b_is_identity) {
-        (true, false) => std::cmp::Ordering::Greater,
-        (false, true) => std::cmp::Ordering::Less,
-        _ => a.cmp(b),
-    }
+    // Main tables last (default alphabetical order)
+    a.cmp(b)
 }
 
 fn create_table_ddl(schema: &str, table: &Table) -> Vec<String> {
@@ -261,20 +277,11 @@ fn create_index_ddl(schema: &str, index: &Index) -> String {
 // returns database persistence for given documents schema, sorted conform dependency order
 fn documents_into_tables(documents: &dyn DocumentTypesRegistry) -> Vec<Table> {
     let mut tables = Vec::new();
-    let mut identity_tables = Vec::new();
-    let mut relation_tables = Vec::new();
 
     for d in documents.iterate() {
-        let d = DocumentTables::new(d, documents);
-        identity_tables.push(d.identity_table);
-        tables.push(d.collection_table);
-        relation_tables.extend(d.relation_tables);
+        let doc_tables = DocumentTables::new(d, documents);
+        tables.extend(doc_tables.tables);
     }
 
-    let mut result = Vec::new();
-    result.extend(identity_tables);
-    result.extend(tables);
-    result.extend(relation_tables);
-
-    result
+    tables
 }

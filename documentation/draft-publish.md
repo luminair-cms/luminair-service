@@ -2,187 +2,285 @@
 
 ## Overview
 
-Luminair implements a draft-and-publish workflow for document types that have `draftAndPublish` enabled in their schema options. This allows content creators to work on drafts before making them publicly available, providing a clean separation between work-in-progress and published content.
+Luminair implements a draft-and-publish workflow for document types that have `draftAndPublish` enabled in their schema options. This design uses a **main table + snapshots table** pattern to cleanly separate working/draft state from immutable published snapshots.
 
-## Core Concepts
+## Core Architecture
 
-### PublicationState
+### Main Table Pattern
 
-The `PublicationState` enum represents the current publication status of a document's content:
+Each document type with draft-and-publish support has:
+1. **Main table** — contains identity, current working copy, and audit metadata
+2. **Snapshots table** — immutable published snapshots, indexed by document and revision
 
-```rust
-pub enum PublicationState {
-    /// Still being edited
-    Draft { revision: i32 },
+Example for an `articles` type:
 
-    /// Published, changes create new revision
-    Published {
-        revision: i32,
-        published_at: DateTime<Utc>,
-        published_by: Option<UserId>,
-    },
-}
+#### Main Table: `articles`
+```sql
+CREATE TABLE articles (
+    document_id     uuid PRIMARY KEY,
+    status          text NOT NULL CHECK (status IN ('DRAFT', 'PUBLISHED', 'MODIFIED')),
+    created_at      timestamptz NOT NULL,
+    created_by_id   text NULL,
+    updated_at      timestamptz NOT NULL,
+    updated_by_id   text NULL,
+    version         integer NOT NULL,
+
+    -- current working content fields
+    title           text NULL,
+    body            text NULL
+);
 ```
 
-- **Draft**: Content is being edited and not yet published. `revision` holds the revision number of the last publication this draft is based on (`0` if the document has never been published).
-- **Published**: Content is live and publicly accessible. `revision` is the publication sequence number (1 for first publish, 2 for second, etc.). Includes the publication timestamp and the user who performed the action.
+#### Snapshots Table: `article_snapshots`
+```sql
+CREATE TABLE article_snapshots (
+    snapshot_id     bigserial PRIMARY KEY,
+    document_id     uuid NOT NULL REFERENCES articles(document_id) ON DELETE CASCADE,
+    revision        integer NOT NULL,
+    published_at    timestamptz NOT NULL,
+    published_by_id text NULL,
 
-### AuditTrail
+    -- immutable snapshot of content at publish time
+    title           text NULL,
+    body            text NULL,
 
-Separate from publication state, `AuditTrail` tracks system metadata for audit purposes:
-
-```rust
-pub struct AuditTrail {
-    pub created_at: DateTime<Utc>,
-    pub created_by: Option<UserId>,
-    pub updated_at: DateTime<Utc>,
-    pub updated_by: Option<UserId>,
-    pub version: i32,
-}
+    UNIQUE (document_id, revision)
+);
 ```
 
-## Workflow States
+### Key Concepts
 
-### Document Lifecycle
+- **Main Table** (`articles`): Single row per document, containing the identity and working/draft content. Mutated by editors.
+- **Snapshots Table** (`article_snapshots`): Immutable, append-only. Contains all historical published versions.
+- **status**: Tracks the document's current state:
+  - `DRAFT` — Never published, working on initial draft
+  - `PUBLISHED` — Has published snapshot(s), no pending changes
+  - `MODIFIED` — Has published snapshot(s), with pending draft changes
+- **version**: Incremented on every save (edit, publish). Tracks total modification count.
+- **revision**: Present only in snapshots. Publication sequence number (1, 2, 3, …).
 
-`revision` (publication counter) and `version` (save counter) are **independent**.
-They have different cadences and answer different questions:
-
-| Counter | Increments on | Question answered |
-|---------|---------------|-------------------|
-| `AuditTrail.version` | every save — edit, publish, unpublish | *How many times has this document been modified?* |
-| `PublicationState.revision` | publish only | *Which publication of this document is this?* |
-
-1. **Creation**: `DocumentContent::new` initialises `Draft { revision: 0 }`. `DocumentInstance::new` sets `AuditTrail.version = 1`. `revision = 0` means the document has never been published.
-2. **Editing**: Each save increments `AuditTrail.version`. `revision` is unchanged.
-3. **Publishing**: `revision` is incremented from its current value (first publish: 0 → 1, second: 1 → 2, …). `AuditTrail.version` is also incremented as this is a save operation. The two increments are independent.
-4. **Post-Publish Editing**: The document returns to `Draft { revision: N }` where `N` is the last published revision. Further edits increment only `AuditTrail.version`. `revision` stays at `N` until the next publish.
-5. **Unpublish** *(planned)*: Transitions `Published { revision: N }` → `Draft { revision: N }`, increments `AuditTrail.version`.
+## Document Lifecycle
 
 ### State Transitions
 
 ```
-Create:  Draft { rev: 0, version: 1 }
-Edit:    Draft { rev: 0, version: 2 }
-Edit:    Draft { rev: 0, version: 3 }
-Publish: Published { rev: 1, version: 4 }   ← rev: 0+1=1  version: 3+1=4 (independent)
-Edit:    Draft { rev: 1, version: 5 }       ← rev carries last published value
-Edit:    Draft { rev: 1, version: 6 }
-Publish: Published { rev: 2, version: 7 }   ← rev: 1+1=2  version: 6+1=7 (independent)
+Create:  status=DRAFT, version=1
+Edit:    status=DRAFT, version=2
+Edit:    status=DRAFT, version=3
+Publish: status=PUBLISHED, version=4, snapshot(revision=1) created
+Edit:    status=MODIFIED, version=5  ← changes to main table, snapshot unchanged
+Edit:    status=MODIFIED, version=6
+Publish: status=PUBLISHED, version=7, snapshot(revision=2) created
 ```
 
-## Key Differences: Revision vs Version
+### Operations
 
-| Aspect | `revision` (PublicationState) | `version` (AuditTrail) |
-|--------|-------------------------------|-------------------------|
-| **Purpose** | Publication sequence number — *which publish is this?* | Save sequence number — *how many times was this modified?* |
-| **Starting value** | 0 (never published) | 1 (first save on creation) |
-| **Increments on** | publish only | every save: edit, publish, unpublish |
-| **Relationship** | Independent of `version` | Independent of `revision` |
-| **In Draft state** | Holds the last published revision (0 if never published) | Always current |
-| **In Published state** | Monotonically increasing publication number (1, 2, 3…) | Always current |
-
-### Concrete Example
-
-```
-Op              PublicationState                  AuditTrail.version
-──────────────  ────────────────────────────────  ──────────────────
-Create          Draft { revision: 0 }             1
-Edit            Draft { revision: 0 }             2
-Edit            Draft { revision: 0 }             3
-Publish         Published { revision: 1 }         4   ← rev 0→1, ver 3→4 independently
-Edit            Draft { revision: 1 }             5   ← rev carries last published value
-Publish         Published { revision: 2 }         6   ← rev 1→2, ver 5→6 independently
-Edit            Draft { revision: 2 }             7
-Edit            Draft { revision: 2 }             8
-Publish         Published { revision: 3 }         9   ← rev 2→3, ver 8→9 independently
+#### Create Document
+```sql
+INSERT INTO articles (document_id, status, created_at, updated_at, version)
+VALUES ($document_id, 'DRAFT', now(), now(), 1);
 ```
 
-## Publishing Logic
-
-The `publish()` method on `DocumentInstance` handles the state transition:
-
-```rust
-pub fn publish(&mut self, user_id: Option<UserId>) -> Result<(), DocumentError> {
-    // Extract the current revision from the Draft state.
-    // The borrow ends here so we can mutate self below.
-    let current_revision = match &self.content.publication_state {
-        PublicationState::Draft { revision } => *revision,
-        PublicationState::Published { .. } => return Err(DocumentError::AlreadyPublished),
-    };
-
-    // Increment version (every save increments version).
-    self.audit.version += 1;
-
-    // Revision counter is independent: increment from the draft's last-known
-    // published revision, not from version.
-    self.content.publication_state = PublicationState::Published {
-        revision: current_revision + 1,
-        published_at: Utc::now(),
-        published_by: user_id,
-    };
-    Ok(())
-}
+#### Edit Document
+```sql
+UPDATE articles 
+SET updated_at = now(), 
+    updated_by_id = $user_id, 
+    version = version + 1,
+    title = $title,
+    body = $body
+WHERE document_id = $document_id;
 ```
 
-Key behaviors:
-- Only draft documents can be published.
-- `revision` and `version` are incremented independently. Publishing increments both, but for completely different reasons and from different base values.
-- `Published.revision` is incremented from `Draft.revision` (the last published revision), not from `version`.
-- `AuditTrail.version` is incremented because publish is a save operation, not because of any relationship to `revision`.
-- Edits increment only `AuditTrail.version`. `revision` in the `Draft` state is frozen at the last published value until the next publish.
-- Published documents cannot be published again (call `unpublish()` first).
+#### Publish Document
+
+**Step 1:** Insert snapshot
+```sql
+INSERT INTO article_snapshots (document_id, revision, published_at, published_by_id, title, body)
+VALUES ($document_id, $next_revision, now(), $user_id, $title, $body)
+RETURNING snapshot_id;
+```
+
+**Step 2:** Update main table status and version
+```sql
+UPDATE articles 
+SET status = 'PUBLISHED', 
+    version = version + 1,
+    updated_at = now(),
+    updated_by_id = $user_id
+WHERE document_id = $document_id;
+```
+
+## Relations Pattern
+
+Relations follow the same main + snapshots pattern, keeping draft and published relation sets separate and immutable.
+
+### Working Relations (Draft)
+```sql
+CREATE TABLE article_categories (
+    owning_document_id  uuid NOT NULL REFERENCES articles(document_id) ON DELETE CASCADE,
+    target_document_id  uuid NOT NULL REFERENCES category_documents(document_id) ON DELETE CASCADE,
+    PRIMARY KEY (owning_document_id, target_document_id)
+);
+```
+
+### Published Relations (Snapshots)
+```sql
+CREATE TABLE article_snapshot_categories (
+    snapshot_id        bigint NOT NULL REFERENCES article_snapshots(snapshot_id) ON DELETE CASCADE,
+    target_document_id uuid NOT NULL REFERENCES category_documents(document_id) ON DELETE CASCADE,
+    PRIMARY KEY (snapshot_id, target_document_id)
+);
+```
+
+### Relation Tables Pairing
+
+- `articles` ↔ `article_categories` (working/draft relation set)
+- `article_snapshots` ↔ `article_snapshot_categories` (published relation set)
+
+### Relation Operations
+
+#### Add to Draft Relations
+```sql
+INSERT INTO article_categories (owning_document_id, target_document_id)
+VALUES ($document_id, $target_document_id);
+```
+
+#### Publish Relations
+
+When publishing, freeze the current draft relations into the snapshot:
+
+```sql
+INSERT INTO article_snapshot_categories (snapshot_id, target_document_id)
+SELECT $snapshot_id, target_document_id
+FROM article_categories
+WHERE owning_document_id = $document_id;
+```
+
+## Query Patterns
+
+### Key Principle
+
+**No mixed states.** Each query touches exactly one pair of tables (main + relations OR snapshots + snapshot-relations) and never needs a `status` filter.
+
+### Reading Published Content (Public API)
+
+```sql
+SELECT 
+    s.snapshot_id,
+    s.document_id,
+    s.revision,
+    s.published_at,
+    s.published_by_id,
+    s.title,
+    s.body,
+    sc.target_document_id
+FROM article_snapshots s
+LEFT JOIN article_snapshot_categories sc ON sc.snapshot_id = s.snapshot_id
+WHERE s.document_id = $1
+  AND s.revision = (
+      SELECT MAX(revision) FROM article_snapshots WHERE document_id = $1
+  );
+```
+
+This query:
+- Reads only snapshots (immutable, published content)
+- No `status` filter needed — snapshots table contains only published content
+- Efficient for public API endpoints
+- Can be cached indefinitely per snapshot
+
+### Reading Working Content (Editor API)
+
+```sql
+SELECT 
+    a.document_id,
+    a.status,
+    a.created_at,
+    a.updated_at,
+    a.version,
+    a.title,
+    a.body,
+    ac.target_document_id
+FROM articles a
+LEFT JOIN article_categories ac ON ac.owning_document_id = a.document_id
+WHERE a.document_id = $1;
+```
+
+This query:
+- Reads only main tables (working content)
+- All draft, MODIFIED, and DRAFT content visible
+- Used by editors to view and edit current working copy
+- Can safely display alongside publication history from snapshots table
 
 ## API Considerations
 
-### Content Visibility
+### Content Endpoints
 
-- **Draft content**: Only visible to content editors/administrators
-- **Published content**: Publicly accessible via API endpoints
+- **Public API** (`GET /articles?status=published` or `GET /articles/:id`): Reads from snapshots table, returns latest published version
+- **Editor API** (`GET /articles?status=draft`): Reads from main table, returns the latest editorial state (draft row if unpublished changes exist, otherwise the published row)
+- **History API** (`GET /articles/:id/revisions`): Reads from snapshots table, shows all published versions
 
-### Query Parameters
+### Status Field Usage
 
-APIs should support filtering by publication state:
-- `?status=published` — Return published versions only (default). Used by public api
-- `?status=draft`:
-   - For filter many documents. Returns a draft version if it exists.  Use case: give me documents what need to approve
-   - For find by ID: Returns a draft version if it exists. Also returns a published version. Use case: UI for editing a single document
+The `status` field on the main table indicates editorial workflow state:
+- `DRAFT` — No published versions exist, document is still being created
+- `PUBLISHED` — Document has one or more published versions, no pending changes
+- `MODIFIED` — Document has published versions AND pending draft changes awaiting publish
 
-### Relations and Draft-Publish
+### Filtering Documents
 
-When draft-and-publish is enabled for document types, relations between documents also respect publication states.
-A draft document can work with relation values independently from the currently published version.
+When listing documents, filter by purpose:
 
-For connected collections (`hasMany` / `hasOne` owning relations):
+```sql
+-- Show draft documents awaiting first publication
+SELECT a.* FROM articles a WHERE a.status = 'DRAFT';
 
-- relation additions and removals are applied against the draft version of the owning document
-- the draft relation set may include references to both draft and published related documents
-- when the owning document is published, the relation set is synchronized to the published row
-- published documents should expose a stable relation graph representing the last published state
+-- Show documents with pending changes
+SELECT a.* FROM articles a WHERE a.status = 'MODIFIED';
 
-This means connected collections are versioned along with the document instance:
-- the same `document_id` may have multiple main table rows (draft + published)
-- relation rows point at the concrete main row IDs (`owning_id` / `inverse_id`)
-- editing relations in draft does not immediately change published visibility
+-- Show all published documents (snapshot-based)
+SELECT DISTINCT s.document_id, MAX(s.revision) as latest_revision
+FROM article_snapshots s
+GROUP BY s.document_id;
+```
 
-If the related document type also has draft-and-publish enabled, then the service should resolve relation visibility according to each document's own publication state. In practice, published documents and published related items are what end users see, while editors can preview draft relation changes before publishing.
+## Relations and Draft-Publish Behavior
 
-### Clarification rules for connections and Draft-Publish
+### Principle: Relations are Versioned Per Document
 
-1. **Relations are versioned per document, not per relation.**
+- A relation change is part of the owning document's draft
+- Publishing the owning document "approves" the relation change
+- The related document's publication state is independent
 
-A relation addition/removal is part of the owning document's draft. Publishing the owning document is what "approves" the relation change. The related document's state is irrelevant to this.
+### Editing Relations
 
-2. **At query time, resolve visibility by the requester's context.**
+Relations are always edited against the working copy:
+```sql
+-- Editor adds a category to draft
+INSERT INTO article_categories (owning_document_id, target_document_id)
+VALUES ($article_id, $category_id);
+```
 
-status=published → only return relations where the related document also has a published row
-status=draft → return all relations including those pointing at draft-only targets
+- The category can be in any state (DRAFT, PUBLISHED, MODIFIED)
+- The relation change is not visible to the public until the article is published
 
-This is already implied in your draft-publish.md but worth making it an explicit rule rather than a footnote.
+### Publishing with Relations
 
-3. **Connecting two published documents does NOT change their publication state.**
+When publishing, the relation set is frozen:
+```sql
+-- 1. Create snapshot (see Publish Document section)
+-- 2. Freeze draft relations into snapshot
+INSERT INTO article_snapshot_categories (snapshot_id, target_document_id)
+SELECT $snapshot_id, target_document_id
+FROM article_categories
+WHERE owning_document_id = $document_id;
+-- 3. Update main table status
+```
 
-The connection is recorded on the owning document's draft row. If that document has no pending draft yet, creating the relation implicitly creates a new draft revision. Publishing that draft then makes the connection visible in the published graph. This is the key insight — you never mutate the published row directly.
+After publish:
+- Main table relations remain unchanged (for future editing)
+- Snapshot captures the frozen relation set at publish time
+- Public API reads snapshot relations for a stable, versioned view
 
 ## Schema Configuration
 
@@ -196,14 +294,13 @@ Document types enable draft-and-publish in their schema:
 }
 ```
 
-When `draftAndPublish` is `false` or omitted, documents are always considered published and the publication state tracking is disabled.
+When `draftAndPublish` is `false` or omitted, a snapshots table is still created to keep the schema consistent and support published history, but documents are always considered published.
 
-## Future Extensions
+## Benefits of This Approach
 
-The current implementation provides the foundation for more advanced publishing workflows:
-
-- **Unpublish**: Transition from published back to draft
-- **Scheduled Publishing**: Publish at a future date/time
-- **Content Approval**: Multi-step approval workflows
-- **Version History**: Access to all historical revisions
-- **Content Preview**: Preview unpublished changes
+- **Immutability**: Published snapshots are append-only and never mutated
+- **Performance**: Public queries read only snapshots, enabling caching and optimization
+- **Auditability**: Complete history available in snapshots table
+- **Simplicity**: No complex enum states or publication state tracking logic
+- **No mixed states**: Each query context (editor vs public) uses appropriate table pair
+- **Efficient relations**: Frozen relation snapshots at publish time prevent query-time filtering

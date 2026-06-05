@@ -10,7 +10,7 @@ pub struct Table {
 }
 
 /// Represents one column in the database table
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Column {
     pub name: String,
     pub column_type: ColumnType,
