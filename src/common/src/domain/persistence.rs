@@ -61,3 +61,41 @@ impl <'a> From <TableNameProvider<'a>> for TableRef {
         )
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{DocumentTypeId, AttributeId};
+    use crate::entities::{DocumentKind, DocumentTitle, DocumentTypeInfo};
+
+    fn make_doc(id: &str) -> DocumentType {
+        DocumentType {
+            id: DocumentTypeId::try_new(id).unwrap(),
+            kind: DocumentKind::Collection,
+            info: DocumentTypeInfo {
+                title: DocumentTitle::try_new("T").unwrap(),
+                singular_name: DocumentTypeId::try_new(id).unwrap(),
+                plural_name: DocumentTypeId::try_new(format!("{}s", id).as_str()).unwrap(),
+                description: None,
+            },
+            options: None,
+            fields: Default::default(),
+            relations: Default::default(),
+        }
+    }
+
+    #[test]
+    fn table_name_and_qualified() {
+        let doc = make_doc("product");
+        let provider = TableNameProvider::from(&doc);
+        assert_eq!(provider.table_name(), "product");
+        assert_eq!(provider.alias(), "m");
+        assert_eq!(provider.qualified(), "product AS \"m\"");
+
+        let attr = AttributeId::try_new("owner").unwrap();
+        let rel = TableNameProvider::from((&doc, &attr));
+        assert_eq!(rel.table_name(), "product_owner_relation");
+        assert_eq!(rel.alias(), "r");
+        assert_eq!(rel.qualified(), "product_owner_relation AS \"r\"");
+    }
+}

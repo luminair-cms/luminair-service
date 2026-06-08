@@ -104,3 +104,32 @@ impl AttributeId {
         self.as_ref().replace("-", "_")
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn document_type_id_normalizes_hyphens() {
+        let id = DocumentTypeId::try_new("my-document").expect("valid id");
+        assert_eq!(id.normalized(), "my_document");
+    }
+
+    #[test]
+    fn attribute_id_normalizes_hyphens() {
+        let id = AttributeId::try_new("my-attribute").expect("valid id");
+        assert_eq!(id.normalized(), "my_attribute");
+    }
+
+    #[test]
+    fn document_type_id_rejects_reserved_prefixes() {
+        let result = DocumentTypeId::try_new("luminair_reserved");
+        assert!(result.is_err(), "reserved prefix should be invalid");
+    }
+
+    #[test]
+    fn document_type_id_rejects_invalid_symbols() {
+        let result = DocumentTypeId::try_new("invalid symbol");
+        assert!(result.is_err(), "spaces are not allowed in document type ids");
+    }
+}

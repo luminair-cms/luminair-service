@@ -105,6 +105,24 @@ fn is_json(path: &Path) -> bool {
     path.extension().map(|ext| ext == "json").unwrap_or(false)
 }
 
+#[cfg(test)]
+mod tests {
+        use super::*;
+        use std::fs::{self, File};
+        use std::io::Write;
+        use std::path::PathBuf;
+
+        #[test]
+        fn is_json_checks_extension() {
+                assert!(is_json(&Path::new("/tmp/a.json")));
+                assert!(!is_json(&Path::new("/tmp/a.txt")));
+                assert!(!is_json(&Path::new("/tmp/a")));
+        }
+
+        // The more comprehensive parsing test was moved to an integration test using
+        // the `tempfile` crate to ensure safe cleanup.
+}
+
 // internal structs for Deserializing
 
 #[derive(Clone, Debug, Deserialize)]

@@ -328,3 +328,109 @@ impl Hash for DocumentRelation {
         self.id.hash(state);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn fieldtype_predicates() {
+        assert!(FieldType::Integer(IntegerSize::Int32).is_integer());
+        assert!(FieldType::Integer(IntegerSize::Int16).is_number());
+        assert!(FieldType::Decimal { precision: 10, scale: 2 }.is_number());
+        assert!(FieldType::Text.is_text());
+        assert!(FieldType::Uid.is_text());
+    }
+
+    #[test]
+    fn fieldconstraint_applicability() {
+        assert!(FieldConstraint::Pattern("x".into()).is_applicable_for(FieldType::Text));
+        assert!(FieldConstraint::MinimalLength(1).is_applicable_for(FieldType::Uid));
+        assert!(!FieldConstraint::MinimalLength(1).is_applicable_for(FieldType::Integer(IntegerSize::Int32)));
+        assert!(FieldConstraint::MinimalIntegerValue(0).is_applicable_for(FieldType::Integer(IntegerSize::Int32)));
+    }
+
+    #[test]
+    fn relation_type_flags() {
+        assert!(RelationType::HasOne.is_owning());
+        assert!(RelationType::HasMany.is_owning());
+        assert!(RelationType::BelongsToOne.is_inverse());
+        assert!(RelationType::BelongsToMany.is_inverse());
+    }
+
+    #[test]
+    fn document_helpers_and_ordering_and_hashing() {
+        // build a DocumentType with a few fields
+        let title = DocumentTitle::try_new("My Type").unwrap();
+        let singular = DocumentTypeId::try_new("mytype").unwrap();
+        let plural = DocumentTypeId::try_new("mytypes").unwrap();
+        let info = DocumentTypeInfo {
+            title,
+            singular_name: singular.clone(),
+            plural_name: plural,
+            description: None,
+        };
+
+        let mut fields = std::collections::HashSet::new();
+
+        let id1 = AttributeId::try_new("a1").unwrap();
+        let id2 = AttributeId::try_new("a2").unwrap();
+
+        let f1 = DocumentField {
+            id: id1.clone(),
+            field_type: FieldType::Text,
+            unique: true,
+            required: false,
+            constraints: Default::default(),
+        };
+
+        let f2 = DocumentField {
+            id: id2.clone(),
+            field_type: FieldType::Integer(IntegerSize::Int32),
+            unique: false,
+            required: false,
+            constraints: Default::default(),
+        };
+
+        fields.insert(f1);
+        fields.insert(f2);
+
+        let doc = DocumentType {
+            id: DocumentTypeId::try_new("mytype").unwrap(),
+            kind: DocumentKind::Collection,
+            info,
+            options: None,
+            fields,
+            relations: Default::default(),
+        };
+
+        // has_localization false when options None
+        assert!(!doc.has_localization());
+        // has_draft_and_publish false when options None
+        assert!(!doc.has_draft_and_publish());
+
+        // ordered fields: unique first (id1), then integer (id2)
+        let ordered = doc.ordered_fields();
+        assert_eq!(ordered[0].id, id1);
+        assert_eq!(ordered[1].id, id2);
+
+        // hashing and equality: two docs with same id are equal
+        let mut set = std::collections::HashSet::new();
+        set.insert(doc);
+        let dup = DocumentType {
+            id: DocumentTypeId::try_new("mytype").unwrap(),
+            kind: DocumentKind::Collection,
+            info: DocumentTypeInfo {
+                title: DocumentTitle::try_new("Other").unwrap(),
+                singular_name: DocumentTypeId::try_new("mytype").unwrap(),
+                plural_name: DocumentTypeId::try_new("mytypes").unwrap(),
+                description: None,
+            },
+            options: None,
+            fields: Default::default(),
+            relations: Default::default(),
+        };
+        // inserting duplicate by id should not increase set size
+        assert!(!set.insert(dup));
+    }
+}

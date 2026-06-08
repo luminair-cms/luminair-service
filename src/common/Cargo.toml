@@ -13,3 +13,6 @@ serde_json = { workspace = true }
 sqlx = { workspace = true }
 tracing = { workspace = true }
 sea-query = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"

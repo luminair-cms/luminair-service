@@ -1,6 +1,8 @@
 use std::collections::HashSet;
 
 use luminair_common::database::Database;
+use anyhow::Context;
+use sqlx::Executor;
 
 use crate::domain::persistence::Persistence;
 
@@ -46,7 +48,7 @@ impl Persistence for PersistenceAdapter {
         while let Some(step) = stream.next().await {
             let ctx = step.ctx();
             let ddls = step.ddls();
-            self.database.execute_in_transaction(ddls, ctx).await?;
+            execute_in_transaction(self.database, ddls, ctx).await?;
         }
     
         Ok(())
@@ -55,4 +57,31 @@ impl Persistence for PersistenceAdapter {
     fn database_schema(&self) -> &str {
         self.database.database_schema()
     }
+}
+
+async fn execute_in_transaction(
+    database: &luminair_common::database::Database,
+    queries: Vec<String>,
+    ctx: &'static str,
+) -> Result<(), anyhow::Error> {
+    let mut transaction = database
+        .database_pool()
+        .begin()
+        .await
+        .context(format!("failed to start {} transaction", ctx))?;
+
+    for ddl in queries {
+        let query = sqlx::AssertSqlSafe(ddl);
+        transaction
+            .execute(query)
+            .await
+            .context(format!("failed to execute {} query", ctx))?;
+    }
+
+    transaction
+        .commit()
+        .await
+        .context(format!("failed to commit {} transaction", ctx))?;
+
+    Ok(())
 }

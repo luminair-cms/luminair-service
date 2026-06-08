@@ -3,9 +3,8 @@ use std::time::Duration;
 
 use anyhow::Context;
 use serde::Deserialize;
-use sqlx::AssertSqlSafe;
 use sqlx::{
-    Executor, PgPool,
+    PgPool,
     postgres::{PgConnectOptions, PgPoolOptions, PgSslMode},
 };
 
@@ -74,38 +73,6 @@ impl Database {
             database_pool: pool,
             database_schema: settings.schema.to_owned(),
         })
-    }
-
-    pub async fn execute_in_transaction(
-        &self,
-        queries: Vec<String>,
-        ctx: &'static str,
-    ) -> Result<(), anyhow::Error> {
-        let mut transaction = self
-            .database_pool
-            .begin()
-            .await
-            .context(format!("failed to start {} transaction", ctx))?;
-
-        println!("{}", ctx);
-
-        for ddl in queries {
-            println!("{}", ddl);
-
-            let query = AssertSqlSafe(ddl);
-
-            transaction
-                .execute(query)
-                .await
-                .context(format!("failed to execute {} query", ctx))?;
-        }
-
-        transaction
-            .commit()
-            .await
-            .context(format!("failed to commit {} transaction", ctx))?;
-
-        Ok(())
     }
 
     pub fn database_pool(&self) -> &PgPool {
