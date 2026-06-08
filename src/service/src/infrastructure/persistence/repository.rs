@@ -10,8 +10,8 @@ use crate::{
 
 use futures::TryStreamExt;
 use luminair_common::database::Database;
-use luminair_common::{AttributeId, DocumentType, DocumentTypesRegistry, ID_FIELD_NAME, PUBLISHED_FIELD_NAME, REVISION_FIELD_NAME, UPDATED_FIELD_NAME, VERSION_FIELD_NAME};
-use sea_query::{DynIden, Expr};
+use luminair_common::{AttributeId, DocumentType, DocumentTypesRegistry, DOCUMENT_ID_FIELD_NAME, ID_FIELD_NAME, STATUS_FIELD_NAME, PUBLISHED_BY_FIELD_NAME, PUBLISHED_FIELD_NAME, REVISION_FIELD_NAME, UPDATED_FIELD_NAME, VERSION_FIELD_NAME};
+use sea_query::{DynIden, Expr, Query};
 use sea_query_sqlx::SqlxValues;
 use sqlx::{AssertSqlSafe, Row};
 use std::collections::HashMap;
@@ -171,27 +171,11 @@ impl DocumentsRepository for PostgresDocumentsRepository {
     ) -> Result<(), RepositoryError> {
         let mut params: Vec<Expr> = vec![
             instance.document_id.0.into(),
+            Expr::from(self.main_status_value(document_type, instance).to_string()),
             instance.audit.created_at.into(),
             instance.audit.updated_at.into(),
             instance.audit.version.into(),
         ];
-
-        if document_type.has_draft_and_publish() {
-            match &instance.content.publication_state {
-                PublicationState::Published {
-                    revision,
-                    published_at,
-                    ..
-                } => {
-                    params.push((*published_at).into());
-                    params.push((*revision).into());
-                }
-                PublicationState::Draft { revision } => {
-                    params.push(Expr::null());
-                    params.push((*revision).into());
-                }
-            }
-        }
 
         for field in document_type.fields.iter() {
             match instance.content.fields.get(&field.id) {
@@ -213,27 +197,21 @@ impl DocumentsRepository for PostgresDocumentsRepository {
         document_type: &DocumentType,
         instance: &DocumentInstance,
     ) -> Result<(), RepositoryError> {
+        if document_type.has_draft_and_publish() {
+            if let PublicationState::Published { .. } = &instance.content.publication_state {
+                self.store_snapshot_for_published_instance(document_type, instance)
+                    .await?;
+            }
+        }
+
         let mut column_values: Vec<(DynIden, Expr)> = vec![
             (UPDATED_FIELD_NAME.into(), instance.audit.updated_at.into()),
             (VERSION_FIELD_NAME.into(), instance.audit.version.into()),
+            (
+                STATUS_FIELD_NAME.into(),
+                Expr::from(self.main_status_value(document_type, instance).to_string()),
+            ),
         ];
-
-        if document_type.has_draft_and_publish() {
-            match &instance.content.publication_state {
-                PublicationState::Published {
-                    revision,
-                    published_at,
-                    ..
-                } => {
-                    column_values.push((PUBLISHED_FIELD_NAME.into(), (*published_at).into()));
-                    column_values.push((REVISION_FIELD_NAME.into(), (*revision).into()));
-                }
-                PublicationState::Draft { revision } => {
-                    column_values.push((PUBLISHED_FIELD_NAME.into(), Expr::null()));
-                    column_values.push((REVISION_FIELD_NAME.into(), (*revision).into()));
-                }
-            }
-        }
 
         for field in document_type.fields.iter() {
             let expr = match instance.content.fields.get(&field.id) {
@@ -371,5 +349,85 @@ impl PostgresDocumentsRepository {
                     .map_err(|e| RepositoryError::DatabaseError(e.to_string()))
             })
             .collect()
+    }
+
+    async fn store_snapshot_for_published_instance(
+        &self,
+        document_type: &DocumentType,
+        instance: &DocumentInstance,
+    ) -> Result<(), RepositoryError> {
+        let (sql, values) = self.build_snapshot_insert(document_type, instance);
+        sqlx_query_with(sql, values)
+            .execute(self.database.database_pool())
+            .await
+            .map_err(|e| RepositoryError::DatabaseError(e.to_string()))?;
+        Ok(())
+    }
+
+    fn build_snapshot_insert(
+        &self,
+        document_type: &DocumentType,
+        instance: &DocumentInstance,
+    ) -> (String, sea_query_sqlx::SqlxValues) {
+        let table_name = format!("{}_snapshots", document_type.id.normalized());
+        let table = sea_query::TableName::from(table_name);
+
+        let mut columns = vec![
+            DOCUMENT_ID_FIELD_NAME.into(),
+            PUBLISHED_FIELD_NAME.into(),
+            PUBLISHED_BY_FIELD_NAME.into(),
+            REVISION_FIELD_NAME.into(),
+        ];
+
+        for field in &document_type.fields {
+            columns.push(field.id.normalized().into());
+        }
+
+        let mut values = vec![
+            instance.document_id.0.into(),
+            match &instance.content.publication_state {
+                PublicationState::Published { published_at, .. } => Expr::from(*published_at),
+                _ => Expr::null(),
+            },
+            match &instance.content.publication_state {
+                PublicationState::Published { published_by, .. } => {
+                    if let Some(user_id) = published_by {
+                        Expr::from(user_id.to_string())
+                    } else {
+                        Expr::null()
+                    }
+                }
+                _ => Expr::null(),
+            },
+            match &instance.content.publication_state {
+                PublicationState::Published { revision, .. }
+                | PublicationState::Draft { revision } => (*revision).into(),
+            },
+        ];
+
+        for field in &document_type.fields {
+            let expr = match instance.content.fields.get(&field.id) {
+                Some(val) => val.into(),
+                None => Expr::null(),
+            };
+            values.push(expr);
+        }
+
+        Query::insert()
+            .into_table(table)
+            .columns(columns)
+            .values_panic(values)
+            .build_sqlx(sea_query::PostgresQueryBuilder)
+    }
+
+    fn main_status_value(
+        &self,
+        _document_type: &DocumentType,
+        instance: &DocumentInstance,
+    ) -> String {
+        match &instance.content.publication_state {
+            PublicationState::Published { .. } => "PUBLISHED".to_string(),
+            PublicationState::Draft { .. } => "DRAFT".to_string(),
+        }
     }
 }
