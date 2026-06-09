@@ -108,9 +108,7 @@ fn is_json(path: &Path) -> bool {
 #[cfg(test)]
 mod tests {
         use super::*;
-        use std::fs::{self, File};
-        use std::io::Write;
-        use std::path::PathBuf;
+    
 
         #[test]
         fn is_json_checks_extension() {
