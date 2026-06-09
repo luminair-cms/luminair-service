@@ -25,6 +25,11 @@ CREATE TABLE articles (
     updated_by_id   text NULL,
     version         integer NOT NULL,
 
+    -- publication metadata (redundant to enable single-table queries)
+    revision        integer NOT NULL DEFAULT 0,
+    published_at    timestamptz NULL,
+    published_by_id text NULL,
+
     -- current working content fields
     title           text NULL,
     body            text NULL
@@ -64,21 +69,20 @@ CREATE TABLE article_snapshots (
 ### State Transitions
 
 ```
-Create:  status=DRAFT, version=1
-Edit:    status=DRAFT, version=2
-Edit:    status=DRAFT, version=3
-Publish: status=PUBLISHED, version=4, snapshot(revision=1) created
-Edit:    status=MODIFIED, version=5  ← changes to main table, snapshot unchanged
-Edit:    status=MODIFIED, version=6
-Publish: status=PUBLISHED, version=7, snapshot(revision=2) created
+Create:  status=DRAFT,     version=1, revision=0, published_at=NULL
+Edit:    status=DRAFT,     version=2, revision=0, published_at=NULL
+Publish: status=PUBLISHED, version=3, revision=1, published_at=now()   ← snapshot revision=1 created
+Edit:    status=MODIFIED,  version=4, revision=1, published_at=NULL    ← edits to main, snapshot unchanged
+Edit:    status=MODIFIED,  version=5, revision=1, published_at=NULL
+Publish: status=PUBLISHED, version=6, revision=2, published_at=now()   ← snapshot revision=2 created
 ```
 
 ### Operations
 
 #### Create Document
 ```sql
-INSERT INTO articles (document_id, status, created_at, updated_at, version)
-VALUES ($document_id, 'DRAFT', now(), now(), 1);
+INSERT INTO articles (document_id, status, created_at, updated_at, version, revision, published_at, published_by_id)
+VALUES ($document_id, 'DRAFT', now(), now(), 1, 0, NULL, NULL);
 ```
 
 #### Edit Document
@@ -87,6 +91,9 @@ UPDATE articles
 SET updated_at = now(), 
     updated_by_id = $user_id, 
     version = version + 1,
+    status = CASE WHEN revision = 0 THEN 'DRAFT' ELSE 'MODIFIED' END,
+    published_at = NULL,
+    published_by_id = NULL,
     title = $title,
     body = $body
 WHERE document_id = $document_id;
@@ -101,11 +108,14 @@ VALUES ($document_id, $next_revision, now(), $user_id, $title, $body)
 RETURNING snapshot_id;
 ```
 
-**Step 2:** Update main table status and version
+**Step 2:** Update main table status, version, and publication metadata
 ```sql
 UPDATE articles 
 SET status = 'PUBLISHED', 
     version = version + 1,
+    revision = $next_revision,
+    published_at = now(),
+    published_by_id = $user_id,
     updated_at = now(),
     updated_by_id = $user_id
 WHERE document_id = $document_id;
@@ -119,7 +129,7 @@ Relations follow the same main + snapshots pattern, keeping draft and published 
 ```sql
 CREATE TABLE article_categories (
     owning_document_id  uuid NOT NULL REFERENCES articles(document_id) ON DELETE CASCADE,
-    target_document_id  uuid NOT NULL REFERENCES category_documents(document_id) ON DELETE CASCADE,
+    target_document_id  uuid NOT NULL REFERENCES categories(document_id) ON DELETE CASCADE,
     PRIMARY KEY (owning_document_id, target_document_id)
 );
 ```
@@ -128,7 +138,7 @@ CREATE TABLE article_categories (
 ```sql
 CREATE TABLE article_snapshot_categories (
     snapshot_id        bigint NOT NULL REFERENCES article_snapshots(snapshot_id) ON DELETE CASCADE,
-    target_document_id uuid NOT NULL REFERENCES category_documents(document_id) ON DELETE CASCADE,
+    target_document_id uuid NOT NULL REFERENCES categories(document_id) ON DELETE CASCADE,
     PRIMARY KEY (snapshot_id, target_document_id)
 );
 ```
@@ -198,6 +208,9 @@ SELECT
     a.created_at,
     a.updated_at,
     a.version,
+    a.revision,
+    a.published_at,
+    a.published_by_id,
     a.title,
     a.body,
     ac.target_document_id

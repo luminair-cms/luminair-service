@@ -3,9 +3,10 @@ use crate::domain::tables::{Column, ColumnType, ForeignKeyConstraint, Index, Tab
 use luminair_common::entities::{DocumentField, IntegerSize};
 use luminair_common::{
     CREATED_BY_FIELD_NAME, CREATED_FIELD_NAME, DOCUMENT_ID_FIELD_NAME, DocumentType,
-    DocumentTypesRegistry, OWNING_ID_FIELD_NAME, PUBLISHED_BY_FIELD_NAME,
+    DocumentTypesRegistry, PUBLISHED_BY_FIELD_NAME,
     PUBLISHED_FIELD_NAME, REVISION_FIELD_NAME, STATUS_FIELD_NAME,
     TARGET_DOCUMENT_ID_FIELD_NAME, UPDATED_BY_FIELD_NAME, UPDATED_FIELD_NAME, VERSION_FIELD_NAME,
+    OWNING_DOCUMENT_ID_FIELD_NAME,
     entities::{DocumentRelation, FieldType},
 };
 
@@ -53,7 +54,7 @@ struct MainTableBuilder {
 impl MainTableBuilder {
     fn new(document: &DocumentType) -> Self {
         let table_name = document.id.normalized();
-        let columns = vec![
+        let mut columns = vec![
             Column::primary_key(DOCUMENT_ID_FIELD_NAME, ColumnType::Uuid, None),
             Column::new(
                 STATUS_FIELD_NAME,
@@ -104,6 +105,33 @@ impl MainTableBuilder {
                 Some("1"),
             ),
         ];
+
+        if document.has_draft_and_publish() {
+            columns.push(Column::new(
+                REVISION_FIELD_NAME,
+                ColumnType::Integer(IntegerSize::Int32),
+                None,
+                true,
+                false,
+                Some("0"),
+            ));
+            columns.push(Column::new(
+                PUBLISHED_FIELD_NAME,
+                ColumnType::TimestampTZ,
+                None,
+                false,
+                false,
+                None,
+            ));
+            columns.push(Column::new(
+                PUBLISHED_BY_FIELD_NAME,
+                ColumnType::Text,
+                None,
+                false,
+                false,
+                None,
+            ));
+        }
         
         Self {
             table_name,
@@ -217,28 +245,21 @@ impl RelationTablesBuilder {
             relation.id.normalized()
         );
         let snapshot_relation_table_name = format!(
-            "{}_{}_relation_snapshots",
+            "{}_snapshot_{}",
             document.id.normalized(),
             relation.id.normalized()
         );
 
         // Working relation table
         let working_columns = vec![
-            Column::primary_key(OWNING_ID_FIELD_NAME, ColumnType::Uuid, None),
-            Column::new(
-                TARGET_DOCUMENT_ID_FIELD_NAME,
-                ColumnType::Uuid,
-                None,
-                true,
-                false,
-                None,
-            ),
+            Column::primary_key(OWNING_DOCUMENT_ID_FIELD_NAME, ColumnType::Uuid, None),
+            Column::primary_key(TARGET_DOCUMENT_ID_FIELD_NAME, ColumnType::Uuid, None),
         ];
 
         let working_foreign_keys = vec![
             ForeignKeyConstraint::new(
                 &relation_table_name as &str,
-                OWNING_ID_FIELD_NAME,
+                OWNING_DOCUMENT_ID_FIELD_NAME,
                 &document.id.normalized(),
                 DOCUMENT_ID_FIELD_NAME,
             ),
@@ -267,22 +288,8 @@ impl RelationTablesBuilder {
 
         // Snapshot relation table
         let snapshot_columns = vec![
-            Column::new(
-                SNAPSHOT_ID_FIELD_NAME,
-                ColumnType::Integer(IntegerSize::Int64),
-                None,
-                true,
-                false,
-                None,
-            ),
-            Column::new(
-                TARGET_DOCUMENT_ID_FIELD_NAME,
-                ColumnType::Uuid,
-                None,
-                true,
-                false,
-                None,
-            ),
+            Column::primary_key(SNAPSHOT_ID_FIELD_NAME, ColumnType::Integer(IntegerSize::Int64), None),
+            Column::primary_key(TARGET_DOCUMENT_ID_FIELD_NAME, ColumnType::Uuid, None),
         ];
 
         let snapshot_foreign_keys = vec![

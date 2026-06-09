@@ -26,6 +26,16 @@ For detailed information, see:
 
 4. Using trait-based design for extensibility and separation of concerns, following Rust's idiomatic patterns.
 
+# Documentation principles
+
+- Documentation must be kept up to date with the code.
+- Documentation must be written in a clear and concise manner.
+- Documentation must be written in a way that is easy to understand.
+- Documentation must be written in a way that is easy to maintain.
+- Documentation must be written in a way that is easy to test.
+- Documentation must be written in a way that is easy to use.
+- Documentation must be written in a way that is easy to contribute to.
+
 # Rust coding guidelines
 
 1. Identify and Avoid Common Anti-Patterns
@@ -60,7 +70,8 @@ Include any common pitfalls (e.g., circular references) and how to avoid them.
 
 Investigate the role of smart pointers (RefCell, Mutex, etc.) when sharing state between callbacks and signals.
 
-### Used libraries
+3. Used libraries
+
 - `nutype` for defining newtypes with validation.
 - `sqlx` for async database interactions with compile-time query checking.
 - `sea-query` for building SQL queries in a type-safe way.
@@ -69,7 +80,7 @@ Investigate the role of smart pointers (RefCell, Mutex, etc.) when sharing state
 - `rust_decimal` for precise decimal arithmetic.
 - `chrono` for date and time handling.
 
-### Error handling
+4. Error handling
 
 - `thiserror` simplifies the implementation of custom error type, removing boilerplates.
 
@@ -84,3 +95,10 @@ Investigate the role of smart pointers (RefCell, Mutex, etc.) when sharing state
 see: 
 https://www.howtocodeit.com/guides/the-definitive-guide-to-rust-error-handling 
 for detailed comparison and best practices.
+
+5. Code style
+
+Order of entities in rust file:
+
+- public first, private last
+- more common first, more special last

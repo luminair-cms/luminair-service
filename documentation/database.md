@@ -12,44 +12,46 @@ The migration logic builds two kinds of tables from each document schema:
 
 The table generation is implemented in `migration/src/domain/mod.rs` using `MainTableBuilder` and `RelationTablesBuilder`.
 
-## Document Identity Tables
+## Core Tables Pattern
 
-Each document type produces one main table named after the normalized ID plus `_documents` suffix.
-Example: a document with ID `partner-categories` uses table name `partner_categories_documents`.
+Luminair uses a **main table + snapshots table** database schema for each document type.
 
-Model:
-
-{collection}_documents
-- document_id primary key
-- status: DRAFT | PUBLISHED | MODIFIED
-- document-level metadata (created_at, created_by_id)
-
-### Collection table
+### Main Table: `{collection}`
 
 Name of this table is derived from the document type's normalized ID.
 Example: a document with ID `partner-categories` uses table name `partner_categories`.
 
-**Model:**
+The main table contains the current working draft (or the last published version if no edits have been made) along with metadata and content fields.
 
-{collection}
-- id primary key
-- document_id references {collection}_documents(document_id)
-- publication_state: DOESN'T exists, derived from published_at field
-- content fields
-- version metadata fields
-- publication state fields (in case of draft-and-publish)
+**Columns:**
+- `document_id` — `uuid` PRIMARY KEY
+- `status` — `text` NOT NULL CHECK (status IN ('DRAFT', 'PUBLISHED', 'MODIFIED'))
+- `created_at` — `timestamptz` NOT NULL DEFAULT now()
+- `updated_at` — `timestamptz` NOT NULL DEFAULT now()
+- `created_by_id` — `text` NULL
+- `updated_by_id` — `text` NULL
+- `version` — `integer` NOT NULL DEFAULT 1 (increments on every save/edit)
+- `revision` — `integer` NOT NULL DEFAULT 0 (last published revision index, 0 if never published)
+- `published_at` — `timestamptz` NULL (timestamp of last publish)
+- `published_by_id` — `text` NULL (user ID of publisher)
+- Content columns (dynamic, based on schema fields)
 
-**Version metadata**
+### Snapshots Table: `{collection}_snapshots`
 
-      updated_at timestamptz NOT NULL,
-      updated_by_id text NULL,
-      version integer NOT NULL,
+Name of this table is derived from the normalized ID plus `_snapshots` suffix (e.g., `partner_categories_snapshots`).
 
-**Publication state (in case of draft-and-publish):**
-   
-      revision integer NOT NULL,
-      published_at timestamptz NULL,
-      published_by_id text NULL,
+It stores immutable published snapshots. Every publish action inserts a new row copying the main table's content fields.
+
+**Columns:**
+- `snapshot_id` — `bigserial` PRIMARY KEY
+- `document_id` — `uuid` NOT NULL REFERENCES `{collection}`(document_id) ON DELETE CASCADE
+- `revision` — `integer` NOT NULL
+- `published_at` — `timestamptz` NOT NULL DEFAULT now()
+- `published_by_id` — `text` NULL
+- Content columns (dynamic copy of schema fields at publish time)
+
+**Indexes & Constraints:**
+- `UNIQUE (document_id, revision)` constraint ensures audit/history integrity.
 
 ### Field columns
 
@@ -69,23 +71,7 @@ Document fields are converted to columns according to the field type mapping in 
 Field column names are derived from schema attribute IDs.
 Each field column preserves the schema's `required` and `unique` flags.
 
-### Main table indexes
-
-A non-unique index is created on `document_id` for every main document table.
-
-Constraints:
-
-```sql
-CREATE UNIQUE INDEX articles_one_draft_per_document
-ON articles (document_id)
-WHERE published_at IS NULL;
-
-CREATE UNIQUE INDEX articles_one_published_per_document
-ON articles (document_id)
-WHERE published_at IS NOT NULL;
-```
-
-where `articles` is the main table name.
+---
 
 ## Relation Tables
 
@@ -94,81 +80,71 @@ Relation tables are generated only for owning-side relations declared in the doc
 - `hasOne`
 - `hasMany`
 
-For each owning relation, the migration crate creates a dedicated relation table named:
+For each owning relation, the migration crate creates a dedicated pair of relation tables to track working and published relations separately.
 
-```text
-{main_table_name}_{relation_attribute_name}_relation
-```
+### Working Relations: `{collection}_{relation_name}_relation`
 
-### Relation table columns
+Used by editor APIs to read and write draft/working relations.
 
-Each relation table contains:
+**Columns:**
+- `owning_document_id` — `uuid` NOT NULL REFERENCES `{collection}`(document_id) ON DELETE CASCADE
+- `target_document_id` — `uuid` NOT NULL REFERENCES `{target_collection}`(document_id) ON DELETE CASCADE
+- PRIMARY KEY (`owning_document_id`, `target_document_id`)
 
-- `relation_id` — primary key, `serial`
-- `owning_id` — `integer`, foreign key to the owning document's main table `id`
-- `{target}_document_id` — `uuid`, foreign key to `{target}_documents(document_id)`
+### Snapshot Relations: `{collection}_snapshot_{relation_name}`
 
-### Referential Integrity
+Used by public APIs to query relations of frozen published snapshots.
 
-Luminair maintains strict database-level referential integrity using standard PostgreSQL foreign keys with cascade constraints:
-- **Owner Side:** The `owning_id` column references the concrete row PK `{main_table}(id)` using `ON DELETE CASCADE`. If a content version row is removed, its associated relations are automatically cascade-deleted.
-- **Target Side:** The `{target}_document_id` column references `{target}_documents(document_id)` using `ON DELETE CASCADE`. If the target document is deleted (deleting its identity row), the relation row is automatically cascade-deleted at the SQL level.
+**Columns:**
+- `snapshot_id` — `bigint` NOT NULL REFERENCES `{collection}_snapshots`(snapshot_id) ON DELETE CASCADE
+- `target_document_id` — `uuid` NOT NULL REFERENCES `{target_collection}`(document_id) ON DELETE CASCADE
+- PRIMARY KEY (`snapshot_id`, `target_document_id`)
 
 ### Relation lifecycle with draft-and-publish
 
-When `draftAndPublish` is enabled, the same document instance is identified by `document_id`, but the database may contain multiple main table rows for the same instance over time:
+Because relation tables link by UUIDs (`owning_document_id` and `target_document_id`), editing relations happens directly against the working copy:
 
-- one row represents the published version
-- another row represents the current draft version
+- **Connect**: add a row to `{collection}_{relation_name}_relation`.
+- **Disconnect**: remove the row from `{collection}_{relation_name}_relation`.
+- **Publish**: inside a single transaction, the publish operation inserts a new row in `{collection}_snapshots` (returning `snapshot_id`), then copies all matching relation rows from the working relation table to the snapshot relation table under that `snapshot_id`:
+  ```sql
+  INSERT INTO article_snapshot_categories (snapshot_id, target_document_id)
+  SELECT $snapshot_id, target_document_id
+  FROM article_categories
+  WHERE owning_document_id = $document_id;
+  ```
 
-Because relation tables join by concrete main table row IDs (`owning_id`), connecting or disconnecting documents happens against a specific row version.
-
-- **Connect**: add a relation row for the draft/main row that is currently being edited.
-- **Disconnect**: remove the relation row from the draft/main row representing the next state.
-
-This means relation changes are versioned implicitly by row identity, not by `document_id`.
-A published document can keep its last-live relation rows until the next publish action applies draft changes.
-
-In practice:
-
-- The published row and draft row share the same `document_id`.
-- The relation table stores `owning_id` and `{target}_document_id` values.
-- Draft-time relation updates are made against the draft row's `id`.
-- Publishing synchronizes the published row with the draft row by copying all relation records from the draft's `owning_id` to the published's `owning_id` in a single database transaction.
-
-If `draftAndPublish` is disabled, there is only one main row per document instance and relations are managed directly on that single row.
+If `draftAndPublish` is disabled, the snapshots and snapshot relations tables are still created for uniformity, but documents are immediately published (a snapshot is created immediately on save) and only the main/snapshot table pairs are queried.
 
 ### Polymorphic Relations (Post-MVP)
-
-For polymorphic relations (where a field can point to different document types dynamically, such as a `"relatedContent"` field linking to either `articles` or `categories`), Luminair has selected the **Payload CMS pattern**. 
 
 While polymorphic relations are **excluded from the MVP**, the architecture for post-MVP implementation is specified as follows:
 
 1. **Junction Table Design:**
-   Rather than using a generic, type-unsafe string column (such as `target_type` + `target_id`), the relation table will contain **explicit, nullable foreign key columns** targeting each possible target collection's identity table.
+   Rather than using a generic, type-unsafe string column (such as `target_type` + `target_id`), the relation table will contain **explicit, nullable foreign key columns** targeting each possible target collection's main table.
 
    For example, if `article_related_content_relation` can link to `articles` or `categories`:
    ```sql
    CREATE TABLE article_related_content_relation (
        relation_id serial PRIMARY KEY,
-       owning_id bigint NOT NULL REFERENCES articles(id) ON DELETE CASCADE,
+       owning_document_id uuid NOT NULL REFERENCES articles(document_id) ON DELETE CASCADE,
        
-       -- Polymorphic target columns referencing target identity tables
-       article_document_id uuid NULL REFERENCES article_documents(document_id) ON DELETE CASCADE,
-       category_document_id uuid NULL REFERENCES category_documents(document_id) ON DELETE CASCADE,
+       -- Polymorphic target columns referencing target main tables
+       article_target_document_id uuid NULL REFERENCES articles(document_id) ON DELETE CASCADE,
+       category_target_document_id uuid NULL REFERENCES categories(document_id) ON DELETE CASCADE,
        
        -- Database-level check constraint to ensure mutual exclusivity
        CONSTRAINT check_only_one_target CHECK (
-           (article_document_id IS NOT NULL)::int + 
-           (category_document_id IS NOT NULL)::int = 1
+           (article_target_document_id IS NOT NULL)::int + 
+           (category_target_document_id IS NOT NULL)::int = 1
        )
    );
    ```
 
 2. **Benefits of this Pattern:**
    - **Strict Referential Integrity:** Retains native PostgreSQL foreign keys for all polymorphic targets.
-   - **Database-Level Cascades:** Deleting an article or category automatically and cleanly cascade-deletes all polymorphic relation records pointing to it.
-   - **Type Safety:** Eliminates string-based lookups and provides strong relational integrity at the SQL level.
+   - **Database-Level Cascades:** Deleting a target document automatically and cleanly cascade-deletes all polymorphic relation records pointing to it.
+   - **Type Safety:** Strong relational integrity at the SQL level.
 
 ## Migration Strategy
 

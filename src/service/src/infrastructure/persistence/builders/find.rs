@@ -6,6 +6,72 @@ use luminair_common::persistence::TableNameProvider;
 use crate::domain::query::{DocumentInstanceQuery, DocumentStatus, FilterExpression, SortDirection};
 use crate::infrastructure::persistence::builders::main_select_columns;
 
+/**
+ * WHERE IS NOT HISTORY IN MVP 
+ 
+ if query.status == DocumentStatus::Published:
+  
+ SELECT 
+    s.document_id,
+    s.revision,
+    s.published_at,
+    s.published_by_id,
+    s.title,
+    s.body,
+    sc.target_document_id
+FROM article_snapshots s
+WHERE s.document_id = $1
+
+if query.status == DocumentStatus::Draft:
+
+SELECT 
+    a.document_id,
+    a.status,
+    a.created_at,
+    a.updated_at,
+    a.version,
+    a.title,
+    a.body,
+    ac.target_document_id
+FROM articles a
+WHERE a.document_id = $1;
+ */
+pub fn query_find_document_by_id(
+    document: &DocumentType,
+    id: Uuid,
+    query: &DocumentInstanceQuery,
+) -> (String, SqlxValues) {
+    if query.status == DocumentStatus::Published {
+        let snapshot_table_ref = snapshot_table(document);
+        let columns = snapshot_select_columns(document);
+
+        let mut select = Query::select()
+            .columns(columns)
+            .from(snapshot_table_ref)
+            .and_where(Expr::col(("s", DOCUMENT_ID_FIELD_NAME)).eq(id));
+
+        if let Some(condition) = build_condition(&query.filter, document, "s") {
+            select.cond_where(condition);
+        }
+
+        select.build_sqlx(PostgresQueryBuilder)
+    } else {
+        let table: TableNameProvider = document.into();
+        let columns = main_select_columns(document);
+
+        let mut select = Query::select()
+            .columns(columns)
+            .from(table)
+            .and_where(Expr::col(("m", DOCUMENT_ID_FIELD_NAME)).eq(id));
+
+        if let Some(condition) = build_condition(&query.filter, document, "m") {
+            select.cond_where(condition);
+        }
+
+        select.build_sqlx(PostgresQueryBuilder)
+    }
+}
+
 fn snapshot_table(document: &DocumentType) -> TableRef {
     let table_name = format!("{}_snapshots", document.id.normalized());
     TableRef::Table(TableName::from(table_name), Some("s".into_iden()))
@@ -46,58 +112,6 @@ fn build_draft_null_publication_expressions(document: &DocumentType, select: &mu
         select.column(Expr::cust(format!("NULL::timestamp with time zone AS {}", PUBLISHED_FIELD_NAME)));
         select.column(Expr::cust(format!("NULL::text AS {}", PUBLISHED_BY_FIELD_NAME)));
         select.column(build_revision_expression(document));
-    }
-}
-
-pub fn query_find_document_by_id(
-    document: &DocumentType,
-    id: Uuid,
-    query: &DocumentInstanceQuery,
-) -> (String, SqlxValues) {
-    if document.has_draft_and_publish() && query.status == DocumentStatus::Published {
-        let snapshot_table_ref = snapshot_table(document);
-        let main_table_ref: TableNameProvider = document.into();
-        let columns = snapshot_select_columns(document);
-
-        let mut select = Query::select();
-        select
-            .columns(columns)
-            .from(snapshot_table_ref)
-            .join(
-                JoinType::LeftJoin,
-                main_table_ref,
-                ColumnRef::from(("m", DOCUMENT_ID_FIELD_NAME))
-                    .equals(ColumnRef::from(("s", DOCUMENT_ID_FIELD_NAME))),
-            )
-            .and_where(Expr::col(("s", DOCUMENT_ID_FIELD_NAME)).eq(id))
-            .and_where(Expr::cust(format!(
-                "s.{} = (SELECT MAX({}) FROM {} WHERE document_id = s.document_id)",
-                REVISION_FIELD_NAME,
-                REVISION_FIELD_NAME,
-                format!("{}_snapshots", document.id.normalized()),
-            )));
-
-        if let Some(condition) = build_condition(&query.filter, document, "s") {
-            select.cond_where(condition);
-        }
-
-        select.build_sqlx(PostgresQueryBuilder)
-    } else {
-        let table: TableNameProvider = document.into();
-        let mut select = Query::select();
-        select.columns(main_select_columns(document)).from(table);
-
-        if document.has_draft_and_publish() {
-            build_draft_null_publication_expressions(document, &mut select);
-        }
-
-        select.and_where(Expr::col(("m", DOCUMENT_ID_FIELD_NAME)).eq(id));
-
-        if let Some(condition) = build_condition(&query.filter, document, "m") {
-            select.cond_where(condition);
-        }
-
-        select.build_sqlx(PostgresQueryBuilder)
     }
 }
 
