@@ -7,32 +7,40 @@ use crate::domain::query::{DocumentInstanceQuery, DocumentStatus, FilterExpressi
 use crate::infrastructure::persistence::builders::main_select_columns;
 
 /**
- * WHERE IS NOT HISTORY IN MVP 
+ * WHERE IS NOT HISTORY IN MVP,
+ * so in snapshots only one record exists - last published version
  
  if query.status == DocumentStatus::Published:
   
  SELECT 
-    s.document_id,
-    s.revision,
-    s.published_at,
-    s.published_by_id,
-    s.title,
-    s.body,
-    sc.target_document_id
-FROM article_snapshots s
-WHERE s.document_id = $1
+    m.document_id,
+    m.revision,
+    'PUBLISHED' as status,
+    m.created_at,
+    m.updated_at,
+    m.created_by_id,
+    m.updated_by_id,
+    m.published_at,
+    m.published_by_id,
+    m.title,
+    m.body
+FROM article_snapshots m
+WHERE m.document_id = $1
 
 if query.status == DocumentStatus::Draft:
 
 SELECT 
-    a.document_id,
-    a.status,
-    a.created_at,
-    a.updated_at,
-    a.version,
-    a.title,
-    a.body,
-    ac.target_document_id
+    m.document_id,
+    m.revision,
+    m.status,
+    m.created_at,
+    m.updated_at,
+    m.created_by_id,
+    m.updated_by_id,
+    m.published_at,
+    m.published_by_id,
+    m.title,
+    m.body
 FROM articles a
 WHERE a.document_id = $1;
  */
