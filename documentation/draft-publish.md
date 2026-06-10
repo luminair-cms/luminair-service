@@ -12,46 +12,7 @@ Each document type with draft-and-publish support has:
 1. **Main table** — contains identity, current working copy, and audit metadata
 2. **Snapshots table** — immutable published snapshots, indexed by document and revision
 
-Example for an `articles` type:
-
-#### Main Table: `articles`
-```sql
-CREATE TABLE articles (
-    document_id     uuid PRIMARY KEY,
-    status          text NOT NULL CHECK (status IN ('DRAFT', 'PUBLISHED', 'MODIFIED')),
-    created_at      timestamptz NOT NULL,
-    created_by_id   text NULL,
-    updated_at      timestamptz NOT NULL,
-    updated_by_id   text NULL,
-    version         integer NOT NULL,
-
-    -- publication metadata (redundant to enable single-table queries)
-    revision        integer NOT NULL DEFAULT 0,
-    published_at    timestamptz NULL,
-    published_by_id text NULL,
-
-    -- current working content fields
-    title           text NULL,
-    body            text NULL
-);
-```
-
-#### Snapshots Table: `article_snapshots`
-```sql
-CREATE TABLE article_snapshots (
-    snapshot_id     bigserial PRIMARY KEY,
-    document_id     uuid NOT NULL REFERENCES articles(document_id) ON DELETE CASCADE,
-    revision        integer NOT NULL,
-    published_at    timestamptz NOT NULL,
-    published_by_id text NULL,
-
-    -- immutable snapshot of content at publish time
-    title           text NULL,
-    body            text NULL,
-
-    UNIQUE (document_id, revision)
-);
-```
+See [database](database.md) for detailed database schema and examples.
 
 ### Key Concepts
 
@@ -78,6 +39,9 @@ Publish: status=PUBLISHED, version=6, revision=2, published_at=now()   ← snaps
 ```
 
 ### Operations
+
+***Note: Some fields can be omitted in SQL examples, for full structure see `database.md`***
+***The `$placeholder` values should be replaced with actual values in production***
 
 #### Create Document
 ```sql

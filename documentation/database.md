@@ -16,6 +16,18 @@ The table generation is implemented in `migration/src/domain/mod.rs` using `Main
 
 Luminair uses a **main table + snapshots table** database schema for each document type.
 
+### Common columns
+
+These columns exist both in main table and in snapshot table.
+
+- `revision` — `integer` NOT NULL DEFAULT 0 (last published revision index, 0 if never published)
+- `created_at` — `timestamptz` NOT NULL DEFAULT now()
+- `updated_at` — `timestamptz` NOT NULL DEFAULT now()
+- `created_by_id` — `text` NULL
+- `updated_by_id` — `text` NULL 
+- `published_at` — `timestamptz` NULL (timestamp of last publish)
+- `published_by_id` — `text` NULL (user ID of publisher)
+
 ### Main Table: `{collection}`
 
 Name of this table is derived from the document type's normalized ID.
@@ -25,29 +37,21 @@ The main table contains the current working draft (or the last published version
 
 **Columns:**
 - `document_id` — `uuid` PRIMARY KEY
+- Common columns
 - `status` — `text` NOT NULL CHECK (status IN ('DRAFT', 'PUBLISHED', 'MODIFIED'))
-- `created_at` — `timestamptz` NOT NULL DEFAULT now()
-- `updated_at` — `timestamptz` NOT NULL DEFAULT now()
-- `created_by_id` — `text` NULL
-- `updated_by_id` — `text` NULL
 - `version` — `integer` NOT NULL DEFAULT 1 (increments on every save/edit)
-- `revision` — `integer` NOT NULL DEFAULT 0 (last published revision index, 0 if never published)
-- `published_at` — `timestamptz` NULL (timestamp of last publish)
-- `published_by_id` — `text` NULL (user ID of publisher)
 - Content columns (dynamic, based on schema fields)
 
 ### Snapshots Table: `{collection}_snapshots`
 
 Name of this table is derived from the normalized ID plus `_snapshots` suffix (e.g., `partner_categories_snapshots`).
 
-It stores immutable published snapshots. Every publish action inserts a new row copying the main table's content fields.
+It stores immutable published snapshots. Every publish action inserts a new row copying the main table's content fields. (for history functionality, in MVP will be only one row in snapshots table, with last published document version; later we can add functionality to keep all published versions)
 
 **Columns:**
 - `snapshot_id` — `bigserial` PRIMARY KEY
 - `document_id` — `uuid` NOT NULL REFERENCES `{collection}`(document_id) ON DELETE CASCADE
-- `revision` — `integer` NOT NULL
-- `published_at` — `timestamptz` NOT NULL DEFAULT now()
-- `published_by_id` — `text` NULL
+- Common columns
 - Content columns (dynamic copy of schema fields at publish time)
 
 **Indexes & Constraints:**
@@ -72,6 +76,58 @@ Field column names are derived from schema attribute IDs.
 Each field column preserves the schema's `required` and `unique` flags.
 
 ---
+
+Example for an `articles` type:
+
+#### Main Table: `articles`
+```sql
+CREATE TABLE articles (
+    document_id     uuid PRIMARY KEY,
+    status          text NOT NULL CHECK (status IN ('DRAFT', 'PUBLISHED', 'MODIFIED')),
+    version         integer NOT NULL,
+    -- publication revision, only changes when document is published  
+    revision        integer NOT NULL DEFAULT 0, 
+    -- audit trail columns
+    created_at      timestamptz NOT NULL,
+    created_by_id   text NULL,
+    updated_at      timestamptz NOT NULL,
+    updated_by_id   text NULL,
+
+    -- publication metadata (redundant to enable single-table queries)
+    published_at    timestamptz NULL,
+    published_by_id text NULL,
+
+    -- current working content fields
+    title           text NULL,
+    body            text NULL
+);
+```
+
+#### Snapshots Table: `article_snapshots`
+```sql
+CREATE TABLE article_snapshots (
+    snapshot_id     bigserial PRIMARY KEY,
+    document_id     uuid NOT NULL REFERENCES articles(document_id) ON DELETE CASCADE,
+    -- publication revision, only changes when document is published  
+    revision        integer NOT NULL DEFAULT 0, 
+    -- audit trail columns, copied from main table
+    created_at      timestamptz NOT NULL,
+    created_by_id   text NULL,
+    updated_at      timestamptz NOT NULL,
+    updated_by_id   text NULL,
+
+    -- publication metadata (redundant to enable single-table queries)
+    published_at    timestamptz NULL,
+    published_by_id text NULL,
+
+    -- immutable snapshot of content at publish time
+    title           text NULL,
+    body            text NULL,
+
+    UNIQUE (document_id, revision)
+);
+  
+```
 
 ## Relation Tables
 
