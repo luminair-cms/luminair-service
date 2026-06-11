@@ -6,6 +6,9 @@ pub enum TableNameProvider<'a> {
     MainTable {
         document: &'a DocumentType,
     },
+    SnapshotTable {
+        document: &'a DocumentType,
+    },
     RelationTable {
         document: &'a DocumentType,
         relation: &'a AttributeId,
@@ -16,6 +19,7 @@ impl<'a> TableNameProvider<'a> {
     pub fn table_name(&self) -> String {
         match self {
             Self::MainTable { document } => format!("{}", document.id.normalized()),
+            Self::SnapshotTable { document } => format!("{}_snapshots", document.id.normalized()),
             Self::RelationTable { document, relation } => format!(
                 "{}_{}_relation",
                 document.id.normalized(),
@@ -25,11 +29,13 @@ impl<'a> TableNameProvider<'a> {
     }
     
     const MAIN_TABLE_ALIAS: &'static str = "m";
+    const SNAPSHOT_TABLE_ALIAS: &'static str = "m";
     const RELATION_TABLE_ALIAS: &'static str = "r";
     
     pub fn alias(&self) -> &'static str {
         match self {
             Self::MainTable { .. } => Self::MAIN_TABLE_ALIAS,
+            Self::SnapshotTable { .. } => Self::SNAPSHOT_TABLE_ALIAS,
             Self::RelationTable { .. } => Self::RELATION_TABLE_ALIAS,
         }
     }
@@ -39,19 +45,25 @@ impl<'a> TableNameProvider<'a> {
     }
 }
 
-impl<'a> From<&'a DocumentType> for TableNameProvider<'a> {
-    fn from(value: &'a DocumentType) -> Self {
-        Self::MainTable { document: value }
-    }
+pub trait TableNameProviderConstructor<'a> {
+    fn main_table(&'a self) -> TableNameProvider<'a>;
+    fn snapshot_table(&'a self) -> TableNameProvider<'a>;
+    fn relation_table(&'a self, relation: &'a AttributeId) -> TableNameProvider<'a>;
 }
 
-impl<'a> From<(&'a DocumentType, &'a AttributeId)> for TableNameProvider<'a> {
-    fn from(value: (&'a DocumentType, &'a AttributeId)) -> Self {
-        let document = value.0;
-        let relation = value.1;
-        TableNameProvider::RelationTable { document, relation }
+impl<'a> TableNameProviderConstructor<'a> for DocumentType {
+    fn main_table(&'a self) -> TableNameProvider<'a> {
+        TableNameProvider::MainTable { document: self }
     }
-}
+
+    fn snapshot_table(&'a self) -> TableNameProvider<'a> {
+        TableNameProvider::SnapshotTable { document: self }
+    }
+
+    fn relation_table(&'a self, relation: &'a AttributeId) -> TableNameProvider<'a> {
+        TableNameProvider::RelationTable { document: self, relation }
+    }
+}   
 
 impl <'a> From <TableNameProvider<'a>> for TableRef {
     fn from(value: TableNameProvider<'a>) -> Self {
@@ -87,13 +99,13 @@ mod tests {
     #[test]
     fn table_name_and_qualified() {
         let doc = make_doc("product");
-        let provider = TableNameProvider::from(&doc);
+        let provider = doc.main_table();
         assert_eq!(provider.table_name(), "product");
         assert_eq!(provider.alias(), "m");
         assert_eq!(provider.qualified(), "product AS \"m\"");
 
         let attr = AttributeId::try_new("owner").unwrap();
-        let rel = TableNameProvider::from((&doc, &attr));
+        let rel = doc.relation_table(&attr);
         assert_eq!(rel.table_name(), "product_owner_relation");
         assert_eq!(rel.alias(), "r");
         assert_eq!(rel.qualified(), "product_owner_relation AS \"r\"");

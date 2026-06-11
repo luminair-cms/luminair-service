@@ -1,20 +1,30 @@
-use sea_query::{ColumnRef, Condition, Expr, ExprTrait, IntoIden, JoinType, Order, PostgresQueryBuilder, Query, SelectStatement, TableName, TableRef};
+use crate::domain::query::{
+    DocumentInstanceQuery, DocumentStatus, FilterExpression, SortDirection,
+};
+
+use luminair_common::persistence::{TableNameProvider, TableNameProviderConstructor};
+use luminair_common::{
+    CREATED_BY_FIELD_NAME, CREATED_FIELD_NAME, DOCUMENT_ID_FIELD_NAME, DocumentType, ID_FIELD_NAME,
+    PUBLISHED_BY_FIELD_NAME, PUBLISHED_FIELD_NAME, REVISION_FIELD_NAME, STATUS_FIELD_NAME,
+    UPDATED_BY_FIELD_NAME, UPDATED_FIELD_NAME, VERSION_FIELD_NAME,
+};
+use sea_query::{
+    Alias, ColumnRef, Condition, Expr, ExprTrait, IntoIden, JoinType, Order, PostgresQueryBuilder, Query, SelectStatement, TableName, TableRef
+};
 use sea_query_sqlx::{SqlxBinder, SqlxValues};
 use uuid::Uuid;
-use luminair_common::{DocumentType, DOCUMENT_ID_FIELD_NAME, ID_FIELD_NAME, CREATED_BY_FIELD_NAME, CREATED_FIELD_NAME, PUBLISHED_BY_FIELD_NAME, PUBLISHED_FIELD_NAME, REVISION_FIELD_NAME, UPDATED_BY_FIELD_NAME, UPDATED_FIELD_NAME, VERSION_FIELD_NAME};
-use luminair_common::persistence::TableNameProvider;
-use crate::domain::query::{DocumentInstanceQuery, DocumentStatus, FilterExpression, SortDirection};
-use crate::infrastructure::persistence::builders::main_select_columns;
 
 /**
- * WHERE IS NOT HISTORY IN MVP,
+ * Create query for find ONE document by document_id + status
+ * THERE IS NO HISTORY IN MVP,
  * so in snapshots only one record exists - last published version
- 
+
  if query.status == DocumentStatus::Published:
-  
- SELECT 
+
+ SELECT
     m.document_id,
     m.revision,
+    0 as version,
     'PUBLISHED' as status,
     m.created_at,
     m.updated_at,
@@ -29,9 +39,10 @@ WHERE m.document_id = $1
 
 if query.status == DocumentStatus::Draft:
 
-SELECT 
+SELECT
     m.document_id,
     m.revision,
+    m.version,
     m.status,
     m.created_at,
     m.updated_at,
@@ -41,166 +52,106 @@ SELECT
     m.published_by_id,
     m.title,
     m.body
-FROM articles a
-WHERE a.document_id = $1;
+FROM articles m
+WHERE m.document_id = $1;
  */
 pub fn query_find_document_by_id(
     document: &DocumentType,
     id: Uuid,
     query: &DocumentInstanceQuery,
 ) -> (String, SqlxValues) {
-    if query.status == DocumentStatus::Published {
-        let snapshot_table_ref = snapshot_table(document);
-        let columns = snapshot_select_columns(document);
+    let mut select = main_document_select(document, query.status);
+    select.and_where(Expr::col(("m", DOCUMENT_ID_FIELD_NAME)).eq(id));
 
-        let mut select = Query::select()
-            .columns(columns)
-            .from(snapshot_table_ref)
-            .and_where(Expr::col(("s", DOCUMENT_ID_FIELD_NAME)).eq(id));
-
-        if let Some(condition) = build_condition(&query.filter, document, "s") {
-            select.cond_where(condition);
-        }
-
-        select.build_sqlx(PostgresQueryBuilder)
-    } else {
-        let table: TableNameProvider = document.into();
-        let columns = main_select_columns(document);
-
-        let mut select = Query::select()
-            .columns(columns)
-            .from(table)
-            .and_where(Expr::col(("m", DOCUMENT_ID_FIELD_NAME)).eq(id));
-
-        if let Some(condition) = build_condition(&query.filter, document, "m") {
-            select.cond_where(condition);
-        }
-
-        select.build_sqlx(PostgresQueryBuilder)
-    }
-}
-
-fn snapshot_table(document: &DocumentType) -> TableRef {
-    let table_name = format!("{}_snapshots", document.id.normalized());
-    TableRef::Table(TableName::from(table_name), Some("s".into_iden()))
-}
-
-fn snapshot_select_columns(document: &DocumentType) -> Vec<ColumnRef> {
-    let mut columns: Vec<ColumnRef> = vec![
-        ("m", ID_FIELD_NAME).into(),
-        ("m", DOCUMENT_ID_FIELD_NAME).into(),
-        ("m", CREATED_FIELD_NAME).into(),
-        ("m", UPDATED_FIELD_NAME).into(),
-        ("m", CREATED_BY_FIELD_NAME).into(),
-        ("m", UPDATED_BY_FIELD_NAME).into(),
-        ("m", VERSION_FIELD_NAME).into(),
-        ("s", PUBLISHED_FIELD_NAME).into(),
-        ("s", PUBLISHED_BY_FIELD_NAME).into(),
-        ("s", REVISION_FIELD_NAME).into(),
-    ];
-
-    for field in &document.fields {
-        columns.push(("s", field.id.normalized()).into());
+    if let Some(condition) = build_condition(&query.filter, document, "m") {
+        select.cond_where(condition);
     }
 
-    columns
-}
-
-fn build_revision_expression(document: &DocumentType) -> Expr {
-    let snapshot_table_name = format!("{}_snapshots", document.id.normalized());
-    Expr::cust(format!(
-        "COALESCE((SELECT MAX({revision}) FROM {snapshot} WHERE document_id = m.document_id), 0) AS {revision}",
-        revision = REVISION_FIELD_NAME,
-        snapshot = snapshot_table_name,
-    ))
-}
-
-fn build_draft_null_publication_expressions(document: &DocumentType, select: &mut Query) {
-    if document.has_draft_and_publish() {
-        select.column(Expr::cust(format!("NULL::timestamp with time zone AS {}", PUBLISHED_FIELD_NAME)));
-        select.column(Expr::cust(format!("NULL::text AS {}", PUBLISHED_BY_FIELD_NAME)));
-        select.column(build_revision_expression(document));
-    }
+    select.build_sqlx(PostgresQueryBuilder)
 }
 
 pub fn query_find_document_by_criteria(
     document: &DocumentType,
     query: &DocumentInstanceQuery,
 ) -> (String, SqlxValues) {
-    if document.has_draft_and_publish() && query.status == DocumentStatus::Published {
-        let snapshot_table_ref = snapshot_table(document);
-        let main_table_ref: TableNameProvider = document.into();
-        let columns = snapshot_select_columns(document);
+    let mut select = main_document_select(document, query.status);
 
-        let mut select = Query::select();
-        select
-            .columns(columns)
-            .from(snapshot_table_ref)
-            .join(
-                JoinType::LeftJoin,
-                main_table_ref,
-                ColumnRef::from(("m", DOCUMENT_ID_FIELD_NAME))
-                    .equals(ColumnRef::from(("s", DOCUMENT_ID_FIELD_NAME))),
-            )
-            .and_where(Expr::cust(format!(
-                "s.{} = (SELECT MAX({}) FROM {} WHERE document_id = s.document_id)",
-                REVISION_FIELD_NAME,
-                REVISION_FIELD_NAME,
-                format!("{}_snapshots", document.id.normalized()),
-            )));
-
-        if let Some(condition) = build_condition(&query.filter, document, "s") {
-            select.cond_where(condition);
-        }
-
-        for sort in &query.sort {
-            let col = get_column_expr(&sort.field, document, "s");
-            let order = match sort.direction {
-                SortDirection::Ascending => Order::Asc,
-                SortDirection::Descending => Order::Desc,
-            };
-            select.order_by_expr(col, order);
-        }
-
-        if let Some(limit) = query.limit {
-            select.limit(limit as u64);
-        }
-        if let Some(offset) = query.offset {
-            select.offset(offset as u64);
-        }
-
-        select.build_sqlx(PostgresQueryBuilder)
-    } else {
-        let table: TableNameProvider = document.into();
-        let mut select = Query::select();
-        select.columns(main_select_columns(document)).from(table);
-
-        if document.has_draft_and_publish() {
-            build_draft_null_publication_expressions(document, &mut select);
-        }
-
-        if let Some(condition) = build_condition(&query.filter, document, "m") {
-            select.cond_where(condition);
-        }
-
-        for sort in &query.sort {
-            let col = get_column_expr(&sort.field, document, "m");
-            let order = match sort.direction {
-                SortDirection::Ascending => Order::Asc,
-                SortDirection::Descending => Order::Desc,
-            };
-            select.order_by_expr(col, order);
-        }
-
-        if let Some(limit) = query.limit {
-            select.limit(limit as u64);
-        }
-        if let Some(offset) = query.offset {
-            select.offset(offset as u64);
-        }
-
-        select.build_sqlx(PostgresQueryBuilder)
+    if let Some(condition) = build_condition(&query.filter, document, "m") {
+        select.cond_where(condition);
     }
+
+    for sort in &query.sort {
+        let col = get_column_expr(&sort.field, document, "m");
+        let order = match sort.direction {
+            SortDirection::Ascending => Order::Asc,
+            SortDirection::Descending => Order::Desc,
+        };
+        select.order_by_expr(col, order);
+    }
+
+    if let Some(limit) = query.limit {
+        select.limit(limit as u64);
+    }
+    if let Some(offset) = query.offset {
+        select.offset(offset as u64);
+    }
+
+    select.build_sqlx(PostgresQueryBuilder)
+}
+
+fn main_document_select<'a>(
+    document: &'a DocumentType,
+    status: DocumentStatus,
+) -> SelectStatement {
+    let (table_ref, status_expr, version_expr) = if status == DocumentStatus::Published {
+        let table_ref: TableNameProvider = document.snapshot_table();
+        (
+            TableRef::from(table_ref),
+            Expr::cust("'PUBLISHED'"),
+            Expr::cust("0"),
+        )
+    } else {
+        let table_ref: TableNameProvider = document.main_table();
+        let status_column: ColumnRef = ("m", STATUS_FIELD_NAME).into();
+        let version_column: ColumnRef = ("m", VERSION_FIELD_NAME).into();
+
+        (
+            TableRef::from(table_ref),
+            Expr::col(status_column),
+            Expr::col(version_column),
+        )
+    };
+
+    let mut select = Query::select();
+    select.from(table_ref);
+
+    // Add regular columns via .columns()
+    select.columns(common_select_columns(document));
+
+    // Add typed/custom expressions via .expr_as()
+    select.expr_as(version_expr, Alias::new("version"));
+    select.expr_as(status_expr, Alias::new("status"));
+
+    select
+}
+
+fn common_select_columns(document: &DocumentType) -> Vec<ColumnRef> {
+    let mut columns: Vec<ColumnRef> = vec![
+        ("m", DOCUMENT_ID_FIELD_NAME).into(),
+        ("m", CREATED_FIELD_NAME).into(),
+        ("m", UPDATED_FIELD_NAME).into(),
+        ("m", CREATED_BY_FIELD_NAME).into(),
+        ("m", UPDATED_BY_FIELD_NAME).into(),
+        ("s", PUBLISHED_FIELD_NAME).into(),
+        ("s", PUBLISHED_BY_FIELD_NAME).into(),
+        ("s", REVISION_FIELD_NAME).into(),
+    ];
+
+    for field in &document.fields {
+        columns.push(("m", field.id.normalized()).into());
+    }
+
+    columns
 }
 
 pub fn query_count_documents(
@@ -215,9 +166,7 @@ pub fn query_count_documents(
             .from(snapshot_table(document));
         select.and_where(Expr::cust(format!(
             "s.{} = (SELECT MAX({}) FROM {} WHERE document_id = s.document_id)",
-            REVISION_FIELD_NAME,
-            REVISION_FIELD_NAME,
-            snapshot_table_name,
+            REVISION_FIELD_NAME, REVISION_FIELD_NAME, snapshot_table_name,
         )));
 
         if let Some(condition) = build_condition(&query.filter, document, "s") {
@@ -240,7 +189,11 @@ pub fn query_count_documents(
     }
 }
 
-fn build_condition(filter: &FilterExpression, document: &DocumentType, alias: &str) -> Option<Condition> {
+fn build_condition(
+    filter: &FilterExpression,
+    document: &DocumentType,
+    alias: &str,
+) -> Option<Condition> {
     match filter {
         FilterExpression::None => None,
         FilterExpression::And(left, right) => {
@@ -273,15 +226,27 @@ fn build_condition(filter: &FilterExpression, document: &DocumentType, alias: &s
     }
 }
 
-fn build_filter_expr(filter: &FilterExpression, document: &DocumentType, alias: &str) -> Option<Expr> {
+fn build_filter_expr(
+    filter: &FilterExpression,
+    document: &DocumentType,
+    alias: &str,
+) -> Option<Expr> {
     match filter {
-        FilterExpression::Equals { field, value } => Some(get_column_expr(field, document, alias).eq(Expr::from(value))),
-        FilterExpression::NotEquals { field, value } => Some(get_column_expr(field, document, alias).ne(Expr::from(value))),
-        FilterExpression::GreaterThan { field, value } => Some(get_column_expr(field, document, alias).gt(Expr::from(value))),
+        FilterExpression::Equals { field, value } => {
+            Some(get_column_expr(field, document, alias).eq(Expr::from(value)))
+        }
+        FilterExpression::NotEquals { field, value } => {
+            Some(get_column_expr(field, document, alias).ne(Expr::from(value)))
+        }
+        FilterExpression::GreaterThan { field, value } => {
+            Some(get_column_expr(field, document, alias).gt(Expr::from(value)))
+        }
         FilterExpression::GreaterThanOrEqual { field, value } => {
             Some(get_column_expr(field, document, alias).gte(Expr::from(value)))
         }
-        FilterExpression::LessThan { field, value } => Some(get_column_expr(field, document, alias).lt(Expr::from(value))),
+        FilterExpression::LessThan { field, value } => {
+            Some(get_column_expr(field, document, alias).lt(Expr::from(value)))
+        }
         FilterExpression::LessThanOrEqual { field, value } => {
             Some(get_column_expr(field, document, alias).lte(Expr::from(value)))
         }
@@ -305,8 +270,12 @@ fn build_filter_expr(filter: &FilterExpression, document: &DocumentType, alias: 
             let pattern = format!("%{}", value);
             Some(get_column_expr(field, document, alias).like(pattern))
         }
-        FilterExpression::IsNull { field } => Some(get_column_expr(field, document, alias).is_null()),
-        FilterExpression::IsNotNull { field } => Some(get_column_expr(field, document, alias).is_not_null()),
+        FilterExpression::IsNull { field } => {
+            Some(get_column_expr(field, document, alias).is_null())
+        }
+        FilterExpression::IsNotNull { field } => {
+            Some(get_column_expr(field, document, alias).is_not_null())
+        }
         FilterExpression::HasRelation { .. } => None,
         _ => None,
     }
@@ -316,11 +285,12 @@ fn get_column_expr(field_path: &str, document: &DocumentType, alias: &str) -> Ex
     let parts: Vec<&str> = field_path.split('.').collect();
     let base_field = parts[0];
 
-    let column_name = if let Some(field) = document.fields.iter().find(|f| f.id.as_ref() == base_field) {
-        field.id.normalized()
-    } else {
-        base_field.to_string()
-    };
+    let column_name =
+        if let Some(field) = document.fields.iter().find(|f| f.id.as_ref() == base_field) {
+            field.id.normalized()
+        } else {
+            base_field.to_string()
+        };
 
     Expr::col((alias, column_name))
 }
