@@ -2,14 +2,14 @@ use crate::domain::query::{
     DocumentInstanceQuery, DocumentStatus, FilterExpression, SortDirection,
 };
 
-use luminair_common::persistence::{TableNameProvider, TableNameProviderConstructor};
+use luminair_common::persistence::TableNameProviderConstructor;
 use luminair_common::{
-    CREATED_BY_FIELD_NAME, CREATED_FIELD_NAME, DOCUMENT_ID_FIELD_NAME, DocumentType, ID_FIELD_NAME,
+    CREATED_BY_FIELD_NAME, CREATED_FIELD_NAME, DOCUMENT_ID_FIELD_NAME, DocumentType,
     PUBLISHED_BY_FIELD_NAME, PUBLISHED_FIELD_NAME, REVISION_FIELD_NAME, STATUS_FIELD_NAME,
     UPDATED_BY_FIELD_NAME, UPDATED_FIELD_NAME, VERSION_FIELD_NAME,
 };
 use sea_query::{
-    Alias, ColumnRef, Condition, Expr, ExprTrait, IntoIden, JoinType, Order, PostgresQueryBuilder, Query, SelectStatement, TableName, TableRef
+    Alias, ColumnRef, Condition, Expr, ExprTrait, Order, PostgresQueryBuilder, Query, SelectStatement, TableRef
 };
 use sea_query_sqlx::{SqlxBinder, SqlxValues};
 use uuid::Uuid;
@@ -104,14 +104,14 @@ fn main_document_select<'a>(
     status: DocumentStatus,
 ) -> SelectStatement {
     let (table_ref, status_expr, version_expr) = if status == DocumentStatus::Published {
-        let table_ref: TableNameProvider = document.snapshot_table();
+        let table_ref = document.snapshot_table();
         (
             TableRef::from(table_ref),
             Expr::cust("'PUBLISHED'"),
             Expr::cust("0"),
         )
     } else {
-        let table_ref: TableNameProvider = document.main_table();
+        let table_ref = document.main_table();
         let status_column: ColumnRef = ("m", STATUS_FIELD_NAME).into();
         let version_column: ColumnRef = ("m", VERSION_FIELD_NAME).into();
 
@@ -158,35 +158,22 @@ pub fn query_count_documents(
     document: &DocumentType,
     query: &DocumentInstanceQuery,
 ) -> (String, SqlxValues) {
-    if document.has_draft_and_publish() && query.status == DocumentStatus::Published {
-        let snapshot_table_name = format!("{}_snapshots", document.id.normalized());
-        let mut select = Query::select();
-        select
-            .column(Expr::cust("COUNT(DISTINCT s.document_id)"))
-            .from(snapshot_table(document));
-        select.and_where(Expr::cust(format!(
-            "s.{} = (SELECT MAX({}) FROM {} WHERE document_id = s.document_id)",
-            REVISION_FIELD_NAME, REVISION_FIELD_NAME, snapshot_table_name,
-        )));
-
-        if let Some(condition) = build_condition(&query.filter, document, "s") {
-            select.cond_where(condition);
-        }
-
-        select.build_sqlx(PostgresQueryBuilder)
+    let table_ref = if query.status == DocumentStatus::Published {
+        document.snapshot_table()
     } else {
-        let table: TableNameProvider = document.into();
-        let mut select = Query::select();
-        select
-            .column(Expr::col(("m", ID_FIELD_NAME)).count())
-            .from(table);
+        document.main_table()
+    };
 
-        if let Some(condition) = build_condition(&query.filter, document, "m") {
-            select.cond_where(condition);
-        }
+    let mut select = Query::select();
+    select
+        .expr_as(Expr::cust("COUNT(DISTINCT m.document_id)"), Alias::new("count"))
+        .from(table_ref);
 
-        select.build_sqlx(PostgresQueryBuilder)
+    if let Some(condition) = build_condition(&query.filter, document, "m") {
+        select.cond_where(condition);
     }
+
+    select.build_sqlx(PostgresQueryBuilder)
 }
 
 fn build_condition(
@@ -292,5 +279,5 @@ fn get_column_expr(field_path: &str, document: &DocumentType, alias: &str) -> Ex
             base_field.to_string()
         };
 
-    Expr::col((alias, column_name))
+    Expr::col((alias.to_owned(), column_name))
 }
