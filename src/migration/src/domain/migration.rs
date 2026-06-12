@@ -1,8 +1,8 @@
 use luminair_common::DocumentTypesRegistry;
 
+use crate::application::Persistence;
 use crate::domain::DocumentTables;
 use crate::domain::dependency::{DependencyError, resolve_table_order};
-use crate::domain::persistence::Persistence;
 use crate::domain::tables::{Column, ColumnType, ForeignKeyConstraint, Index, IntegerSize, Table};
 
 #[derive(Clone)]

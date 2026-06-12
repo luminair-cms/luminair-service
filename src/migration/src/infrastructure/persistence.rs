@@ -4,7 +4,7 @@ use luminair_common::database::Database;
 use anyhow::Context;
 use sqlx::Executor;
 
-use crate::domain::persistence::Persistence;
+use crate::application::Persistence;
 
 #[derive(Clone)]
 pub struct PersistenceAdapter {

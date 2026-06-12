@@ -1,6 +1,5 @@
 pub mod dependency;
 pub mod migration;
-pub mod persistence;
 pub mod schema;
 pub mod tables;
 

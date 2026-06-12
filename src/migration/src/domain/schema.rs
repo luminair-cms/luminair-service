@@ -278,6 +278,14 @@ impl RelationTablesBuilder {
                 None,
             ),
             Column::primary_key(TARGET_DOCUMENT_ID_FIELD_NAME, ColumnType::Uuid, None),
+            Column::new(
+                OWNING_DOCUMENT_ID_FIELD_NAME,
+                ColumnType::Uuid,
+                None,
+                true,
+                false,
+                None,
+            ),
         ];
 
         let snapshot_foreign_keys = vec![
@@ -293,13 +301,26 @@ impl RelationTablesBuilder {
                 &target_table_name,
                 DOCUMENT_ID_FIELD_NAME,
             ),
+            ForeignKeyConstraint::new(
+                &snapshot_relation_table_name as &str,
+                OWNING_DOCUMENT_ID_FIELD_NAME,
+                &document.id.normalized(),
+                DOCUMENT_ID_FIELD_NAME,
+            ),
         ];
 
-        let snapshot_indexes = vec![Index::new(
-            &snapshot_relation_table_name as &str,
-            vec![TARGET_DOCUMENT_ID_FIELD_NAME],
-            false,
-        )];
+        let snapshot_indexes = vec![
+            Index::new(
+                &snapshot_relation_table_name as &str,
+                vec![TARGET_DOCUMENT_ID_FIELD_NAME],
+                false,
+            ),
+            Index::new(
+                &snapshot_relation_table_name as &str,
+                vec![OWNING_DOCUMENT_ID_FIELD_NAME],
+                false,
+            ),
+        ];
 
         let snapshot_table = Table::new(
             snapshot_relation_table_name,

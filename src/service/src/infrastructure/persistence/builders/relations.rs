@@ -7,11 +7,24 @@ use luminair_common::persistence::TableNameProvider;
 use crate::domain::document::DatabaseRowId;
 use crate::infrastructure::persistence::builders::main_select_columns;
 
-/// SELECT r.owning_id, m.id, m.document_id, ...
-/// FROM relation_table r
-/// JOIN related_table m ON m.id = r.inverse_id
-/// WHERE r.owning_id = ANY($1)
-/// ORDER BY r.owning_id
+/**
+ * if query.status == DocumentStatus::Published:
+ * 
+ * SELECT r.owning_document_id, m.document_id, 'PUBLISHED' as status, ...
+ * FROM article_categories_relation_snapshots r
+ * JOIN related_table_snapshots m ON m.document_id = r.target_document_id
+ * WHERE r.owning_document_id = ANY($1)
+ * ORDER BY r.owning_document_id
+ * 
+ * if query.status == DocumentStatus::Draft:
+ * 
+ * SELECT r.owning_document_id, m.document_id, ...
+ * FROM article_categories_relation r
+ * JOIN related_table m ON m.document_id = r.target_document_id
+ * WHERE r.owning_document_id = ANY($1)
+ * ORDER BY r.owning_document_id
+ * 
+ */
 pub fn query_find_related_documents(
     main_document: &DocumentType,
     related_document: &DocumentType,

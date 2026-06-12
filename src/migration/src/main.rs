@@ -4,6 +4,7 @@ use crate::{
 };
 use luminair_common::{database, load_documents};
 
+pub mod application;
 pub mod domain;
 pub mod infrastructure;
 
