@@ -13,3 +13,4 @@ serde = { workspace = true }
 sqlx = { workspace = true }
 tokio = { workspace = true }
 sea-query = { workspace = true }
+thiserror = { workspace = true }

@@ -1,6 +1,7 @@
 use luminair_common::DocumentTypesRegistry;
 
 use crate::domain::DocumentTables;
+use crate::domain::dependency::{DependencyError, resolve_table_order};
 use crate::domain::persistence::Persistence;
 use crate::domain::tables::{Column, ColumnType, ForeignKeyConstraint, Index, IntegerSize, Table};
 
@@ -109,6 +110,7 @@ impl<P: Persistence> Migration<P> {
             .filter(|name| !needed_names.contains(name))
             .collect();
 
+        // TOOO: drop tables conform dependencies order
         obsolete_tables.sort_by(|a, b| drop_name_order(a, b));
         for table_name in obsolete_tables {
             migration_steps.push(MigrationStepItem::Drop(DropTableStep::new(
@@ -118,12 +120,19 @@ impl<P: Persistence> Migration<P> {
         }
 
         // create missing tables in needed order
-        for table in needed_schema {
-            if !actual_schema.contains(&table.name) {
-                migration_steps.push(MigrationStepItem::Create(CreateTableStep::new(
-                    self.persistence.database_schema(),
-                    &table,
-                )));
+        match resolve_table_order(&needed_schema) {
+            Ok(ordered) => {
+                for table in ordered {
+                    if !actual_schema.contains(&table.name) {
+                        migration_steps.push(MigrationStepItem::Create(CreateTableStep::new(
+                            self.persistence.database_schema(),
+                            &table,
+                        )));
+                    }
+                }
+            }
+            Err(DependencyError::CircularDependency(needed_schema)) => {
+                eprintln!("Cannot resolve order, circular dependency: {:?}", needed_schema);
             }
         }
 

@@ -91,7 +91,7 @@ Relations follow the same main + snapshots pattern, keeping draft and published 
 
 ### Working Relations (Draft)
 ```sql
-CREATE TABLE article_categories (
+CREATE TABLE article_categories_relation (
     owning_document_id  uuid NOT NULL REFERENCES articles(document_id) ON DELETE CASCADE,
     target_document_id  uuid NOT NULL REFERENCES categories(document_id) ON DELETE CASCADE,
     PRIMARY KEY (owning_document_id, target_document_id)
@@ -100,7 +100,7 @@ CREATE TABLE article_categories (
 
 ### Published Relations (Snapshots)
 ```sql
-CREATE TABLE article_snapshot_categories (
+CREATE TABLE article_categories_relation_snapshots (
     snapshot_id        bigint NOT NULL REFERENCES article_snapshots(snapshot_id) ON DELETE CASCADE,
     target_document_id uuid NOT NULL REFERENCES categories(document_id) ON DELETE CASCADE,
     PRIMARY KEY (snapshot_id, target_document_id)
@@ -111,6 +111,7 @@ CREATE TABLE article_snapshot_categories (
 
 - `articles` ↔ `article_categories` (working/draft relation set)
 - `article_snapshots` ↔ `article_snapshot_categories` (published relation set)
+
 
 ### Relation Operations
 

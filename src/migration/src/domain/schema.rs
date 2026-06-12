@@ -3,10 +3,9 @@ use crate::domain::tables::{Column, ColumnType, ForeignKeyConstraint, Index, Tab
 use luminair_common::entities::{DocumentField, IntegerSize};
 use luminair_common::{
     CREATED_BY_FIELD_NAME, CREATED_FIELD_NAME, DOCUMENT_ID_FIELD_NAME, DocumentType,
-    DocumentTypesRegistry, PUBLISHED_BY_FIELD_NAME,
-    PUBLISHED_FIELD_NAME, REVISION_FIELD_NAME, STATUS_FIELD_NAME,
-    TARGET_DOCUMENT_ID_FIELD_NAME, UPDATED_BY_FIELD_NAME, UPDATED_FIELD_NAME, VERSION_FIELD_NAME,
-    OWNING_DOCUMENT_ID_FIELD_NAME,
+    DocumentTypesRegistry, OWNING_DOCUMENT_ID_FIELD_NAME, PUBLISHED_BY_FIELD_NAME,
+    PUBLISHED_FIELD_NAME, REVISION_FIELD_NAME, STATUS_FIELD_NAME, TARGET_DOCUMENT_ID_FIELD_NAME,
+    UPDATED_BY_FIELD_NAME, UPDATED_FIELD_NAME, VERSION_FIELD_NAME,
     entities::{DocumentRelation, FieldType},
 };
 
@@ -19,29 +18,33 @@ pub struct DocumentTables {
 impl DocumentTables {
     pub fn new(document: &DocumentType, documents: &dyn DocumentTypesRegistry) -> Self {
         let mut tables = Vec::new();
-        
+
         // Create main table + snapshots table + relation tables for both modes.
         // This keeps schema and history handling consistent whether draftAndPublish is enabled or not.
         let mut main_table_builder = MainTableBuilder::new(document);
         let mut snapshots_table_builder = SnapshotsTableBuilder::new(document);
-        
-        handle_document_fields(document, &mut main_table_builder, &mut snapshots_table_builder);
-        
+
+        handle_document_fields(
+            document,
+            &mut main_table_builder,
+            &mut snapshots_table_builder,
+        );
+
         let main_table = main_table_builder.into();
         let snapshots_table = snapshots_table_builder.into();
-        
+
         tables.push(main_table);
         tables.push(snapshots_table);
-        
+
         for relation in document.relations.iter() {
             if relation.relation_type.is_owning() {
-                let (working_relation, snapshot_relation) = 
+                let (working_relation, snapshot_relation) =
                     RelationTablesBuilder::new_pair(document, relation, documents);
                 tables.push(working_relation);
                 tables.push(snapshot_relation);
             }
         }
-        
+
         Self { tables }
     }
 }
@@ -54,6 +57,7 @@ struct MainTableBuilder {
 impl MainTableBuilder {
     fn new(document: &DocumentType) -> Self {
         let table_name = document.id.normalized();
+
         let mut columns = vec![
             Column::primary_key(DOCUMENT_ID_FIELD_NAME, ColumnType::Uuid, None),
             Column::new(
@@ -65,38 +69,6 @@ impl MainTableBuilder {
                 Some("'DRAFT'"),
             ),
             Column::new(
-                CREATED_FIELD_NAME,
-                ColumnType::TimestampTZ,
-                None,
-                true,
-                false,
-                Some("now()"),
-            ),
-            Column::new(
-                UPDATED_FIELD_NAME,
-                ColumnType::TimestampTZ,
-                None,
-                true,
-                false,
-                Some("now()"),
-            ),
-            Column::new(
-                CREATED_BY_FIELD_NAME,
-                ColumnType::Text,
-                None,
-                false,
-                false,
-                None,
-            ),
-            Column::new(
-                UPDATED_BY_FIELD_NAME,
-                ColumnType::Text,
-                None,
-                false,
-                false,
-                None,
-            ),
-            Column::new(
                 VERSION_FIELD_NAME,
                 ColumnType::Integer(IntegerSize::Int32),
                 None,
@@ -106,33 +78,8 @@ impl MainTableBuilder {
             ),
         ];
 
-        if document.has_draft_and_publish() {
-            columns.push(Column::new(
-                REVISION_FIELD_NAME,
-                ColumnType::Integer(IntegerSize::Int32),
-                None,
-                true,
-                false,
-                Some("0"),
-            ));
-            columns.push(Column::new(
-                PUBLISHED_FIELD_NAME,
-                ColumnType::TimestampTZ,
-                None,
-                false,
-                false,
-                None,
-            ));
-            columns.push(Column::new(
-                PUBLISHED_BY_FIELD_NAME,
-                ColumnType::Text,
-                None,
-                false,
-                false,
-                None,
-            ));
-        }
-        
+        columns.extend(common_columns());
+
         Self {
             table_name,
             columns,
@@ -159,8 +106,12 @@ struct SnapshotsTableBuilder {
 impl SnapshotsTableBuilder {
     fn new(document: &DocumentType) -> Self {
         let table_name = format!("{}_snapshots", document.id.normalized());
-        let columns = vec![
-            Column::primary_key(SNAPSHOT_ID_FIELD_NAME, ColumnType::Integer(IntegerSize::Int64), None),
+        let mut columns = vec![
+            Column::primary_key(
+                SNAPSHOT_ID_FIELD_NAME,
+                ColumnType::Integer(IntegerSize::Int64),
+                None,
+            ),
             Column::new(
                 DOCUMENT_ID_FIELD_NAME,
                 ColumnType::Uuid,
@@ -169,32 +120,10 @@ impl SnapshotsTableBuilder {
                 false,
                 None,
             ),
-            Column::new(
-                REVISION_FIELD_NAME,
-                ColumnType::Integer(IntegerSize::Int32),
-                None,
-                true,
-                false,
-                None,
-            ),
-            Column::new(
-                PUBLISHED_FIELD_NAME,
-                ColumnType::TimestampTZ,
-                None,
-                true,
-                false,
-                Some("now()"),
-            ),
-            Column::new(
-                PUBLISHED_BY_FIELD_NAME,
-                ColumnType::Text,
-                None,
-                false,
-                false,
-                None,
-            ),
         ];
-        
+
+        columns.extend(common_columns());
+
         Self {
             table_name,
             columns,
@@ -207,26 +136,83 @@ impl SnapshotsTableBuilder {
 
     fn into(self) -> Table {
         let main_table_name = self.table_name.strip_suffix("_snapshots").unwrap();
-        
-        let foreign_keys = vec![
-            ForeignKeyConstraint::new(
-                &self.table_name as &str,
-                DOCUMENT_ID_FIELD_NAME,
-                main_table_name,
-                DOCUMENT_ID_FIELD_NAME,
-            ),
-        ];
 
-        let indexes = vec![
-            Index::new(
-                &self.table_name as &str,
-                vec![DOCUMENT_ID_FIELD_NAME, REVISION_FIELD_NAME],
-                true,
-            ),
-        ];
+        let foreign_keys = vec![ForeignKeyConstraint::new(
+            &self.table_name as &str,
+            DOCUMENT_ID_FIELD_NAME,
+            main_table_name,
+            DOCUMENT_ID_FIELD_NAME,
+        )];
+
+        let indexes = vec![Index::new(
+            &self.table_name as &str,
+            vec![DOCUMENT_ID_FIELD_NAME, REVISION_FIELD_NAME],
+            true,
+        )];
 
         Table::new(self.table_name, self.columns, foreign_keys, indexes)
     }
+}
+
+fn common_columns() -> Vec<Column> {
+    vec![
+        Column::new(
+            CREATED_FIELD_NAME,
+            ColumnType::TimestampTZ,
+            None,
+            true,
+            false,
+            Some("now()"),
+        ),
+        Column::new(
+            UPDATED_FIELD_NAME,
+            ColumnType::TimestampTZ,
+            None,
+            true,
+            false,
+            Some("now()"),
+        ),
+        Column::new(
+            CREATED_BY_FIELD_NAME,
+            ColumnType::Text,
+            None,
+            false,
+            false,
+            None,
+        ),
+        Column::new(
+            UPDATED_BY_FIELD_NAME,
+            ColumnType::Text,
+            None,
+            false,
+            false,
+            None,
+        ),
+        Column::new(
+            REVISION_FIELD_NAME,
+            ColumnType::Integer(IntegerSize::Int32),
+            None,
+            true,
+            false,
+            None,
+        ),
+        Column::new(
+            PUBLISHED_FIELD_NAME,
+            ColumnType::TimestampTZ,
+            None,
+            true,
+            false,
+            Some("now()"),
+        ),
+        Column::new(
+            PUBLISHED_BY_FIELD_NAME,
+            ColumnType::Text,
+            None,
+            false,
+            false,
+            None,
+        ),
+    ]
 }
 
 struct RelationTablesBuilder;
@@ -245,7 +231,7 @@ impl RelationTablesBuilder {
             relation.id.normalized()
         );
         let snapshot_relation_table_name = format!(
-            "{}_snapshot_{}",
+            "{}_{}_relation_snapshots",
             document.id.normalized(),
             relation.id.normalized()
         );
@@ -271,13 +257,11 @@ impl RelationTablesBuilder {
             ),
         ];
 
-        let working_indexes = vec![
-            Index::new(
-                &relation_table_name as &str,
-                vec![TARGET_DOCUMENT_ID_FIELD_NAME],
-                false,
-            ),
-        ];
+        let working_indexes = vec![Index::new(
+            &relation_table_name as &str,
+            vec![TARGET_DOCUMENT_ID_FIELD_NAME],
+            false,
+        )];
 
         let working_table = Table::new(
             relation_table_name.clone(),
@@ -288,7 +272,11 @@ impl RelationTablesBuilder {
 
         // Snapshot relation table
         let snapshot_columns = vec![
-            Column::primary_key(SNAPSHOT_ID_FIELD_NAME, ColumnType::Integer(IntegerSize::Int64), None),
+            Column::primary_key(
+                SNAPSHOT_ID_FIELD_NAME,
+                ColumnType::Integer(IntegerSize::Int64),
+                None,
+            ),
             Column::primary_key(TARGET_DOCUMENT_ID_FIELD_NAME, ColumnType::Uuid, None),
         ];
 
@@ -307,13 +295,11 @@ impl RelationTablesBuilder {
             ),
         ];
 
-        let snapshot_indexes = vec![
-            Index::new(
-                &snapshot_relation_table_name as &str,
-                vec![TARGET_DOCUMENT_ID_FIELD_NAME],
-                false,
-            ),
-        ];
+        let snapshot_indexes = vec![Index::new(
+            &snapshot_relation_table_name as &str,
+            vec![TARGET_DOCUMENT_ID_FIELD_NAME],
+            false,
+        )];
 
         let snapshot_table = Table::new(
             snapshot_relation_table_name,
