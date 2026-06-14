@@ -5,14 +5,15 @@ pub mod find;
 pub mod write;
 pub mod relations;
 
-const STANDARD_SELECT_COLUMNS: [(&str, &str); 7] = [
-    ("m", ID_FIELD_NAME),
+const STANDARD_SELECT_COLUMNS: [(&str, &str); 8] = [
     ("m", DOCUMENT_ID_FIELD_NAME),
     ("m", CREATED_FIELD_NAME),
     ("m", UPDATED_FIELD_NAME),
     ("m", CREATED_BY_FIELD_NAME),
     ("m", UPDATED_BY_FIELD_NAME),
-    ("m", VERSION_FIELD_NAME),
+    ("m", PUBLISHED_FIELD_NAME),
+    ("s", PUBLISHED_BY_FIELD_NAME),
+    ("s", REVISION_FIELD_NAME),
 ];
 
 fn main_select_columns(document: &DocumentType) -> Vec<ColumnRef> {

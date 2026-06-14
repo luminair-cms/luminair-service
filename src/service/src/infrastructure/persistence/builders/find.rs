@@ -1,6 +1,7 @@
 use crate::domain::query::{
     DocumentInstanceQuery, DocumentStatus, FilterExpression, SortDirection,
 };
+use crate::infrastructure::persistence::builders::main_select_columns;
 
 use luminair_common::persistence::TableNameProviderConstructor;
 use luminair_common::{
@@ -126,32 +127,13 @@ fn main_document_select<'a>(
     select.from(table_ref);
 
     // Add regular columns via .columns()
-    select.columns(common_select_columns(document));
+    select.columns(main_select_columns(document));
 
     // Add typed/custom expressions via .expr_as()
     select.expr_as(version_expr, Alias::new("version"));
     select.expr_as(status_expr, Alias::new("status"));
 
     select
-}
-
-fn common_select_columns(document: &DocumentType) -> Vec<ColumnRef> {
-    let mut columns: Vec<ColumnRef> = vec![
-        ("m", DOCUMENT_ID_FIELD_NAME).into(),
-        ("m", CREATED_FIELD_NAME).into(),
-        ("m", UPDATED_FIELD_NAME).into(),
-        ("m", CREATED_BY_FIELD_NAME).into(),
-        ("m", UPDATED_BY_FIELD_NAME).into(),
-        ("s", PUBLISHED_FIELD_NAME).into(),
-        ("s", PUBLISHED_BY_FIELD_NAME).into(),
-        ("s", REVISION_FIELD_NAME).into(),
-    ];
-
-    for field in &document.fields {
-        columns.push(("m", field.id.normalized()).into());
-    }
-
-    columns
 }
 
 pub fn query_count_documents(

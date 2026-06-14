@@ -5,6 +5,7 @@ use uuid::Uuid;
 use luminair_common::{AttributeId, DocumentType, DOCUMENT_ID_FIELD_NAME, ID_FIELD_NAME, INVERSE_ID_FIELD_NAME, OWNING_ID_FIELD_NAME};
 use luminair_common::persistence::TableNameProvider;
 use crate::domain::document::DatabaseRowId;
+use crate::domain::query::DocumentStatus;
 use crate::infrastructure::persistence::builders::main_select_columns;
 
 /**
@@ -29,7 +30,8 @@ pub fn query_find_related_documents(
     main_document: &DocumentType,
     related_document: &DocumentType,
     relation_attr: &AttributeId,
-    params: Vec<i64>,
+    status: DocumentStatus,
+    params: Vec<Uuid>,
 ) -> (String, SqlxValues) {
     let related_table: TableNameProvider = related_document.into();
     let relation_table: TableNameProvider = (main_document, relation_attr).into();
