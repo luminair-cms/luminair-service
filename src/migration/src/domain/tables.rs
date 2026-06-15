@@ -26,7 +26,7 @@ pub struct Column {
 /// Represents Column types
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ColumnType {
-    Serial,
+    Identity(IntegerSize),
     Uuid,
     Text,
     Varchar,

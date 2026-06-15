@@ -152,6 +152,16 @@ impl Default for IntegerSize {
     }
 }
 
+impl IntegerSize {
+    pub fn to_sql_type(&self) -> &'static str {
+        match self {
+            IntegerSize::Int16 => "SMALLINT",
+            IntegerSize::Int32 => "INT",
+            IntegerSize::Int64 => "BIGINT",
+        }
+    }
+}
+
 impl FieldType {
     pub fn is_integer(&self) -> bool {
         matches!(self, FieldType::Integer(_))

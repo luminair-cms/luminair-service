@@ -3,7 +3,7 @@ use luminair_common::DocumentTypesRegistry;
 use crate::application::Persistence;
 use crate::domain::DocumentTables;
 use crate::domain::dependency::{DependencyError, resolve_table_order};
-use crate::domain::tables::{Column, ColumnType, ForeignKeyConstraint, Index, IntegerSize, Table};
+use crate::domain::tables::{Column, ColumnType, ForeignKeyConstraint, Index, Table};
 
 #[derive(Clone)]
 pub struct Migration<P: Persistence> {
@@ -136,6 +136,7 @@ impl<P: Persistence> Migration<P> {
             }
         }
 
+        // TODO: add logs about count created/deleted tables
         self.persistence
             .apply_migration_steps(migration_steps)
             .await?;
@@ -221,16 +222,16 @@ fn create_table_ddl(schema: &str, table: &Table) -> Vec<String> {
 
 fn column_ddl(column: &Column) -> String {
     let ct = match column.column_type {
-        ColumnType::Serial => "SERIAL",
+        ColumnType::Identity(size) => {
+            let s = size.to_sql_type();
+            &format!("{} GENERATED ALWAYS AS IDENTITY", s)
+        }
         ColumnType::Uuid => "UUID",
         ColumnType::Text => "TEXT",
         ColumnType::Varchar => "VARCHAR",
-        ColumnType::Integer(size) => match size {
-            IntegerSize::Int16 => "SMALLINT",
-            IntegerSize::Int32 => "INT",
-            IntegerSize::Int64 => "BIGINT",
-        },
-        ColumnType::Decimal { precision, scale } => &format!("DECIMAL({},{})", precision, scale),
+        ColumnType::Integer(size) => size.to_sql_type(),
+        ColumnType::Decimal { precision, scale } => 
+            &format!("DECIMAL({},{})", precision, scale),
         ColumnType::Date => "DATE",
         ColumnType::TimestampTZ => "TIMESTAMPTZ",
         ColumnType::Boolean => "BOOLEAN",

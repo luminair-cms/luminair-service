@@ -107,11 +107,7 @@ impl SnapshotsTableBuilder {
     fn new(document: &DocumentType) -> Self {
         let table_name = format!("{}_snapshots", document.id.normalized());
         let mut columns = vec![
-            Column::primary_key(
-                SNAPSHOT_ID_FIELD_NAME,
-                ColumnType::Integer(IntegerSize::Int64),
-                None,
-            ),
+            Column::primary_key(SNAPSHOT_ID_FIELD_NAME, ColumnType::Identity(IntegerSize::Int64), None),
             Column::new(
                 DOCUMENT_ID_FIELD_NAME,
                 ColumnType::Uuid,
