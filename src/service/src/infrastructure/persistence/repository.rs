@@ -1,11 +1,6 @@
 use crate::{
-    domain::document::lifecycle::PublicationState,
-    domain::document::{DatabaseRowId, DocumentInstance, DocumentInstanceId},
-    domain::query::DocumentInstanceQuery,
-    domain::repository::{DocumentsRepository, RelationMap, RelationOps, RepositoryError},
-    infrastructure::persistence::builders::find::{query_count_documents, query_find_document_by_criteria, query_find_document_by_id},
-    infrastructure::persistence::builders::relations::{delete_relation_entry, insert_relation_entry, query_find_related_documents, query_row_id_by_document_uuid, query_row_ids_by_document_uuids},
-    infrastructure::persistence::builders::write::{delete_document, insert_document, update_document}
+    domain::{document::{DatabaseRowId, DocumentInstance, DocumentInstanceId, lifecycle::PublicationState}, query::{DocumentInstanceQuery, DocumentStatus}, repository::{DocumentsRepository, RelationMap, RelationOps, RepositoryError}},
+    infrastructure::persistence::builders::{find::{query_count_documents, query_find_document_by_criteria, query_find_document_by_id}, relations::{delete_relation_entry, insert_relation_entry, query_find_related_documents, query_row_id_by_document_uuid, query_row_ids_by_document_uuids}, write::{delete_document, insert_document, update_document}}
 };
 
 use futures::TryStreamExt;
@@ -107,12 +102,13 @@ impl DocumentsRepository for PostgresDocumentsRepository {
     async fn fetch_relations(
         &self,
         document_type: &DocumentType,
-        row_ids: &[DatabaseRowId],
         fields: &[AttributeId],
+        status: DocumentStatus,
+        ids: &[DocumentInstanceId],
     ) -> Result<RelationMap, RepositoryError> {
         let mut result = HashMap::new();
 
-        let params: Vec<i64> = row_ids.iter().map(|id| id.0).collect();
+        let params: Vec<Uuid> = ids.iter().map(|id| id.0).collect();
 
         for attr_id in fields {
             let rel_metadata = document_type.relations.get(attr_id).ok_or_else(|| {
@@ -135,6 +131,7 @@ impl DocumentsRepository for PostgresDocumentsRepository {
                 document_type,
                 related_document_type,
                 attr_id,
+                status,
                 params.clone(),
             );
             let query_object = sqlx_query_with(sql, values);

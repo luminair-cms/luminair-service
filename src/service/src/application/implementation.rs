@@ -31,6 +31,7 @@ impl<R: DocumentsRepository> DocumentsServiceImpl<R> {
         &self,
         document_type: &DocumentType,
         populate: Option<Vec<AttributeId>>,
+        status: DocumentStatus,
         instances: Vec<DocumentInstance>,
     ) -> Result<Vec<DocumentInstance>, RepositoryError> {
         let Some(fields) = populate else {
@@ -40,10 +41,10 @@ impl<R: DocumentsRepository> DocumentsServiceImpl<R> {
             return Ok(instances);
         }
 
-        let row_ids: Vec<DatabaseRowId> = instances.iter().map(|d| d.id).collect();
+        let ids: Vec<DocumentInstanceId> = instances.iter().map(|d| d.document_id).collect();
         let relation_map: RelationMap = self
             .repository
-            .fetch_relations(document_type, &row_ids, &fields)
+            .fetch_relations(document_type, &fields, status, &ids)
             .await?;
 
         let enriched = instances
@@ -71,7 +72,7 @@ impl<R: DocumentsRepository> DocumentsService for DocumentsServiceImpl<R> {
             self.repository.find(cmd.document_type, &cmd.query),
             self.repository.count(cmd.document_type, &cmd.query),
         )?;
-        let enriched = self.enrich(cmd.document_type, cmd.populate, instances).await?;
+        let enriched = self.enrich(cmd.document_type, cmd.populate, cmd.query.status, instances).await?;
         Ok((enriched, count))
     }
 
@@ -84,7 +85,7 @@ impl<R: DocumentsRepository> DocumentsService for DocumentsServiceImpl<R> {
         // Wrap in a Vec to reuse the batch enrichment helper, then unwrap.
         // TODO: this is a bit of a hack.
         let instances = opt.into_iter().collect::<Vec<_>>();
-        let enriched = self.enrich(cmd.document_type, cmd.populate, instances).await?;
+        let enriched = self.enrich(cmd.document_type, cmd.populate, cmd.query.status, instances).await?;
 
         Ok(enriched.into_iter().next())
     }

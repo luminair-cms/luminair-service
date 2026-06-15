@@ -2,8 +2,8 @@ use sea_query::{ColumnRef, DynIden, Expr, ExprTrait, JoinType, Order, PostgresQu
 use sea_query::extension::postgres::PgExpr;
 use sea_query_sqlx::{SqlxBinder, SqlxValues};
 use uuid::Uuid;
-use luminair_common::{AttributeId, DocumentType, DOCUMENT_ID_FIELD_NAME, ID_FIELD_NAME, INVERSE_ID_FIELD_NAME, OWNING_ID_FIELD_NAME};
-use luminair_common::persistence::TableNameProvider;
+use luminair_common::{AttributeId, DOCUMENT_ID_FIELD_NAME, DocumentType, ID_FIELD_NAME, INVERSE_ID_FIELD_NAME, OWNING_DOCUMENT_ID_FIELD_NAME, OWNING_ID_FIELD_NAME, TARGET_DOCUMENT_ID_FIELD_NAME};
+use luminair_common::persistence::{TableNameProvider, TableNameProviderConstructor as _};
 use crate::domain::document::DatabaseRowId;
 use crate::domain::query::DocumentStatus;
 use crate::infrastructure::persistence::builders::main_select_columns;
@@ -33,13 +33,16 @@ pub fn query_find_related_documents(
     status: DocumentStatus,
     params: Vec<Uuid>,
 ) -> (String, SqlxValues) {
-    let related_table: TableNameProvider = related_document.into();
-    let relation_table: TableNameProvider = (main_document, relation_attr).into();
+    let (related_table, relation_table) = if status == DocumentStatus::Published {
+        (related_document.snapshot_table(), main_document.relation_snapshot_table(relation_attr))
+    } else {
+        (related_document.main_table(), main_document.relation_table(relation_attr))
+    };
 
-    let owning_id_column = ("r", OWNING_ID_FIELD_NAME);
+    let owning_document_id_column = ("r", OWNING_DOCUMENT_ID_FIELD_NAME);
 
     let mut columns = main_select_columns(related_document);
-    columns.push(owning_id_column.into());
+    columns.push(owning_document_id_column.into());
 
     Query::select()
         .columns(columns)
@@ -47,11 +50,11 @@ pub fn query_find_related_documents(
         .join(
             JoinType::LeftJoin,
             related_table,
-            ColumnRef::from(("m", ID_FIELD_NAME))
-                .equals(ColumnRef::from(("r", INVERSE_ID_FIELD_NAME))),
+            ColumnRef::from(("m", DOCUMENT_ID_FIELD_NAME))
+                .equals(ColumnRef::from(("r", TARGET_DOCUMENT_ID_FIELD_NAME))),
         )
-        .and_where(Expr::col(owning_id_column).eq_any(params))
-        .order_by(owning_id_column, Order::Asc)
+        .and_where(Expr::col(owning_document_id_column).eq_any(params))
+        .order_by(owning_document_id_column, Order::Asc)
         .build_sqlx(PostgresQueryBuilder)
 }
 

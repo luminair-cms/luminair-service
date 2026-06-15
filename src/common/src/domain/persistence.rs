@@ -13,6 +13,10 @@ pub enum TableNameProvider<'a> {
         document: &'a DocumentType,
         relation: &'a AttributeId,
     },
+    RelationSnapshotTable {
+        document: &'a DocumentType,
+        relation: &'a AttributeId,
+    },
 }
 
 impl<'a> TableNameProvider<'a> {
@@ -25,18 +29,23 @@ impl<'a> TableNameProvider<'a> {
                 document.id.normalized(),
                 relation.normalized()
             ),
+            Self::RelationSnapshotTable { document, relation } => format!(
+                "{}_{}_relation_snapshots",
+                document.id.normalized(),
+                relation.normalized()
+            ),
         }
     }
     
     const MAIN_TABLE_ALIAS: &'static str = "m";
-    const SNAPSHOT_TABLE_ALIAS: &'static str = "m";
     const RELATION_TABLE_ALIAS: &'static str = "r";
     
     pub fn alias(&self) -> &'static str {
         match self {
             Self::MainTable { .. } => Self::MAIN_TABLE_ALIAS,
-            Self::SnapshotTable { .. } => Self::SNAPSHOT_TABLE_ALIAS,
+            Self::SnapshotTable { .. } => Self::MAIN_TABLE_ALIAS,
             Self::RelationTable { .. } => Self::RELATION_TABLE_ALIAS,
+            Self::RelationSnapshotTable { .. } => Self::RELATION_TABLE_ALIAS,
         }
     }
 
@@ -49,6 +58,7 @@ pub trait TableNameProviderConstructor<'a> {
     fn main_table(&'a self) -> TableNameProvider<'a>;
     fn snapshot_table(&'a self) -> TableNameProvider<'a>;
     fn relation_table(&'a self, relation: &'a AttributeId) -> TableNameProvider<'a>;
+    fn relation_snapshot_table(&'a self, relation: &'a AttributeId) -> TableNameProvider<'a>;
 }
 
 impl<'a> TableNameProviderConstructor<'a> for DocumentType {
@@ -62,6 +72,10 @@ impl<'a> TableNameProviderConstructor<'a> for DocumentType {
 
     fn relation_table(&'a self, relation: &'a AttributeId) -> TableNameProvider<'a> {
         TableNameProvider::RelationTable { document: self, relation }
+    }
+
+    fn relation_snapshot_table(&'a self, relation: &'a AttributeId) -> TableNameProvider<'a> {
+        TableNameProvider::RelationSnapshotTable { document: self, relation }
     }
 }   
 

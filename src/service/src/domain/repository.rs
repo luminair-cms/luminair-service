@@ -4,7 +4,7 @@ use luminair_common::{AttributeId, DocumentType};
 
 use crate::domain::{
     document::{DatabaseRowId, DocumentInstance, DocumentInstanceId},
-    query::DocumentInstanceQuery,
+    query::{DocumentInstanceQuery, DocumentStatus},
 };
 
 /// Port: the persistence contract that infrastructure adapters must implement.
@@ -56,12 +56,13 @@ pub trait DocumentsRepository: Send + Sync + 'static {
 
     /// Batch-load relations for a set of main document rows.
     ///
-    /// Returns a nested map: `attribute_id → owning_row_id → related_instances`.
+    /// Returns a nested map: `attribute_id → owning_document_id → related_instances`.
     fn fetch_relations(
         &self,
         document_type: &DocumentType,
-        row_ids: &[DatabaseRowId],
         fields: &[AttributeId],
+        status: DocumentStatus,
+        ids: &[DocumentInstanceId],
     ) -> impl Future<Output = Result<RelationMap, RepositoryError>> + Send;
 
     // ── Write ───────────────────────────────────────────────────────────────
