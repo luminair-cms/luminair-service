@@ -277,3 +277,66 @@ fn documents_into_tables(documents: &dyn DocumentTypesRegistry) -> Vec<Table> {
 
     tables
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::tables::{Column, ColumnType, ForeignKeyConstraint, Index};
+    use luminair_common::entities::IntegerSize;
+
+    #[test]
+    fn test_drop_table_ddl() {
+        let ddl = drop_table_ddl("my_schema", "my_table");
+        assert_eq!(ddl, "DROP TABLE IF EXISTS \"my_schema\".\"my_table\" CASCADE");
+    }
+
+    #[test]
+    fn test_create_table_ddl_basic() {
+        let id_column = Column::primary_key("id", ColumnType::Uuid, None);
+        let name_column = Column::new("name", ColumnType::Text, None, true, false, None);
+        let status_column = Column::new("status", ColumnType::Text, None, true, false, Some("'DRAFT'"));
+        let columns = vec![id_column, name_column, status_column];
+        let table = Table::new("my_table".to_string(), columns, vec![], vec![]);
+
+        let ddls = create_table_ddl("my_schema", &table);
+        assert_eq!(ddls.len(), 1);
+        let ddl = &ddls[0];
+        assert!(ddl.contains("CREATE TABLE \"my_schema\".\"my_table\""));
+        assert!(ddl.contains("\"id\" UUID"));
+        assert!(ddl.contains("\"name\" TEXT NOT NULL"));
+        assert!(ddl.contains("\"status\" TEXT NOT NULL DEFAULT 'DRAFT'"));
+        assert!(ddl.contains("PRIMARY KEY(id)"));
+    }
+
+    #[test]
+    fn test_create_fk_ddl() {
+        let fk = ForeignKeyConstraint::new(
+            "child_table",
+            "parent_id",
+            "parent_table",
+            "id",
+        );
+        let ddl = create_fk_ddl("my_schema", &fk);
+        assert_eq!(
+            ddl,
+            "ALTER TABLE \"my_schema\".\"child_table\" ADD CONSTRAINT \"child_table_parent_id_fkey\" FOREIGN KEY (\"parent_id\") REFERENCES \"my_schema\".\"parent_table\" (\"id\") ON DELETE CASCADE"
+        );
+    }
+
+    #[test]
+    fn test_create_index_ddl() {
+        let index = Index::new("my_table", vec!["col1", "col2"], false);
+        let ddl = create_index_ddl("my_schema", &index);
+        assert_eq!(
+            ddl,
+            "CREATE  INDEX \"my_table_col1_col2_idx\" ON \"my_schema\".\"my_table\" (col1, col2)"
+        );
+
+        let unique_index = Index::new("my_table", vec!["col1"], true);
+        let ddl_unique = create_index_ddl("my_schema", &unique_index);
+        assert_eq!(
+            ddl_unique,
+            "CREATE UNIQUE INDEX \"my_table_col1_idx\" ON \"my_schema\".\"my_table\" (col1)"
+        );
+    }
+}
