@@ -1,7 +1,7 @@
 use crate::application::AppState;
 use crate::application::service::DocumentsService;
 use crate::domain::document::DocumentInstanceId;
-use crate::domain::query::DocumentInstanceQuery;
+use crate::domain::query::{DocumentInstanceQuery, DocumentStatus};
 use crate::infrastructure::http::api::{ApiError, ApiSuccess};
 use crate::infrastructure::http::handlers::content::params::{parse_populate, parse_status, resolve_document_type, QueryParams};
 use crate::infrastructure::http::handlers::content::response::{
@@ -13,7 +13,8 @@ use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use serde::Deserialize;
-use crate::application::commands::{CreateDocumentCommand, DeleteDocumentCommand, FindByIdCommand, FindDocumentsCommand};
+use crate::application::commands::{CreateDocumentCommand, DeleteDocumentCommand, FindByIdCommand, FindDocumentsCommand, PublishDocumentCommand};
+use luminair_common::AttributeId;
 
 mod params;
 mod request;
@@ -97,18 +98,7 @@ pub async fn create_new_document<S: AppState>(
 ) -> Result<impl IntoResponse, ApiError> {
     let document_type = resolve_document_type(&state, &api_type)?;
 
-    // Validate and build fields from the payload using document type metadata
-    let fields = request::build_fields_from_payload(document_type, &payload).map_err(
-        |err: crate::domain::document::error::DocumentError| {
-            ApiError::UnprocessableEntity(err.to_string())
-        },
-    )?;
-
-    let cmd = CreateDocumentCommand {
-        document_type,
-        fields,
-        user_id: None
-    };
+    let cmd = request::parse_create_command(document_type, &payload, None)?;
 
     let created_document_id = state
         .documents_service()
@@ -150,28 +140,120 @@ pub async fn delete_existing_document<S: AppState>(
     Ok((StatusCode::NO_CONTENT, ()))
 }
 
-/// Handle connect/disconnect relation operations.
+/// Handle updating document fields and/or modifying relations in a single PUT request.
 ///
-/// Accepts the same `{ "fieldName": { "connect": [...], "disconnect": [...] } }` payload
-/// format described in the API docs. Both shorthand (UUID string) and longhand
-/// (`{ "documentId": "…" }`) formats are supported for each entry.
-pub async fn modify_relations<S: AppState>(
+/// Accepts a flat JSON payload or a nested `{ "data": { ... } }` payload.
+pub async fn update_document_handler<S: AppState>(
     State(state): State<S>,
     Path((api_type, id)): Path<(String, String)>,
     Json(payload): Json<serde_json::Value>,
-) -> Result<impl IntoResponse, ApiError> {
+) -> Result<ApiSuccess<OneDocumentResponse>, ApiError> {
     let document_type = resolve_document_type(&state, &api_type)?;
     let document_instance_id = DocumentInstanceId::try_from(&id)?;
 
-    let cmd = request::parse_modify_relations_command(document_type, document_instance_id, &payload)?;
+    // Extract nested "data" if present, otherwise fallback to root object
+    let root_obj = payload.as_object().ok_or(ApiError::UnprocessableEntity(
+        "body must be a JSON object".into(),
+    ))?;
+    let data_value = if let Some(data) = root_obj.get("data") {
+        data
+    } else {
+        &payload
+    };
 
-    state
+    let data_obj = data_value.as_object().ok_or(ApiError::UnprocessableEntity(
+        "payload must be a JSON object".into(),
+    ))?;
+
+    // Split payload fields into normal content fields vs relation operations
+    let mut field_payload = serde_json::Map::new();
+    let mut relation_payload = serde_json::Map::new();
+
+    for (k, v) in data_obj {
+        let attr_id = AttributeId::try_new(k).map_err(|_| {
+            ApiError::UnprocessableEntity(format!("Invalid field name: {}", k))
+        })?;
+
+        if document_type.relations.contains(&attr_id) {
+            relation_payload.insert(k.clone(), v.clone());
+        } else if document_type.fields.contains(&attr_id) {
+            field_payload.insert(k.clone(), v.clone());
+        } else {
+            return Err(ApiError::UnprocessableEntity(format!(
+                "Unknown field or relation: {}",
+                k
+            )));
+        }
+    }
+
+    // 1. Apply field updates if present
+    if !field_payload.is_empty() {
+        let cmd = request::parse_update_command(
+            document_type,
+            document_instance_id,
+            &serde_json::Value::Object(field_payload),
+            None,
+        )?;
+        state.documents_service().update(cmd).await?;
+    }
+
+    // 2. Apply relation operations if present
+    if !relation_payload.is_empty() {
+        let cmd = request::parse_modify_relations_command(
+            document_type,
+            document_instance_id,
+            &serde_json::Value::Object(relation_payload),
+        )?;
+        state.documents_service().modify_relations(cmd).await?;
+    }
+
+    // 3. Return the fully updated document state (with status: Draft to see the latest working copy)
+    let query = DocumentInstanceQuery::new().with_status(DocumentStatus::Draft);
+    let find_cmd = FindByIdCommand {
+        document_type,
+        document_instance_id,
+        populate: None,
+        query,
+    };
+
+    let updated_instance = state
         .documents_service()
-        .modify_relations(cmd)
+        .find_by_id(find_cmd)
+        .await?
+        .ok_or(ApiError::NotFound)?;
+
+    Ok(ApiSuccess::new(
+        StatusCode::OK,
+        OneDocumentResponse::try_from(Some(updated_instance))
+            .map_err(|_| ApiError::NotFound)?,
+    ))
+}
+
+/// Handle publishing a draft document.
+pub async fn publish_document<S: AppState>(
+    State(state): State<S>,
+    Path((api_type, id)): Path<(String, String)>,
+) -> Result<ApiSuccess<OneDocumentResponse>, ApiError> {
+    let document_type = resolve_document_type(&state, &api_type)?;
+    let document_instance_id = DocumentInstanceId::try_from(&id)?;
+
+    let cmd = PublishDocumentCommand {
+        document_type,
+        document_id: document_instance_id,
+        user_id: None,
+    };
+
+    let published_instance = state
+        .documents_service()
+        .publish(cmd)
         .await
         .map_err(ApiError::from)?;
 
-    Ok(StatusCode::NO_CONTENT)
+    Ok(ApiSuccess::new(
+        StatusCode::OK,
+        OneDocumentResponse::try_from(Some(published_instance))
+            .map_err(|_| ApiError::NotFound)?,
+    ))
 }
 
 /// Parse a JSON array of document IDs in shorthand (`"uuid-string"`) or

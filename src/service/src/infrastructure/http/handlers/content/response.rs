@@ -87,19 +87,7 @@ pub struct DocumentInstancePublicationState {
     pub revision: i32,
 }
 
-impl DocumentInstanceResponse {
-    pub fn with_relations(
-        self,
-        relations: HashMap<AttributeId, Vec<DocumentInstanceResponse>>,
-    ) -> Self {
-        let mut fields: HashMap<String, AttributeResponse> = relations
-            .into_iter()
-            .map(|(k, v)| (k.to_string(), AttributeResponse::Relation(v)))
-            .collect();
-        fields.extend(self.fields);
-        Self { fields, ..self }
-    }
-}
+
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(untagged)]
@@ -145,7 +133,7 @@ impl From<DocumentInstance> for DocumentInstanceResponse {
         };
 
         // ContentValue → JsonValue is handled by the domain codec (From<&ContentValue>).
-        let fields: HashMap<String, AttributeResponse> = value
+        let mut fields: HashMap<String, AttributeResponse> = value
             .content
             .fields
             .iter()
@@ -157,6 +145,24 @@ impl From<DocumentInstance> for DocumentInstanceResponse {
                 )
             })
             .collect();
+
+        for (rel_attr, rel_list) in value.relations {
+            let rel_responses: Vec<DocumentInstanceResponse> = rel_list
+                .into_iter()
+                .filter_map(|r| match r {
+                    crate::domain::document::DocumentRelation::Instance(inst) => {
+                        Some(DocumentInstanceResponse::from(inst))
+                    }
+                    crate::domain::document::DocumentRelation::Id(_) => None,
+                })
+                .collect();
+            if !rel_responses.is_empty() {
+                fields.insert(
+                    to_api_key(rel_attr.as_ref()),
+                    AttributeResponse::Relation(rel_responses),
+                );
+            }
+        }
 
         Self {
             id,

@@ -1,7 +1,7 @@
 use crate::application::AppState;
 use crate::infrastructure::http::handlers::content::{
     create_new_document, delete_existing_document, find_all_documents, find_document_by_id,
-    modify_relations,
+    update_document_handler, publish_document,
 };
 use crate::infrastructure::http::handlers::schema::{documents_metadata, one_document_metadata};
 use axum::Router;
@@ -18,5 +18,12 @@ pub fn api_routes<S: AppState>() -> Router<S> {
             "/documents/{api_type}/{id}",
             delete(delete_existing_document::<S>),
         )
-        .route("/documents/{api_type}/{id}", put(modify_relations::<S>))
+        .route(
+            "/documents/{api_type}/{id}",
+            put(update_document_handler::<S>),
+        )
+        .route(
+            "/documents/{api_type}/{id}/publish",
+            post(publish_document::<S>),
+        )
 }
