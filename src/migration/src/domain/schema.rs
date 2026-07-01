@@ -190,15 +190,15 @@ fn common_columns() -> Vec<Column> {
             None,
             true,
             false,
-            None,
+            Some("0"),
         ),
         Column::new(
             PUBLISHED_FIELD_NAME,
             ColumnType::TimestampTZ,
             None,
-            true,
             false,
-            Some("now()"),
+            false,
+            None,
         ),
         Column::new(
             PUBLISHED_BY_FIELD_NAME,

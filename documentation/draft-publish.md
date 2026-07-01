@@ -103,21 +103,22 @@ CREATE TABLE article_categories_relation (
 CREATE TABLE article_categories_relation_snapshots (
     snapshot_id        bigint NOT NULL REFERENCES article_snapshots(snapshot_id) ON DELETE CASCADE,
     target_document_id uuid NOT NULL REFERENCES categories(document_id) ON DELETE CASCADE,
+    owning_document_id uuid NOT NULL REFERENCES articles(document_id) ON DELETE CASCADE,
     PRIMARY KEY (snapshot_id, target_document_id)
 );
 ```
 
 ### Relation Tables Pairing
 
-- `articles` ↔ `article_categories` (working/draft relation set)
-- `article_snapshots` ↔ `article_snapshot_categories` (published relation set)
+- `articles` ↔ `article_categories_relation` (working/draft relation set)
+- `article_snapshots` ↔ `article_categories_relation_snapshots` (published relation set)
 
 
 ### Relation Operations
 
 #### Add to Draft Relations
 ```sql
-INSERT INTO article_categories (owning_document_id, target_document_id)
+INSERT INTO article_categories_relation (owning_document_id, target_document_id)
 VALUES ($document_id, $target_document_id);
 ```
 
@@ -126,9 +127,9 @@ VALUES ($document_id, $target_document_id);
 When publishing, freeze the current draft relations into the snapshot:
 
 ```sql
-INSERT INTO article_snapshot_categories (snapshot_id, target_document_id)
-SELECT $snapshot_id, target_document_id
-FROM article_categories
+INSERT INTO article_categories_relation_snapshots (snapshot_id, target_document_id, owning_document_id)
+SELECT $snapshot_id, target_document_id, owning_document_id
+FROM article_categories_relation
 WHERE owning_document_id = $document_id;
 ```
 
@@ -151,11 +152,8 @@ SELECT
     s.body,
     sc.target_document_id
 FROM article_snapshots s
-LEFT JOIN article_snapshot_categories sc ON sc.snapshot_id = s.snapshot_id
-WHERE s.document_id = $1
-  AND s.revision = (
-      SELECT MAX(revision) FROM article_snapshots WHERE document_id = $1
-  );
+LEFT JOIN article_categories_relation_snapshots sc ON sc.snapshot_id = s.snapshot_id
+WHERE s.document_id = $1;
 ```
 
 This query:
@@ -180,7 +178,7 @@ SELECT
     a.body,
     ac.target_document_id
 FROM articles a
-LEFT JOIN article_categories ac ON ac.owning_document_id = a.document_id
+LEFT JOIN article_categories_relation ac ON ac.owning_document_id = a.document_id
 WHERE a.document_id = $1;
 ```
 
@@ -196,7 +194,7 @@ This query:
 
 - **Public API** (`GET /articles?status=published` or `GET /articles/:id`): Reads from snapshots table, returns latest published version
 - **Editor API** (`GET /articles?status=draft`): Reads from main table, returns the latest editorial state (draft row if unpublished changes exist, otherwise the published row)
-- **History API** (`GET /articles/:id/revisions`): Reads from snapshots table, shows all published versions
+- **History API** (`GET /articles/:id/revisions`): Reads from snapshots table, shows all published versions (Note: **Not implemented in MVP** since the MVP database retains only the single latest snapshot per document).
 
 ### Status Field Usage
 
@@ -217,9 +215,8 @@ SELECT a.* FROM articles a WHERE a.status = 'DRAFT';
 SELECT a.* FROM articles a WHERE a.status = 'MODIFIED';
 
 -- Show all published documents (snapshot-based)
-SELECT DISTINCT s.document_id, MAX(s.revision) as latest_revision
-FROM article_snapshots s
-GROUP BY s.document_id;
+SELECT s.document_id, s.revision as latest_revision
+FROM article_snapshots s;
 ```
 
 ## Relations and Draft-Publish Behavior
@@ -235,7 +232,7 @@ GROUP BY s.document_id;
 Relations are always edited against the working copy:
 ```sql
 -- Editor adds a category to draft
-INSERT INTO article_categories (owning_document_id, target_document_id)
+INSERT INTO article_categories_relation (owning_document_id, target_document_id)
 VALUES ($article_id, $category_id);
 ```
 
@@ -248,9 +245,9 @@ When publishing, the relation set is frozen:
 ```sql
 -- 1. Create snapshot (see Publish Document section)
 -- 2. Freeze draft relations into snapshot
-INSERT INTO article_snapshot_categories (snapshot_id, target_document_id)
-SELECT $snapshot_id, target_document_id
-FROM article_categories
+INSERT INTO article_categories_relation_snapshots (snapshot_id, target_document_id, owning_document_id)
+SELECT $snapshot_id, target_document_id, owning_document_id
+FROM article_categories_relation
 WHERE owning_document_id = $document_id;
 -- 3. Update main table status
 ```

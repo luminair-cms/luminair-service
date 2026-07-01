@@ -4,11 +4,12 @@ This document describes how Luminair generates database schema from document typ
 
 ## Overview
 
-The migration logic builds two kinds of tables from each document schema:
+The migration logic builds the following tables from each document schema:
 
-- **Document identity table** for document instances due to draft-and-publish
-- **Collection table** for document data fields and lifecycle metadata
-- **Relation tables** for owning-side relations between document types
+- **Main table** for working/draft document content and lifecycle metadata
+- **Snapshots table** for immutable published snapshots of document content
+- **Relation table** for working/draft relations between document types
+- **Snapshot relation table** for relations of frozen published snapshots
 
 The table generation is implemented in `migration/src/domain/mod.rs` using `MainTableBuilder` and `RelationTablesBuilder`.
 
@@ -147,13 +148,14 @@ Used by editor APIs to read and write draft/working relations.
 - `target_document_id` — `uuid` NOT NULL REFERENCES `{target_collection}`(document_id) ON DELETE CASCADE
 - PRIMARY KEY (`owning_document_id`, `target_document_id`)
 
-### Snapshot Relations: `{collection}_snapshot_{relation_name}`
+### Snapshot Relations: `{collection}_{relation_name}_relation_snapshots`
 
 Used by public APIs to query relations of frozen published snapshots.
 
 **Columns:**
 - `snapshot_id` — `bigint` NOT NULL REFERENCES `{collection}_snapshots`(snapshot_id) ON DELETE CASCADE
 - `target_document_id` — `uuid` NOT NULL REFERENCES `{target_collection}`(document_id) ON DELETE CASCADE
+- `owning_document_id` — `uuid` NOT NULL REFERENCES `{collection}`(document_id) ON DELETE CASCADE
 - PRIMARY KEY (`snapshot_id`, `target_document_id`)
 
 ### Relation lifecycle with draft-and-publish
@@ -164,9 +166,9 @@ Because relation tables link by UUIDs (`owning_document_id` and `target_document
 - **Disconnect**: remove the row from `{collection}_{relation_name}_relation`.
 - **Publish**: inside a single transaction, the publish operation inserts a new row in `{collection}_snapshots` (returning `snapshot_id`), then copies all matching relation rows from the working relation table to the snapshot relation table under that `snapshot_id`:
   ```sql
-  INSERT INTO article_snapshot_categories (snapshot_id, target_document_id)
-  SELECT $snapshot_id, target_document_id
-  FROM article_categories
+  INSERT INTO article_categories_relation_snapshots (snapshot_id, target_document_id, owning_document_id)
+  SELECT $snapshot_id, target_document_id, owning_document_id
+  FROM article_categories_relation
   WHERE owning_document_id = $document_id;
   ```
 
@@ -202,9 +204,10 @@ While polymorphic relations are **excluded from the MVP**, the architecture for 
    - **Database-Level Cascades:** Deleting a target document automatically and cleanly cascade-deletes all polymorphic relation records pointing to it.
    - **Type Safety:** Strong relational integrity at the SQL level.
 
-## Migration Strategy
-
 The migration system compares the target schema (derived from document configuration) with the actual database schema and generates DDL statements to reconcile them. The migration process is idempotent and only executes changes when needed.
+
+> [!NOTE]
+> Column-level migrations (e.g., adding, removing, or modifying individual fields/columns on existing tables) are **not implemented in the MVP**. Schema updates at the field/column level require recreating the collection tables or manual DDL intervention. Only table-level additions and removals are processed.
 
 ### MVP: Core Migration Cases
 

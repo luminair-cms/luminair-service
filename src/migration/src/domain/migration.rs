@@ -157,11 +157,11 @@ fn drop_name_order(a: &str, b: &str) -> std::cmp::Ordering {
     let a_is_working_relation = a.ends_with("_relation");
     let b_is_working_relation = b.ends_with("_relation");
     
-    let a_is_snapshot_relation = a.contains("_snapshot_") && !a.ends_with("_snapshots");
-    let b_is_snapshot_relation = b.contains("_snapshot_") && !b.ends_with("_snapshots");
+    let a_is_snapshot_relation = a.ends_with("_relation_snapshots");
+    let b_is_snapshot_relation = b.ends_with("_relation_snapshots");
     
-    let a_is_snapshot = a.ends_with("_snapshots");
-    let b_is_snapshot = b.ends_with("_snapshots");
+    let a_is_snapshot = a.ends_with("_snapshots") && !a.ends_with("_relation_snapshots");
+    let b_is_snapshot = b.ends_with("_snapshots") && !b.ends_with("_relation_snapshots");
 
     // Working relations drop first
     match (a_is_working_relation, b_is_working_relation) {
