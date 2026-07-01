@@ -1,7 +1,7 @@
 pub(crate) use luminair_common::entities::IntegerSize;
 
 /// Represents table in a database, used for ddl generation
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Table {
     pub name: String,
     pub columns: Vec<Column>,
@@ -39,7 +39,7 @@ pub enum ColumnType {
 }
 
 /// Represents foreign key constraint in the database table
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ForeignKeyConstraint {
     pub table_name: String,
     pub column_name: String,
@@ -48,7 +48,7 @@ pub struct ForeignKeyConstraint {
 }
 
 /// Represents an index in the database table
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Index {
     pub table_name: String,
     pub columns: Vec<String>,

@@ -102,16 +102,34 @@ impl<P: Persistence> Migration<P> {
             .map(|table| table.name.clone())
             .collect();
 
+        let actual_names: std::collections::HashSet<String> = actual_schema
+            .iter()
+            .map(|table| table.name.clone())
+            .collect();
+
         let mut migration_steps = Vec::new();
 
-        let mut obsolete_tables: Vec<String> = actual_schema
-            .iter()
-            .cloned()
+        // Resolve drop order of all actual tables from the database topologically
+        let drop_order = match resolve_table_order(&actual_schema) {
+            Ok(ordered) => {
+                // Creation order: independent first, dependent last.
+                // Drop order: dependent first, independent last (so we reverse the creation order).
+                let mut reversed = ordered.into_iter().map(|t| t.name.clone()).collect::<Vec<_>>();
+                reversed.reverse();
+                reversed
+            }
+            Err(DependencyError::CircularDependency(cycle_tables)) => {
+                eprintln!("Circular dependency in database tables: {:?}", cycle_tables);
+                // Fallback: use unordered names of actual tables
+                actual_schema.iter().map(|t| t.name.clone()).collect()
+            }
+        };
+
+        let obsolete_tables: Vec<String> = drop_order
+            .into_iter()
             .filter(|name| !needed_names.contains(name))
             .collect();
 
-        // TOOO: drop tables conform dependencies order
-        obsolete_tables.sort_by(|a, b| drop_name_order(a, b));
         for table_name in obsolete_tables {
             migration_steps.push(MigrationStepItem::Drop(DropTableStep::new(
                 self.persistence.database_schema(),
@@ -123,7 +141,7 @@ impl<P: Persistence> Migration<P> {
         match resolve_table_order(&needed_schema) {
             Ok(ordered) => {
                 for table in ordered {
-                    if !actual_schema.contains(&table.name) {
+                    if !actual_names.contains(&table.name) {
                         migration_steps.push(MigrationStepItem::Create(CreateTableStep::new(
                             self.persistence.database_schema(),
                             &table,
@@ -150,42 +168,6 @@ fn drop_table_ddl(schema: &str, table_name: &str) -> String {
         "DROP TABLE IF EXISTS \"{}\".\"{}\" CASCADE",
         schema, table_name
     )
-}
-
-fn drop_name_order(a: &str, b: &str) -> std::cmp::Ordering {
-    // Drop order: working relations < snapshot relations < snapshots < main tables
-    let a_is_working_relation = a.ends_with("_relation");
-    let b_is_working_relation = b.ends_with("_relation");
-    
-    let a_is_snapshot_relation = a.ends_with("_relation_snapshots");
-    let b_is_snapshot_relation = b.ends_with("_relation_snapshots");
-    
-    let a_is_snapshot = a.ends_with("_snapshots") && !a.ends_with("_relation_snapshots");
-    let b_is_snapshot = b.ends_with("_snapshots") && !b.ends_with("_relation_snapshots");
-
-    // Working relations drop first
-    match (a_is_working_relation, b_is_working_relation) {
-        (true, false) => return std::cmp::Ordering::Less,
-        (false, true) => return std::cmp::Ordering::Greater,
-        _ => {}
-    }
-    
-    // Then snapshot relations
-    match (a_is_snapshot_relation, b_is_snapshot_relation) {
-        (true, false) => return std::cmp::Ordering::Less,
-        (false, true) => return std::cmp::Ordering::Greater,
-        _ => {}
-    }
-    
-    // Then snapshot tables
-    match (a_is_snapshot, b_is_snapshot) {
-        (true, false) => return std::cmp::Ordering::Less,
-        (false, true) => return std::cmp::Ordering::Greater,
-        _ => {}
-    }
-
-    // Main tables last (default alphabetical order)
-    a.cmp(b)
 }
 
 fn create_table_ddl(schema: &str, table: &Table) -> Vec<String> {
