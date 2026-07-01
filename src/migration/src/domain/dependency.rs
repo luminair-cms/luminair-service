@@ -8,13 +8,18 @@ pub enum DependencyError {
     CircularDependency(Vec<String>),
 }
 
-pub fn build_dependency_graph(
-    tables: &[Table],
-) -> (
-    HashMap<&str, &Table>,
-    HashMap<&str, Vec<&str>>,
-    HashMap<&str, usize>,
-) {
+pub struct DependencyGraph<'a> {
+    /// Map of table names to their corresponding Table structures
+    pub table_map: HashMap<&'a str, &'a Table>,
+    /// Adjacency list mapping a table name to all other tables that depend on it (i.e. reference it)
+    pub dependents: HashMap<&'a str, Vec<&'a str>>,
+    /// Map tracking the in-degree count (i.e. how many tables a given table directly depends on/references)
+    pub in_degree: HashMap<&'a str, usize>,
+}
+
+pub fn build_dependency_graph<'a>(
+    tables: &'a [Table],
+) -> DependencyGraph<'a> {
     // Map table name -> Table reference
     let table_map: HashMap<&str, &Table> = tables
         .iter()
@@ -50,11 +55,15 @@ pub fn build_dependency_graph(
         }
     }
 
-    (table_map, dependents, in_degree)
+    DependencyGraph {
+        table_map,
+        dependents,
+        in_degree,
+    }
 }
 
 pub fn resolve_table_order(tables: &[Table]) -> Result<Vec<&Table>, DependencyError> {
-    let (table_map, dependents, mut in_degree) = build_dependency_graph(tables);
+    let DependencyGraph { table_map, dependents, mut in_degree } = build_dependency_graph(tables);
 
     // Kahn's algorithm: start with tables that have no dependencies
     let mut queue: VecDeque<&str> = in_degree
