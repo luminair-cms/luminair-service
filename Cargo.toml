@@ -13,7 +13,7 @@ chrono = { version = "0.4.44", features = ["serde"] }
 config = { version = "0.15.23", features = ["yaml"] }
 dotenvy = "0.15"
 futures = "0.3.32"
-itertools = "0.14.0"
+itertools = "0.15.0"
 nutype = { version = "0.7.0", features = ["regex", "serde"] }
 regex = "1.12.3"
 serde = { version = "1.0", features = ["derive"] }
