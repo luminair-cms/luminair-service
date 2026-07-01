@@ -36,3 +36,35 @@ This project is early stage and is primarily built as a Rust learning platform u
 ## Getting started
 
 For API usage and examples, see [documentation/api.md](documentation/api.md).
+
+## Testing
+
+Luminair contains unit tests and containerized integration tests. To run tests, make sure Docker is running on your machine (required by the `testcontainers` integration tests).
+
+### Run all tests
+```bash
+cargo test
+```
+
+### Run unit tests only
+To run unit tests across all packages (excluding integration tests):
+```bash
+cargo test --lib
+```
+
+To run unit tests specifically for the `migration` crate:
+```bash
+cargo test --package migration --lib
+```
+
+### Run integration tests only
+To run all integration tests:
+```bash
+cargo test --test integration_tests
+```
+
+To run integration tests specifically for the `migration` crate:
+```bash
+cargo test --package migration --test integration_tests
+```
+

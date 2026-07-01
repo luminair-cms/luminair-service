@@ -99,3 +99,47 @@ pub fn resolve_table_order(tables: &[Table]) -> Result<Vec<&Table>, DependencyEr
 
     Ok(ordered)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::tables::ForeignKeyConstraint;
+
+    fn make_table(name: &str, deps: Vec<&str>) -> Table {
+        let fks = deps
+            .into_iter()
+            .map(|dep| ForeignKeyConstraint::new(name, "fk_col", dep, "id"))
+            .collect();
+        Table::new(name.to_string(), vec![], fks, vec![])
+    }
+
+    #[test]
+    fn test_no_dependencies() {
+        let t1 = make_table("t1", vec![]);
+        let t2 = make_table("t2", vec![]);
+        let tables = vec![t1, t2];
+        let ordered = resolve_table_order(&tables).unwrap();
+        assert_eq!(ordered.len(), 2);
+    }
+
+    #[test]
+    fn test_linear_dependencies() {
+        // t2 depends on t1
+        let t1 = make_table("t1", vec![]);
+        let t2 = make_table("t2", vec!["t1"]);
+        let tables = vec![t2.clone(), t1.clone()]; // out of order
+        let ordered = resolve_table_order(&tables).unwrap();
+        assert_eq!(ordered[0].name, "t1");
+        assert_eq!(ordered[1].name, "t2");
+    }
+
+    #[test]
+    fn test_circular_dependency() {
+        // t1 depends on t2, and t2 depends on t1
+        let t1 = make_table("t1", vec!["t2"]);
+        let t2 = make_table("t2", vec!["t1"]);
+        let tables = vec![t1, t2];
+        let err = resolve_table_order(&tables).unwrap_err();
+        assert!(matches!(err, DependencyError::CircularDependency(_)));
+    }
+}
