@@ -98,7 +98,14 @@ pub async fn create_new_document<S: AppState>(
 ) -> Result<impl IntoResponse, ApiError> {
     let document_type = resolve_document_type(&state, &api_type)?;
 
-    let cmd = request::parse_create_command(document_type, &payload, None)?;
+    let root_obj = payload.as_object().ok_or(ApiError::UnprocessableEntity(
+        "body must be a JSON object".into(),
+    ))?;
+    let data_value = root_obj.get("data").ok_or(ApiError::UnprocessableEntity(
+        "missing 'data' node in request body".into(),
+    ))?;
+
+    let cmd = request::parse_create_command(document_type, data_value, None)?;
 
     let created_document_id = state
         .documents_service()
@@ -151,15 +158,12 @@ pub async fn update_document_handler<S: AppState>(
     let document_type = resolve_document_type(&state, &api_type)?;
     let document_instance_id = DocumentInstanceId::try_from(&id)?;
 
-    // Extract nested "data" if present, otherwise fallback to root object
     let root_obj = payload.as_object().ok_or(ApiError::UnprocessableEntity(
         "body must be a JSON object".into(),
     ))?;
-    let data_value = if let Some(data) = root_obj.get("data") {
-        data
-    } else {
-        &payload
-    };
+    let data_value = root_obj.get("data").ok_or(ApiError::UnprocessableEntity(
+        "missing 'data' node in request body".into(),
+    ))?;
 
     let data_obj = data_value.as_object().ok_or(ApiError::UnprocessableEntity(
         "payload must be a JSON object".into(),

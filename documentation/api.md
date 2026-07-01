@@ -273,11 +273,13 @@ POST /api/restaurants
 Content-Type: application/json
 
 {
-  "name": "New Restaurant",
-  "description": {
-    "en": "New English description",
-    "ro": "Descriere nouă în română",
-    "ru": "Новое описание на русском"
+  "data": {
+    "name": "New Restaurant",
+    "description": {
+      "en": "New English description",
+      "ro": "Descriere nouă în română",
+      "ru": "Новое описание на русском"
+    }
   }
 }
 ```
@@ -289,11 +291,13 @@ PUT /api/restaurants/791620a6-1099-4a41-ad74-21c5a25ce9b2
 Content-Type: application/json
 
 {
-  "name": "Updated Restaurant Name",
-  "description": {
-    "en": "Updated English description",
-    "ro": "Descriere actualizată în română",
-    "ru": "Обновленное описание на русском"
+  "data": {
+    "name": "Updated Restaurant Name",
+    "description": {
+      "en": "Updated English description",
+      "ro": "Descriere actualizată în română",
+      "ru": "Обновленное описание на русском"
+    }
   }
 }
 ```
