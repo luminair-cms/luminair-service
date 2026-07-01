@@ -2,9 +2,8 @@ use sea_query::{ColumnRef, DynIden, Expr, ExprTrait, JoinType, Order, PostgresQu
 use sea_query::extension::postgres::PgExpr;
 use sea_query_sqlx::{SqlxBinder, SqlxValues};
 use uuid::Uuid;
-use luminair_common::{AttributeId, DOCUMENT_ID_FIELD_NAME, DocumentType, ID_FIELD_NAME, INVERSE_ID_FIELD_NAME, OWNING_DOCUMENT_ID_FIELD_NAME, OWNING_ID_FIELD_NAME, TARGET_DOCUMENT_ID_FIELD_NAME};
-use luminair_common::persistence::{TableNameProvider, TableNameProviderConstructor as _};
-use crate::domain::document::DatabaseRowId;
+use luminair_common::{AttributeId, DOCUMENT_ID_FIELD_NAME, DocumentType, OWNING_DOCUMENT_ID_FIELD_NAME, TARGET_DOCUMENT_ID_FIELD_NAME};
+use luminair_common::persistence::{TableNameProvider, TableNameProviderConstructor};
 use crate::domain::query::DocumentStatus;
 use crate::infrastructure::persistence::builders::main_select_columns;
 
@@ -58,65 +57,41 @@ pub fn query_find_related_documents(
         .build_sqlx(PostgresQueryBuilder)
 }
 
-/// INSERT INTO {relation_table} (owning_id, inverse_id) VALUES ($1, $2)
+/// INSERT INTO {relation_table} (owning_document_id, target_document_id) VALUES ($1, $2)
 pub fn insert_relation_entry(
     document: &DocumentType,
     relation_attr: &AttributeId,
-    owning_id: DatabaseRowId,
-    inverse_id: DatabaseRowId,
+    owning_document_id: Uuid,
+    target_document_id: Uuid,
 ) -> (String, SqlxValues) {
-    let relation_table: TableNameProvider = (document, relation_attr).into();
+    let relation_table = document.relation_table(relation_attr);
 
-    let columns: Vec<DynIden> = vec![OWNING_ID_FIELD_NAME.into(), INVERSE_ID_FIELD_NAME.into()];
+    let columns: Vec<DynIden> = vec![
+        OWNING_DOCUMENT_ID_FIELD_NAME.into(),
+        TARGET_DOCUMENT_ID_FIELD_NAME.into(),
+    ];
 
     Query::insert()
         .into_table(relation_table)
         .columns(columns)
-        .values_panic(vec![owning_id.0.into(), inverse_id.0.into()])
+        .values_panic(vec![owning_document_id.into(), target_document_id.into()])
         .build_sqlx(PostgresQueryBuilder)
 }
 
-/// DELETE FROM {relation_table} WHERE owning_id = $1 AND inverse_id = $2
+/// DELETE FROM {relation_table} WHERE owning_document_id = $1 AND target_document_id = $2
 pub fn delete_relation_entry(
     document: &DocumentType,
     relation_attr: &AttributeId,
-    owning_id: DatabaseRowId,
-    inverse_id: DatabaseRowId,
+    owning_document_id: Uuid,
+    target_document_id: Uuid,
 ) -> (String, SqlxValues) {
-    let relation_table: TableNameProvider = (document, relation_attr).into();
-    let owning_id_column = Expr::col(("r", OWNING_ID_FIELD_NAME));
-    let inverse_id_column = Expr::col(("r", INVERSE_ID_FIELD_NAME));
+    let relation_table = document.relation_table(relation_attr);
+    let owning_id_column = Expr::col(("r", OWNING_DOCUMENT_ID_FIELD_NAME));
+    let target_id_column = Expr::col(("r", TARGET_DOCUMENT_ID_FIELD_NAME));
 
     Query::delete()
         .from_table(relation_table)
-        .and_where(owning_id_column.eq(owning_id.0))
-        .and_where(inverse_id_column.eq(inverse_id.0))
-        .build_sqlx(PostgresQueryBuilder)
-}
-
-/// SELECT id FROM {table} WHERE document_id = $uuid
-/// Used by `apply_relation_ops` to resolve a single UUID to its database row ID.
-pub fn query_row_id_by_document_uuid(document: &DocumentType, uuid: Uuid) -> (String, SqlxValues) {
-    let table: TableNameProvider = document.into();
-
-    Query::select()
-        .column(("m", ID_FIELD_NAME))
-        .from(table)
-        .and_where(Expr::col(("m", DOCUMENT_ID_FIELD_NAME)).eq(uuid))
-        .build_sqlx(PostgresQueryBuilder)
-}
-
-/// SELECT id FROM {table} WHERE document_id = ANY($uuids)
-/// Used by `apply_relation_ops` to batch-resolve related document UUIDs to row IDs.
-pub fn query_row_ids_by_document_uuids(
-    document: &DocumentType,
-    uuids: Vec<Uuid>,
-) -> (String, SqlxValues) {
-    let table: TableNameProvider = document.into();
-
-    Query::select()
-        .column(("m", ID_FIELD_NAME))
-        .from(table)
-        .and_where(Expr::col(("m", DOCUMENT_ID_FIELD_NAME)).eq_any(uuids))
+        .and_where(owning_id_column.eq(owning_document_id))
+        .and_where(target_id_column.eq(target_document_id))
         .build_sqlx(PostgresQueryBuilder)
 }

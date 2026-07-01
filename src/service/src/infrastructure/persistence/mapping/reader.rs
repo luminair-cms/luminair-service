@@ -33,10 +33,10 @@ pub fn row_to_document(
     use sqlx::Row;
 
     // Extract system fields
-    let id: i64 = row
-        .try_get(ID_FIELD_NAME)
-        .map_err(|e| RepositoryError::DatabaseError(format!("Failed to parse id: {}", e)))?;
-    let id = DatabaseRowId(id);
+    let id = match row.try_get::<i64, _>("snapshot_id") {
+        Ok(sid) => DatabaseRowId(sid),
+        Err(_) => DatabaseRowId(0),
+    };
 
     let document_id: Uuid = row
         .try_get(DOCUMENT_ID_FIELD_NAME)

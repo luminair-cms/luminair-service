@@ -53,7 +53,7 @@ impl<R: DocumentsRepository> DocumentsServiceImpl<R> {
                 let per_doc: HashMap<AttributeId, Vec<DocumentInstance>> = relation_map
                     .iter()
                     .map(|(attr_id, by_row)| {
-                        let related = by_row.get(&instance.id).cloned().unwrap_or_default();
+                        let related = by_row.get(&instance.document_id).cloned().unwrap_or_default();
                         (attr_id.clone(), related)
                     })
                     .collect();

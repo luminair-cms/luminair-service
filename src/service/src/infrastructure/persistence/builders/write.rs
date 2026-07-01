@@ -3,10 +3,10 @@ use sea_query_sqlx::{SqlxBinder, SqlxValues};
 
 use uuid::Uuid;
 use luminair_common::{DocumentType, CREATED_FIELD_NAME, DOCUMENT_ID_FIELD_NAME, STATUS_FIELD_NAME, UPDATED_FIELD_NAME, VERSION_FIELD_NAME};
-use luminair_common::persistence::TableNameProvider;
+use luminair_common::persistence::{TableNameProvider, TableNameProviderConstructor};
 
 pub fn insert_document(document: &DocumentType, params: Vec<Expr>) -> (String, SqlxValues) {
-    let table: TableNameProvider = document.into();
+    let table = document.main_table();
 
     Query::insert()
         .into_table(table)
@@ -25,7 +25,7 @@ pub fn update_document(
     document_id: Uuid,
     column_values: Vec<(DynIden, Expr)>,
 ) -> (String, SqlxValues) {
-    let table: TableNameProvider = document.into();
+    let table = document.main_table();
 
     Query::update()
         .table(table)
@@ -35,7 +35,7 @@ pub fn update_document(
 }
 
 pub fn delete_document(document: &DocumentType, id: Uuid) -> (String, SqlxValues) {
-    let table: TableNameProvider = document.into();
+    let table = document.main_table();
     let document_id_column = Expr::col(("m", DOCUMENT_ID_FIELD_NAME));
 
     Query::delete()

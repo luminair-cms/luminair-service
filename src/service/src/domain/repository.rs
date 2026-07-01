@@ -108,8 +108,8 @@ pub trait DocumentsRepository: Send + Sync + 'static {
 
 // ── Supporting types ─────────────────────────────────────────────────────────
 
-/// `attribute_id → owning_row_id → related_instances`
-pub type RelationMap = HashMap<AttributeId, HashMap<DatabaseRowId, Vec<DocumentInstance>>>;
+/// `attribute_id → owning_document_id → related_instances`
+pub type RelationMap = HashMap<AttributeId, HashMap<DocumentInstanceId, Vec<DocumentInstance>>>;
 
 /// Connect / disconnect sets for a single relation attribute.
 #[derive(Debug, Default)]

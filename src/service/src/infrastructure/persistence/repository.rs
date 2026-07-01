@@ -1,13 +1,13 @@
 use crate::{
     domain::{document::{DatabaseRowId, DocumentInstance, DocumentInstanceId, lifecycle::PublicationState}, query::{DocumentInstanceQuery, DocumentStatus}, repository::{DocumentsRepository, RelationMap, RelationOps, RepositoryError}},
-    infrastructure::persistence::builders::{find::{query_count_documents, query_find_document_by_criteria, query_find_document_by_id}, relations::{delete_relation_entry, insert_relation_entry, query_find_related_documents, query_row_id_by_document_uuid, query_row_ids_by_document_uuids}, write::{delete_document, insert_document, update_document}}
+    infrastructure::persistence::builders::{find::{query_count_documents, query_find_document_by_criteria, query_find_document_by_id}, relations::{delete_relation_entry, insert_relation_entry, query_find_related_documents}, write::{delete_document, insert_document, update_document}}
 };
 
 use futures::TryStreamExt;
 use luminair_common::database::Database;
-use luminair_common::{AttributeId, DocumentType, DocumentTypesRegistry, DOCUMENT_ID_FIELD_NAME, ID_FIELD_NAME, STATUS_FIELD_NAME, PUBLISHED_BY_FIELD_NAME, PUBLISHED_FIELD_NAME, REVISION_FIELD_NAME, UPDATED_FIELD_NAME, VERSION_FIELD_NAME};
+use luminair_common::{AttributeId, DocumentType, DocumentTypesRegistry, DOCUMENT_ID_FIELD_NAME, STATUS_FIELD_NAME, PUBLISHED_BY_FIELD_NAME, PUBLISHED_FIELD_NAME, REVISION_FIELD_NAME, UPDATED_FIELD_NAME, VERSION_FIELD_NAME, OWNING_DOCUMENT_ID_FIELD_NAME};
 use sea_query::{DynIden, Expr, Query};
-use sea_query_sqlx::SqlxValues;
+use sea_query_sqlx::{SqlxBinder, SqlxValues};
 use sqlx::{AssertSqlSafe, Row};
 use std::collections::HashMap;
 use uuid::Uuid;
@@ -136,8 +136,8 @@ impl DocumentsRepository for PostgresDocumentsRepository {
             );
             let query_object = sqlx_query_with(sql, values);
 
-            // Group related docs by their owning main document id
-            let mut grouped: HashMap<DatabaseRowId, Vec<DocumentInstance>> = HashMap::new();
+            // Group related docs by their owning main document id (UUID)
+            let mut grouped: HashMap<DocumentInstanceId, Vec<DocumentInstance>> = HashMap::new();
 
             let mut rows = query_object.fetch(self.database.database_pool());
 
@@ -147,11 +147,11 @@ impl DocumentsRepository for PostgresDocumentsRepository {
                 .map_err(|e| RepositoryError::DatabaseError(e.to_string()))?
             {
                 let document = row_to_document(&row, related_document_type)?;
-                let owning_id: i64 = row.try_get(ID_FIELD_NAME).map_err(|e| {
-                    RepositoryError::DatabaseError(format!("Failed to parse id: {}", e))
+                let owning_uuid: Uuid = row.try_get(OWNING_DOCUMENT_ID_FIELD_NAME).map_err(|e| {
+                    RepositoryError::DatabaseError(format!("Failed to parse owning_document_id: {}", e))
                 })?;
 
-                let id = DatabaseRowId(owning_id);
+                let id = DocumentInstanceId(owning_uuid);
                 grouped.entry(id).or_insert_with(Vec::new).push(document);
             }
 
@@ -253,29 +253,24 @@ impl DocumentsRepository for PostgresDocumentsRepository {
             return Ok(());
         }
 
-        // 1. Resolve the owning document UUID → internal row ID
-        let owning_row_id = self.resolve_row_id(document_type, document_id).await?;
-
-        // 2. For each relation attribute apply connect / disconnect
+        // 1. For each relation attribute apply connect / disconnect using UUIDs directly
         for (attr_id, rel_ops) in ops {
             let rel_meta = document_type.relations.get(attr_id).ok_or_else(|| {
                 RepositoryError::ValidationFailed(format!("Relation not found: {}", attr_id))
             })?;
 
-            let related_type = self
+            let _related_type = self
                 .schema_registry
                 .get(&rel_meta.target)
                 .ok_or(RepositoryError::DocumentTypeNotFound)?;
 
             if !rel_ops.connect.is_empty() {
-                let uuids: Vec<Uuid> = rel_ops.connect.iter().map(|id| id.0).collect();
-                let row_ids = self.resolve_row_ids(related_type, uuids).await?;
-                for inverse_row_id in row_ids {
+                for target_id in &rel_ops.connect {
                     let (sql, values) = insert_relation_entry(
                         document_type,
                         attr_id,
-                        owning_row_id,
-                        inverse_row_id,
+                        document_id.0,
+                        target_id.0,
                     );
                     sqlx_query_with(sql, values)
                         .execute(self.database.database_pool())
@@ -285,14 +280,12 @@ impl DocumentsRepository for PostgresDocumentsRepository {
             }
 
             if !rel_ops.disconnect.is_empty() {
-                let uuids: Vec<Uuid> = rel_ops.disconnect.iter().map(|id| id.0).collect();
-                let row_ids = self.resolve_row_ids(related_type, uuids).await?;
-                for inverse_row_id in row_ids {
+                for target_id in &rel_ops.disconnect {
                     let (sql, values) = delete_relation_entry(
                         document_type,
                         attr_id,
-                        owning_row_id,
-                        inverse_row_id,
+                        document_id.0,
+                        target_id.0,
                     );
                     sqlx_query_with(sql, values)
                         .execute(self.database.database_pool())
@@ -307,46 +300,6 @@ impl DocumentsRepository for PostgresDocumentsRepository {
 }
 
 impl PostgresDocumentsRepository {
-    /// SELECT id WHERE document_id = $uuid → single DatabaseRowId
-    async fn resolve_row_id(
-        &self,
-        document_type: &DocumentType,
-        document_id: DocumentInstanceId,
-    ) -> Result<DatabaseRowId, RepositoryError> {
-        let (sql, values) = query_row_id_by_document_uuid(document_type, document_id.0);
-        let row = sqlx_query_with(sql, values)
-            .fetch_optional(self.database.database_pool())
-            .await
-            .map_err(|e| RepositoryError::DatabaseError(e.to_string()))?
-            .ok_or(RepositoryError::DocumentInstanceNotFound)?;
-        let id: i64 = row
-            .try_get(ID_FIELD_NAME)
-            .map_err(|e| RepositoryError::DatabaseError(e.to_string()))?;
-        Ok(DatabaseRowId(id))
-    }
-
-    /// SELECT id WHERE document_id = ANY($uuids) → Vec<DatabaseRowId>
-    async fn resolve_row_ids(
-        &self,
-        document_type: &DocumentType,
-        uuids: Vec<Uuid>,
-    ) -> Result<Vec<DatabaseRowId>, RepositoryError> {
-        if uuids.is_empty() {
-            return Ok(vec![]);
-        }
-        let (sql, values) = query_row_ids_by_document_uuids(document_type, uuids);
-        let rows = sqlx_query_with(sql, values)
-            .fetch_all(self.database.database_pool())
-            .await
-            .map_err(|e| RepositoryError::DatabaseError(e.to_string()))?;
-        rows.iter()
-            .map(|row| {
-                row.try_get::<i64, _>(ID_FIELD_NAME)
-                    .map(DatabaseRowId)
-                    .map_err(|e| RepositoryError::DatabaseError(e.to_string()))
-            })
-            .collect()
-    }
 
     async fn store_snapshot_for_published_instance(
         &self,
@@ -369,7 +322,7 @@ impl PostgresDocumentsRepository {
         let table_name = format!("{}_snapshots", document_type.id.normalized());
         let table = sea_query::TableName::from(table_name);
 
-        let mut columns = vec![
+        let mut columns: Vec<sea_query::DynIden> = vec![
             DOCUMENT_ID_FIELD_NAME.into(),
             PUBLISHED_FIELD_NAME.into(),
             PUBLISHED_BY_FIELD_NAME.into(),

@@ -12,8 +12,8 @@ const STANDARD_SELECT_COLUMNS: [(&str, &str); 8] = [
     ("m", CREATED_BY_FIELD_NAME),
     ("m", UPDATED_BY_FIELD_NAME),
     ("m", PUBLISHED_FIELD_NAME),
-    ("s", PUBLISHED_BY_FIELD_NAME),
-    ("s", REVISION_FIELD_NAME),
+    ("m", PUBLISHED_BY_FIELD_NAME),
+    ("m", REVISION_FIELD_NAME),
 ];
 
 fn main_select_columns(document: &DocumentType) -> Vec<ColumnRef> {
