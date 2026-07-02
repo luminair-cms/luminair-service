@@ -17,6 +17,7 @@ This project is early stage and is primarily built as a Rust learning platform u
 - [Domain model](documentation/domain-model.md)
 - [Schema definitions](documentation/schemas.md)
 - [Draft & publish workflow](../documentation/draft-publish.md)
+- [Draft & publish database design](documentation/draft-publish.md)
 - [Database design](documentation/database.md)
 
 ## Architecture notes

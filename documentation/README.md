@@ -8,3 +8,4 @@ This directory contains backend-specific documentation for the `luminair-service
 * **[Domain Model](domain-model.md)**: Specifications for service-side aggregates, repositories, newtypes (`nutype`), and error handling strategies.
 * **[Schema Formats](schemas.md)**: JSON structure definitions for defining collection and single-type models.
 * **[Database Design](database.md)**: Details on PostgreSQL schema generation, table-naming, draft and snapshot tables, and migration execution modes.
+* **[Draft & Publish Database Design](draft-publish.md)**: Details on SQL DDL/DML transition operations and relation versioning.
