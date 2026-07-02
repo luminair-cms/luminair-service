@@ -11,10 +11,10 @@ Luminair is a Schema-Driven CMS platform (similar to Strapi) focused on Speed an
 ### Reference Documentation
 - [Architecture](../documentation/architecture.md)
 - [Domain Model](../documentation/domain-model.md)
-- [API Documentation](../documentation/api.md)
-- [Schema Formats](../documentation/schemas.md)
+- [API Documentation](../../documentation/api.md)
+- [Schema Formats](../../documentation/schemas.md)
 - [Database Structure](../documentation/database.md)
-- [Draft and Publishing Workflow](../documentation/draft-publish.md)
+- [Draft and Publishing Workflow](../../documentation/draft-publish.md)
 
 > [!IMPORTANT]
 > If these instructions conflict with the actual codebase, the code is the source of truth. Flag any discrepancy you notice.
