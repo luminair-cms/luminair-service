@@ -171,6 +171,7 @@ impl ContentValue {
                     .ok_or_else(|| err("expected an object with locale keys"))?;
                 let mut map = HashMap::new();
                 for (locale, v) in obj {
+                    // TODO: validate locale is one of allowed locales for document type
                     let text = v
                         .as_str()
                         .ok_or_else(|| {
