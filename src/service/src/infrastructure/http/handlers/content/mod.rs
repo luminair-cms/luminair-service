@@ -121,13 +121,53 @@ pub async fn create_new_document<S: AppState>(
         "missing 'data' node in request body".into(),
     ))?;
 
-    let cmd = request::parse_create_command(document_type, data_value, None)?;
+    let data_obj = data_value.as_object().ok_or(ApiError::UnprocessableEntity(
+        "payload must be a JSON object".into(),
+    ))?;
+
+    // Split payload fields into normal content fields vs relation operations
+    let mut field_payload = serde_json::Map::new();
+    let mut relation_payload = serde_json::Map::new();
+
+    for (k, v) in data_obj {
+        let attr_id = AttributeId::try_new(k).map_err(|_| {
+            ApiError::UnprocessableEntity(format!("Invalid field name: {}", k))
+        })?;
+
+        if document_type.relations.contains(&attr_id) {
+            relation_payload.insert(k.clone(), v.clone());
+        } else if document_type.fields.contains(&attr_id) {
+            field_payload.insert(k.clone(), v.clone());
+        } else {
+            return Err(ApiError::UnprocessableEntity(format!(
+                "Unknown field or relation: {}",
+                k
+            )));
+        }
+    }
+
+    // 1. Create document using content fields
+    let create_cmd = request::parse_create_command(
+        document_type,
+        &serde_json::Value::Object(field_payload),
+        None,
+    )?;
 
     let created_document_id = state
         .documents_service()
-        .create(cmd)
+        .create(create_cmd)
         .await
         .map_err(|err| ApiError::from(err))?;
+
+    // 2. Connect relations if any are specified in the payload
+    if !relation_payload.is_empty() {
+        let modify_cmd = request::parse_modify_relations_command(
+            document_type,
+            created_document_id,
+            &serde_json::Value::Object(relation_payload),
+        )?;
+        state.documents_service().modify_relations(modify_cmd).await?;
+    }
 
     let created_id: String = created_document_id.into();
 

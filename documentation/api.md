@@ -279,6 +279,9 @@ Content-Type: application/json
       "en": "New English description",
       "ro": "Descriere nouă în română",
       "ru": "Новое описание на русском"
+    },
+    "categories": {
+      "connect": ["8d0ef031-2a9a-4ea3-980f-e2a7f4803e95"]
     }
   }
 }
@@ -310,7 +313,7 @@ DELETE /api/restaurants/791620a6-1099-4a41-ad74-21c5a25ce9b2
 
 ## Managing Relations
 
-Relations between content types can be managed through the REST API by passing `connect`, `disconnect`, or `set` parameters in the request body. These operations work for both single-entry relations and multi-relations (one-to-many, many-to-one, many-to-many, and many-way relations).
+Relations between content types can be managed through the REST API by passing `connect`, `disconnect`, or `set` parameters in the request body. In accordance with Strapi 5, these operations can be supplied during document creation (`POST`) to automatically establish initial relations, or during updates (`PUT`). These operations work for both single-entry relations and multi-relations (one-to-many, many-to-one, many-to-many, and many-way relations).
 
 ### Connect
 
