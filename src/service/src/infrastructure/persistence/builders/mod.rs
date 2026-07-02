@@ -1,5 +1,6 @@
 use sea_query::ColumnRef;
 use luminair_common::{DocumentType, CREATED_BY_FIELD_NAME, CREATED_FIELD_NAME, DOCUMENT_ID_FIELD_NAME, ID_FIELD_NAME, PUBLISHED_BY_FIELD_NAME, PUBLISHED_FIELD_NAME, REVISION_FIELD_NAME, UPDATED_BY_FIELD_NAME, UPDATED_FIELD_NAME, VERSION_FIELD_NAME};
+use crate::domain::query::DocumentStatus;
 
 pub mod find;
 pub mod write;
@@ -16,11 +17,15 @@ const STANDARD_SELECT_COLUMNS: [(&str, &str); 8] = [
     ("m", REVISION_FIELD_NAME),
 ];
 
-fn main_select_columns(document: &DocumentType) -> Vec<ColumnRef> {
+pub(crate) fn main_select_columns(document: &DocumentType, status: DocumentStatus) -> Vec<ColumnRef> {
     let mut columns: Vec<ColumnRef> = STANDARD_SELECT_COLUMNS
         .iter()
         .map(|c| (*c).into())
         .collect();
+
+    if status == DocumentStatus::Published {
+        columns.push(("m", "snapshot_id").into());
+    }
 
     for field in &document.fields {
         columns.push(("m", field.id.normalized()).into());
@@ -28,4 +33,3 @@ fn main_select_columns(document: &DocumentType) -> Vec<ColumnRef> {
 
     columns
 }
-

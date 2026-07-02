@@ -482,7 +482,6 @@ For more details on relation management, see the [Strapi REST API documentation 
 ## Notes
 
 - `documentId` is a UUID that identifies the document instance.
-- `id` is the database row identifier.
 - For singleton content types, the endpoint uses the singular API ID.
 - Collections use the plural API ID for routing.
 - `publishedAt` and `updatedAt` timestamps are returned when publication and update information are available.

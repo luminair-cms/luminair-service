@@ -154,8 +154,8 @@ Used by public APIs to query relations of frozen published snapshots.
 
 **Columns:**
 - `snapshot_id` — `bigint` NOT NULL REFERENCES `{collection}_snapshots`(snapshot_id) ON DELETE CASCADE
-- `target_document_id` — `uuid` NOT NULL REFERENCES `{target_collection}`(document_id) ON DELETE CASCADE
 - `owning_document_id` — `uuid` NOT NULL REFERENCES `{collection}`(document_id) ON DELETE CASCADE
+- `target_document_id` — `uuid` NOT NULL REFERENCES `{target_collection}`(document_id) ON DELETE CASCADE
 - PRIMARY KEY (`snapshot_id`, `target_document_id`)
 
 ### Relation lifecycle with draft-and-publish

@@ -41,7 +41,7 @@ pub fn query_find_related_documents(
 
     let owning_document_id_column = ("r", OWNING_DOCUMENT_ID_FIELD_NAME);
 
-    let mut columns = main_select_columns(related_document);
+    let mut columns = main_select_columns(related_document, status);
     columns.push(owning_document_id_column.into());
 
     let mut select = Query::select();

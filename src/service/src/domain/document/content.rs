@@ -186,6 +186,7 @@ impl ContentValue {
             // Integer size variants (Int16/Int32/Int64) are all decoded as i64.
             // Range validation can be applied via FieldConstraint::MinimalIntegerValue
             // and FieldConstraint::MaximalIntegerValue if a narrower range is required.
+            // TODO: respect the integer size variant and validate that the value fits in the specified range.
             FieldType::Integer(_) => {
                 let n = value.as_i64().ok_or_else(|| err("expected an integer"))?;
                 Ok(ContentValue::Scalar(DomainValue::Integer(n)))

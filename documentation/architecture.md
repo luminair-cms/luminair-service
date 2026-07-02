@@ -89,14 +89,6 @@ When documenting fields, examples will show both forms where applicable, for exa
 
 The mapping between representations is deterministic: camelCase keys in schema and API are mapped to snake_case identifiers in the Rust domain and database.
 
-## Service crate — planned refactoring
-
-The `service` crate has a known set of structural issues and correctness bugs that are tracked
-in a dedicated document. Any work on the `service` crate should be done in accordance with
-that plan.
-
-See: [Service Refactoring Plan](service-refactoring-plan.md)
-
 ## Best-practice guidance for AI/agent use
 
 - Keep architecture documentation declarative and sectioned.

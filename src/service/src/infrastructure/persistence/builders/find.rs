@@ -127,7 +127,7 @@ fn main_document_select<'a>(
     select.from(table_ref);
 
     // Add regular columns via .columns()
-    select.columns(main_select_columns(document));
+    select.columns(main_select_columns(document, status));
 
     // Add typed/custom expressions via .expr_as()
     select.expr_as(version_expr, Alias::new("version"));
