@@ -137,7 +137,7 @@ A `DocumentInstance` is a runtime entity representing one stored document record
 
 It contains:
 
-- `id: DatabaseRowId` — internal database row key.
+- `id: DatabaseRowId` — internal database row key (for draft/modified state it equals Zero, for published - snapshot ID).
 - `document_id: DocumentInstanceId` — stable UUID for the document instance.
 - `content: DocumentContent` — typed field values and publication state.
 - `relations: HashMap<AttributeId, Vec<DocumentRelation>>` — resolved relations to other documents.

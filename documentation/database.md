@@ -245,6 +245,20 @@ The `migration` crate is run as a standalone binary during deployment:
 cargo run --manifest-path migration/Cargo.toml
 ```
 
+#### Migration Modes
+
+The migration utility supports the following execution modes:
+
+- **Standard Migration (default)**: Compares the target configuration with the actual database and applies the necessary DDL statements.
+- **Check Mode (`--check` or `-c`)**: Only tests the validity of the document configuration files (validating JSON formats, attribute constraints, and relation targets) without connecting to the database.
+  ```bash
+  cargo run --manifest-path migration/Cargo.toml -- --check
+  ```
+- **Dry-Run Mode (`--dry-run` or `-d`)**: Connects to the database, compares the schemas, and prints the constructed SQL DDL statements that would be executed to stdout, but does not apply any changes to the database.
+  ```bash
+  cargo run --manifest-path migration/Cargo.toml -- --dry-run
+  ```
+
 The migration process:
 1. Loads document schemas from `config/schema/` directory
 2. Establishes database connection

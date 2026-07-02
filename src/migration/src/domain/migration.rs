@@ -92,7 +92,7 @@ impl<P: Persistence> Migration<P> {
 
     // working with SERIAL types: https://www.bytebase.com/reference/postgres/how-to/how-to-use-serial-postgres/
     /// migrate database schema conform documents configuration
-    pub async fn migrate(&self) -> Result<(), anyhow::Error> {
+    pub async fn migrate(&self, dry_run: bool) -> Result<(), anyhow::Error> {
         // sorted conform dependency order
         let needed_schema = documents_into_tables(self.documents);
         let actual_schema = self.persistence.load().await?;
@@ -152,6 +152,21 @@ impl<P: Persistence> Migration<P> {
             Err(DependencyError::CircularDependency(needed_schema)) => {
                 eprintln!("Cannot resolve order, circular dependency: {:?}", needed_schema);
             }
+        }
+
+        if dry_run {
+            println!("--- DRY-RUN: The following SQL DDL would be executed ---");
+            if migration_steps.is_empty() {
+                println!("No migration steps needed. Database schema is up to date.");
+            } else {
+                for step in migration_steps {
+                    println!("-- Context: {}", step.ctx());
+                    for ddl in step.ddls() {
+                        println!("{};", ddl);
+                    }
+                }
+            }
+            return Ok(());
         }
 
         // TODO: add logs about count created/deleted tables
