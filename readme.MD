@@ -33,9 +33,27 @@ This project is early stage and is primarily built as a Rust learning platform u
 - Separation between domain logic and infrastructure
 - Minimal REST API conventions inspired by Strapi
 
-## Getting started
+## Database Migrations
 
-For API usage and examples, see [documentation/api.md](documentation/api.md).
+The `migration` utility compares document schema configuration JSON files with the actual database schema and updates it.
+
+### Run Migrations
+To run the schema migration and update the database:
+```bash
+cargo run --package migration
+```
+
+### Check Configuration Validity (`--check` / `-c`)
+To test the validity of document schemas (JSON structure, constraint types, and relation references to target documents) offline without connecting to the database:
+```bash
+cargo run --package migration -- --check
+```
+
+### Dry-Run Migrations (`--dry-run` / `-d`)
+To load the actual database schema, compare it with target configurations, and output the generated SQL DDL statements without executing them:
+```bash
+cargo run --package migration -- --dry-run
+```
 
 ## Testing
 
