@@ -29,6 +29,7 @@ pub fn query_find_related_documents(
     main_document: &DocumentType,
     related_document: &DocumentType,
     relation_attr: &AttributeId,
+    filter: &crate::domain::query::FilterExpression,
     status: DocumentStatus,
     params: Vec<Uuid>,
 ) -> (String, SqlxValues) {
@@ -43,7 +44,8 @@ pub fn query_find_related_documents(
     let mut columns = main_select_columns(related_document);
     columns.push(owning_document_id_column.into());
 
-    Query::select()
+    let mut select = Query::select();
+    select
         .columns(columns)
         .from(relation_table)
         .join(
@@ -53,8 +55,13 @@ pub fn query_find_related_documents(
                 .equals(ColumnRef::from(("r", TARGET_DOCUMENT_ID_FIELD_NAME))),
         )
         .and_where(Expr::col(owning_document_id_column).eq_any(params))
-        .order_by(owning_document_id_column, Order::Asc)
-        .build_sqlx(PostgresQueryBuilder)
+        .order_by(owning_document_id_column, Order::Asc);
+
+    if let Some(condition) = crate::infrastructure::persistence::builders::find::build_condition(filter, related_document, "m") {
+        select.cond_where(condition);
+    }
+
+    select.build_sqlx(PostgresQueryBuilder)
 }
 
 /// INSERT INTO {relation_table} (owning_document_id, target_document_id) VALUES ($1, $2)

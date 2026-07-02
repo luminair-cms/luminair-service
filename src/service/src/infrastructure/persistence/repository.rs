@@ -103,6 +103,7 @@ impl DocumentsRepository for PostgresDocumentsRepository {
         &self,
         document_type: &DocumentType,
         fields: &[AttributeId],
+        filters: &HashMap<AttributeId, crate::domain::query::FilterExpression>,
         status: DocumentStatus,
         ids: &[DocumentInstanceId],
     ) -> Result<RelationMap, RepositoryError> {
@@ -127,10 +128,13 @@ impl DocumentsRepository for PostgresDocumentsRepository {
                 .get(&rel_metadata.target)
                 .ok_or(RepositoryError::DocumentInstanceNotFound)?;
 
+            let rel_filter = filters.get(attr_id).unwrap_or(&crate::domain::query::FilterExpression::None);
+
             let (sql, values) = query_find_related_documents(
                 document_type,
                 related_document_type,
                 attr_id,
+                rel_filter,
                 status,
                 params.clone(),
             );

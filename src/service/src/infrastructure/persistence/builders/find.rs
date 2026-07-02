@@ -7,7 +7,7 @@ use luminair_common::persistence::TableNameProviderConstructor;
 use luminair_common::{
     CREATED_BY_FIELD_NAME, CREATED_FIELD_NAME, DOCUMENT_ID_FIELD_NAME, DocumentType,
     PUBLISHED_BY_FIELD_NAME, PUBLISHED_FIELD_NAME, REVISION_FIELD_NAME, STATUS_FIELD_NAME,
-    UPDATED_BY_FIELD_NAME, UPDATED_FIELD_NAME, VERSION_FIELD_NAME,
+    UPDATED_BY_FIELD_NAME, UPDATED_FIELD_NAME, VERSION_FIELD_NAME, entities::FieldType,
 };
 use sea_query::{
     Alias, ColumnRef, Condition, Expr, ExprTrait, Order, PostgresQueryBuilder, Query, SelectStatement, TableRef
@@ -158,7 +158,7 @@ pub fn query_count_documents(
     select.build_sqlx(PostgresQueryBuilder)
 }
 
-fn build_condition(
+pub fn build_condition(
     filter: &FilterExpression,
     document: &DocumentType,
     alias: &str,
@@ -250,16 +250,23 @@ fn build_filter_expr(
     }
 }
 
-fn get_column_expr(field_path: &str, document: &DocumentType, alias: &str) -> Expr {
+pub fn get_column_expr(field_path: &str, document: &DocumentType, alias: &str) -> Expr {
     let parts: Vec<&str> = field_path.split('.').collect();
     let base_field = parts[0];
 
-    let column_name =
+    let (column_name, is_localized) =
         if let Some(field) = document.fields.iter().find(|f| f.id.as_ref() == base_field) {
-            field.id.normalized()
+            (field.id.normalized(), field.field_type == FieldType::LocalizedText)
         } else {
-            base_field.to_string()
+            (base_field.to_string(), false)
         };
 
-    Expr::col((alias.to_owned(), column_name))
+    if is_localized && parts.len() > 1 {
+        Expr::cust_with_values(
+            format!("\"{}\".\"{}\" ->> ?", alias, column_name),
+            vec![parts[1].to_string()],
+        )
+    } else {
+        Expr::col((alias.to_owned(), column_name))
+    }
 }

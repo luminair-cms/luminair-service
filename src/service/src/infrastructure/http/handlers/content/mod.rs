@@ -32,6 +32,7 @@ pub struct PaginationParams {
 pub async fn find_document_by_id<S: AppState>(
     State(state): State<S>,
     Path((api_type, id)): Path<(String, String)>,
+    axum::extract::RawQuery(raw_query): axum::extract::RawQuery,
     QueryString(params): QueryString<QueryParams>,
 ) -> Result<ApiSuccess<OneDocumentResponse>, ApiError> {
     if params.pagination.is_some() {
@@ -44,12 +45,17 @@ pub async fn find_document_by_id<S: AppState>(
     let document_instance_id = DocumentInstanceId::try_from(&id)?;
     let populate_attributes = parse_populate(params.populate, document_type)?;
     let status = parse_status(&params.status)?;
+
+    let query_str = raw_query.unwrap_or_default();
+    let (_, populate_filters, _) = params::parse_filters_and_sorts(&query_str, document_type, &state)?;
+
     let query = DocumentInstanceQuery::new().with_status(status);
 
     let cmd = FindByIdCommand {
         document_type,
         document_instance_id,
         populate: populate_attributes,
+        populate_filters,
         query
     };
 
@@ -67,25 +73,35 @@ pub async fn find_document_by_id<S: AppState>(
 pub async fn find_all_documents<S: AppState>(
     State(state): State<S>,
     Path(api_type): Path<String>,
+    axum::extract::RawQuery(raw_query): axum::extract::RawQuery,
     QueryString(params): QueryString<QueryParams>,
 ) -> Result<ApiSuccess<ManyDocumentsResponse>, ApiError> {
     let document_type = resolve_document_type(&state, &api_type)?;
 
+    let query_str = raw_query.unwrap_or_default();
+    let (filter, populate_filters, sorts) = params::parse_filters_and_sorts(&query_str, document_type, &state)?;
+
     // Extract pagination params with defaults
     let (page, page_size) = params
         .pagination_or_default();
-    
+
+    let mut query = DocumentInstanceQuery::new()
+        .paginate(page, page_size)
+        .with_status(parse_status(&params.status)?)
+        .with_filter(filter);
+
+    query.sort = sorts;
+
     let cmd = FindDocumentsCommand {
         document_type,
         populate: parse_populate(params.populate, document_type)?,
-        query: DocumentInstanceQuery::new()
-            .paginate(page, page_size)
-            .with_status(parse_status(&params.status)?),
+        populate_filters,
+        query,
     };
 
     let (documents, total) = state.documents_service()
         .find(cmd).await?;
-    
+
     Ok(ApiSuccess::new(
         StatusCode::OK,
         ManyDocumentsResponse::new(documents, page, page_size, total)))
@@ -217,6 +233,7 @@ pub async fn update_document_handler<S: AppState>(
         document_type,
         document_instance_id,
         populate: None,
+        populate_filters: None,
         query,
     };
 

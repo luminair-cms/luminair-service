@@ -61,6 +61,7 @@ pub trait DocumentsRepository: Send + Sync + 'static {
         &self,
         document_type: &DocumentType,
         fields: &[AttributeId],
+        filters: &HashMap<AttributeId, crate::domain::query::FilterExpression>,
         status: DocumentStatus,
         ids: &[DocumentInstanceId],
     ) -> impl Future<Output = Result<RelationMap, RepositoryError>> + Send;

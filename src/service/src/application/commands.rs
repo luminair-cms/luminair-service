@@ -8,6 +8,7 @@ use crate::domain::query::DocumentInstanceQuery;
 pub struct FindDocumentsCommand {
     pub document_type: &'static DocumentType,
     pub populate: Option<Vec<AttributeId>>,
+    pub populate_filters: Option<HashMap<AttributeId, crate::domain::query::FilterExpression>>,
     pub query: DocumentInstanceQuery,
 }
 
@@ -15,6 +16,7 @@ pub struct FindByIdCommand {
     pub document_type: &'static DocumentType,
     pub document_instance_id: DocumentInstanceId,
     pub populate: Option<Vec<AttributeId>>,
+    pub populate_filters: Option<HashMap<AttributeId, crate::domain::query::FilterExpression>>,
     pub query: DocumentInstanceQuery,
 }
 

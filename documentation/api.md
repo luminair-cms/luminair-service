@@ -171,12 +171,12 @@ GET /api/restaurants?pagination[page]=2&pagination[pageSize]=10
 
 ### Sorting
 
-Sort results using `sort`.
+Sort results using `sort`. You can sort by a single field, or by multiple fields using a comma-separated list.
 
-Example:
-
+Examples:
 ```http
 GET /api/restaurants?sort=createdAt:desc
+GET /api/restaurants?sort=name:asc,createdAt:desc
 ```
 
 ### Publication Status

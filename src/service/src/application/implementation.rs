@@ -31,6 +31,7 @@ impl<R: DocumentsRepository> DocumentsServiceImpl<R> {
         &self,
         document_type: &DocumentType,
         populate: Option<Vec<AttributeId>>,
+        populate_filters: Option<HashMap<AttributeId, crate::domain::query::FilterExpression>>,
         status: DocumentStatus,
         instances: Vec<DocumentInstance>,
     ) -> Result<Vec<DocumentInstance>, RepositoryError> {
@@ -42,9 +43,12 @@ impl<R: DocumentsRepository> DocumentsServiceImpl<R> {
         }
 
         let ids: Vec<DocumentInstanceId> = instances.iter().map(|d| d.document_id).collect();
+        let empty_filters = HashMap::new();
+        let filters = populate_filters.as_ref().unwrap_or(&empty_filters);
+
         let relation_map: RelationMap = self
             .repository
-            .fetch_relations(document_type, &fields, status, &ids)
+            .fetch_relations(document_type, &fields, filters, status, &ids)
             .await?;
 
         let enriched = instances
@@ -72,7 +76,7 @@ impl<R: DocumentsRepository> DocumentsService for DocumentsServiceImpl<R> {
             self.repository.find(cmd.document_type, &cmd.query),
             self.repository.count(cmd.document_type, &cmd.query),
         )?;
-        let enriched = self.enrich(cmd.document_type, cmd.populate, cmd.query.status, instances).await?;
+        let enriched = self.enrich(cmd.document_type, cmd.populate, cmd.populate_filters, cmd.query.status, instances).await?;
         Ok((enriched, count))
     }
 
@@ -81,11 +85,13 @@ impl<R: DocumentsRepository> DocumentsService for DocumentsServiceImpl<R> {
             .repository
             .find_by_id(cmd.document_type, cmd.document_instance_id, &cmd.query)
             .await?;
-
-        // Wrap in a Vec to reuse the batch enrichment helper, then unwrap.
-        // TODO: this is a bit of a hack.
-        let instances = opt.into_iter().collect::<Vec<_>>();
-        let enriched = self.enrich(cmd.document_type, cmd.populate, cmd.query.status, instances).await?;
+        let instance = match opt {
+            Some(inst) => inst,
+            None => return Ok(None),
+        };
+        let enriched = self
+            .enrich(cmd.document_type, cmd.populate, cmd.populate_filters, cmd.query.status, vec![instance])
+            .await?;
 
         Ok(enriched.into_iter().next())
     }
