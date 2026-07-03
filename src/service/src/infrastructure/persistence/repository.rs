@@ -170,17 +170,9 @@ impl DocumentsRepository for PostgresDocumentsRepository {
         document_type: &DocumentType,
         instance: &DocumentInstance,
     ) -> Result<(), RepositoryError> {
-        let has_draft_publish = document_type.has_draft_and_publish();
-
-        if has_draft_publish {
-            // Use Case 2: draft-and-publish is ON, creating a draft document
-            self.insert_main_table(document_type, instance).await?;
-        } else {
-            // Use Case 1: draft-and-publish is OFF, creating a published document
-            self.insert_main_table(document_type, instance).await?;
-        }
-
-        Ok(())
+        // For both Use Cases (draftAndPublish ON/OFF), the initial record is written to the main table.
+        // PublicationState in the instance contains the correct details for status, revision, and dates.
+        self.insert_main_table(document_type, instance).await
     }
 
     async fn update(
