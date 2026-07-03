@@ -1,22 +1,16 @@
 use luminair_common::DocumentTypesRegistry;
 
-use crate::application::Persistence;
 use crate::domain::DocumentTables;
 use crate::domain::dependency::{DependencyError, resolve_table_order};
 use crate::domain::tables::{Column, ColumnType, ForeignKeyConstraint, Index, Table};
-
-#[derive(Clone)]
-pub struct Migration<P: Persistence> {
-    documents: &'static dyn DocumentTypesRegistry,
-    persistence: P,
-}
 
 pub trait MigrationStep {
     fn ctx(&self) -> &'static str;
     fn ddls(self) -> Vec<String>;
 }
 
-enum MigrationStepItem {
+#[derive(Debug, Clone)]
+pub enum MigrationStepItem {
     Create(CreateTableStep),
     Drop(DropTableStep),
 }
@@ -37,12 +31,13 @@ impl MigrationStep for MigrationStepItem {
     }
 }
 
-struct CreateTableStep {
-    ddls: Vec<String>,
+#[derive(Debug, Clone)]
+pub struct CreateTableStep {
+    pub ddls: Vec<String>,
 }
 
 impl CreateTableStep {
-    fn new(database_schema: &str, table: &Table) -> Self {
+    pub fn new(database_schema: &str, table: &Table) -> Self {
         let ddls = create_table_ddl(database_schema, table);
         Self { ddls }
     }
@@ -58,13 +53,14 @@ impl MigrationStep for CreateTableStep {
     }
 }
 
-struct DropTableStep {
-    table_name: String,
-    schema: String,
+#[derive(Debug, Clone)]
+pub struct DropTableStep {
+    pub table_name: String,
+    pub schema: String,
 }
 
 impl DropTableStep {
-    fn new(database_schema: &str, table_name: &str) -> Self {
+    pub fn new(database_schema: &str, table_name: &str) -> Self {
         Self {
             table_name: table_name.to_string(),
             schema: database_schema.to_string(),
@@ -82,100 +78,64 @@ impl MigrationStep for DropTableStep {
     }
 }
 
-impl<P: Persistence> Migration<P> {
-    pub fn new(documents: &'static dyn DocumentTypesRegistry, persistence: P) -> Self {
-        Self {
-            documents,
-            persistence,
+/// Pure domain logic: Generates a list of migration steps based on the needed and actual database schemas.
+pub fn plan_migration(
+    needed_schema: &[Table],
+    actual_schema: &[Table],
+    database_schema: &str,
+) -> Result<Vec<MigrationStepItem>, DependencyError> {
+    let needed_names: std::collections::HashSet<String> = needed_schema
+        .iter()
+        .map(|table| table.name.clone())
+        .collect();
+
+    let actual_names: std::collections::HashSet<String> = actual_schema
+        .iter()
+        .map(|table| table.name.clone())
+        .collect();
+
+    let mut migration_steps = Vec::new();
+
+    // Resolve drop order of all actual tables from the database topologically
+    let drop_order = match resolve_table_order(actual_schema) {
+        Ok(ordered) => {
+            // Creation order: independent first, dependent last.
+            // Drop order: dependent first, independent last (so we reverse the creation order).
+            let mut reversed = ordered.into_iter().map(|t| t.name.clone()).collect::<Vec<_>>();
+            reversed.reverse();
+            reversed
         }
+        Err(DependencyError::CircularDependency(cycle_tables)) => {
+            eprintln!("Circular dependency in database tables: {:?}", cycle_tables);
+            // Fallback: use unordered names of actual tables
+            actual_schema.iter().map(|t| t.name.clone()).collect()
+        }
+    };
+
+    let obsolete_tables: Vec<String> = drop_order
+        .into_iter()
+        .filter(|name| !needed_names.contains(name))
+        .collect();
+
+    for table_name in obsolete_tables {
+        migration_steps.push(MigrationStepItem::Drop(DropTableStep::new(
+            database_schema,
+            &table_name,
+        )));
     }
 
-    // working with SERIAL types: https://www.bytebase.com/reference/postgres/how-to/how-to-use-serial-postgres/
-    /// migrate database schema conform documents configuration
-    pub async fn migrate(&self, dry_run: bool) -> Result<(), anyhow::Error> {
-        // sorted conform dependency order
-        let needed_schema = documents_into_tables(self.documents);
-        let actual_schema = self.persistence.load().await?;
-
-        let needed_names: std::collections::HashSet<String> = needed_schema
-            .iter()
-            .map(|table| table.name.clone())
-            .collect();
-
-        let actual_names: std::collections::HashSet<String> = actual_schema
-            .iter()
-            .map(|table| table.name.clone())
-            .collect();
-
-        let mut migration_steps = Vec::new();
-
-        // Resolve drop order of all actual tables from the database topologically
-        let drop_order = match resolve_table_order(&actual_schema) {
-            Ok(ordered) => {
-                // Creation order: independent first, dependent last.
-                // Drop order: dependent first, independent last (so we reverse the creation order).
-                let mut reversed = ordered.into_iter().map(|t| t.name.clone()).collect::<Vec<_>>();
-                reversed.reverse();
-                reversed
-            }
-            Err(DependencyError::CircularDependency(cycle_tables)) => {
-                eprintln!("Circular dependency in database tables: {:?}", cycle_tables);
-                // Fallback: use unordered names of actual tables
-                actual_schema.iter().map(|t| t.name.clone()).collect()
-            }
-        };
-
-        let obsolete_tables: Vec<String> = drop_order
-            .into_iter()
-            .filter(|name| !needed_names.contains(name))
-            .collect();
-
-        for table_name in obsolete_tables {
-            migration_steps.push(MigrationStepItem::Drop(DropTableStep::new(
-                self.persistence.database_schema(),
-                &table_name,
+    // create missing tables in needed order
+    let ordered = resolve_table_order(needed_schema)?;
+    for table in ordered {
+        if !actual_names.contains(&table.name) {
+            migration_steps.push(MigrationStepItem::Create(CreateTableStep::new(
+                database_schema,
+                table,
             )));
         }
-
-        // create missing tables in needed order
-        match resolve_table_order(&needed_schema) {
-            Ok(ordered) => {
-                for table in ordered {
-                    if !actual_names.contains(&table.name) {
-                        migration_steps.push(MigrationStepItem::Create(CreateTableStep::new(
-                            self.persistence.database_schema(),
-                            &table,
-                        )));
-                    }
-                }
-            }
-            Err(DependencyError::CircularDependency(needed_schema)) => {
-                eprintln!("Cannot resolve order, circular dependency: {:?}", needed_schema);
-            }
-        }
-
-        if dry_run {
-            println!("--- DRY-RUN: The following SQL DDL would be executed ---");
-            if migration_steps.is_empty() {
-                println!("No migration steps needed. Database schema is up to date.");
-            } else {
-                for step in migration_steps {
-                    println!("-- Context: {}", step.ctx());
-                    for ddl in step.ddls() {
-                        println!("{};", ddl);
-                    }
-                }
-            }
-            return Ok(());
-        }
-
-        // TODO: add logs about count created/deleted tables
-        self.persistence
-            .apply_migration_steps(migration_steps)
-            .await?;
-
-        Ok(())
     }
+
+    Ok(migration_steps)
 }
 
 fn drop_table_ddl(schema: &str, table_name: &str) -> String {
@@ -282,7 +242,7 @@ fn create_index_ddl(schema: &str, index: &Index) -> String {
 }
 
 // returns database persistence for given documents schema, sorted conform dependency order
-fn documents_into_tables(documents: &dyn DocumentTypesRegistry) -> Vec<Table> {
+pub fn documents_into_tables(documents: &dyn DocumentTypesRegistry) -> Vec<Table> {
     let mut tables = Vec::new();
 
     for d in documents.iterate() {
@@ -297,7 +257,6 @@ fn documents_into_tables(documents: &dyn DocumentTypesRegistry) -> Vec<Table> {
 mod tests {
     use super::*;
     use crate::domain::tables::{Column, ColumnType, ForeignKeyConstraint, Index};
-    use luminair_common::entities::IntegerSize;
 
     #[test]
     fn test_drop_table_ddl() {
@@ -353,5 +312,55 @@ mod tests {
             ddl_unique,
             "CREATE UNIQUE INDEX \"my_table_col1_idx\" ON \"my_schema\".\"my_table\" (col1)"
         );
+    }
+
+    fn make_test_table(name: &str) -> Table {
+        Table::new(name.to_string(), vec![], vec![], vec![])
+    }
+
+    #[test]
+    fn test_plan_migration_no_changes() {
+        let t1 = make_test_table("t1");
+        let needed = vec![t1.clone()];
+        let actual = vec![t1];
+
+        let steps = plan_migration(&needed, &actual, "public").unwrap();
+        assert!(steps.is_empty());
+    }
+
+    #[test]
+    fn test_plan_migration_create_table() {
+        let t1 = make_test_table("t1");
+        let needed = vec![t1];
+        let actual = vec![];
+
+        let steps = plan_migration(&needed, &actual, "public").unwrap();
+        assert_eq!(steps.len(), 1);
+        assert!(matches!(steps[0], MigrationStepItem::Create(_)));
+    }
+
+    #[test]
+    fn test_plan_migration_drop_obsolete_table() {
+        let t1 = make_test_table("t1");
+        let needed = vec![];
+        let actual = vec![t1];
+
+        let steps = plan_migration(&needed, &actual, "public").unwrap();
+        assert_eq!(steps.len(), 1);
+        assert!(matches!(steps[0], MigrationStepItem::Drop(_)));
+    }
+
+    #[test]
+    fn test_plan_migration_mixed_ops() {
+        let t1 = make_test_table("t1");
+        let t2 = make_test_table("t2");
+        let needed = vec![t1]; // We want t1
+        let actual = vec![t2]; // Database currently has t2
+
+        let steps = plan_migration(&needed, &actual, "public").unwrap();
+        assert_eq!(steps.len(), 2);
+        // Drops obsolete tables first, then creates needed ones
+        assert!(matches!(steps[0], MigrationStepItem::Drop(_)));
+        assert!(matches!(steps[1], MigrationStepItem::Create(_)));
     }
 }

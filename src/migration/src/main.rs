@@ -1,5 +1,5 @@
 use crate::{
-    domain::migration::Migration,
+    application::Migration,
     infrastructure::{persistence::PersistenceAdapter, settings::Settings},
 };
 use luminair_common::{database, load_documents};

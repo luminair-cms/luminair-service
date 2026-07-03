@@ -4,6 +4,7 @@ use anyhow::Context;
 use sqlx::Executor;
 
 use crate::application::Persistence;
+use crate::domain::migration::MigrationStep;
 
 #[derive(Clone)]
 pub struct PersistenceAdapter {
@@ -73,13 +74,13 @@ impl Persistence for PersistenceAdapter {
         Ok(tables_map.into_values().collect())
     }
 
-    async fn apply_migration_steps(&self, steps: Vec<impl crate::domain::migration::MigrationStep>)-> Result<(), anyhow::Error> {
+    async fn apply_migration_steps(&self, steps: Vec<crate::domain::migration::MigrationStepItem>) -> Result<(), anyhow::Error> {
         use futures::stream::{self, StreamExt};
     
         let mut stream = stream::iter(steps);
         while let Some(step) = stream.next().await {
             let ctx = step.ctx();
-            let ddls = step.ddls();
+            let ddls = step.clone().ddls();
             execute_in_transaction(self.database, ddls, ctx).await?;
         }
     
