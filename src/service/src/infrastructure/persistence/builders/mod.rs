@@ -23,7 +23,7 @@ pub(crate) fn main_select_columns(document: &DocumentType, status: DocumentStatu
         .map(|c| (*c).into())
         .collect();
 
-    if status == DocumentStatus::Published {
+    if status == DocumentStatus::Published && document.has_draft_and_publish() {
         columns.push(("m", "snapshot_id").into());
     }
 

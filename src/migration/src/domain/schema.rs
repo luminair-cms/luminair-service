@@ -19,29 +19,38 @@ impl DocumentTables {
     pub fn new(document: &DocumentType, documents: &dyn DocumentTypesRegistry) -> Self {
         let mut tables = Vec::new();
 
-        // Create main table + snapshots table + relation tables for both modes.
-        // This keeps schema and history handling consistent whether draftAndPublish is enabled or not.
         let mut main_table_builder = MainTableBuilder::new(document);
-        let mut snapshots_table_builder = SnapshotsTableBuilder::new(document);
 
-        handle_document_fields(
-            document,
-            &mut main_table_builder,
-            &mut snapshots_table_builder,
-        );
+        if document.has_draft_and_publish() {
+            let mut snapshots_table_builder = SnapshotsTableBuilder::new(document);
+            handle_document_fields(
+                document,
+                &mut main_table_builder,
+                Some(&mut snapshots_table_builder),
+            );
+            let main_table = main_table_builder.into();
+            let snapshots_table = snapshots_table_builder.into();
 
-        let main_table = main_table_builder.into();
-        let snapshots_table = snapshots_table_builder.into();
-
-        tables.push(main_table);
-        tables.push(snapshots_table);
+            tables.push(main_table);
+            tables.push(snapshots_table);
+        } else {
+            handle_document_fields(
+                document,
+                &mut main_table_builder,
+                None,
+            );
+            let main_table = main_table_builder.into();
+            tables.push(main_table);
+        }
 
         for relation in document.relations.iter() {
             if relation.relation_type.is_owning() {
                 let (working_relation, snapshot_relation) =
                     RelationTablesBuilder::new_pair(document, relation, documents);
                 tables.push(working_relation);
-                tables.push(snapshot_relation);
+                if document.has_draft_and_publish() {
+                    tables.push(snapshot_relation);
+                }
             }
         }
 
@@ -332,7 +341,7 @@ impl RelationTablesBuilder {
 fn handle_document_fields(
     document: &DocumentType,
     main_table_builder: &mut MainTableBuilder,
-    snapshots_table_builder: &mut SnapshotsTableBuilder,
+    mut snapshots_table_builder: Option<&mut SnapshotsTableBuilder>,
 ) {
     for field in document.fields.iter() {
         let column_type = infer_column_type(field);
@@ -347,7 +356,9 @@ fn handle_document_fields(
         );
 
         main_table_builder.push(column.clone());
-        snapshots_table_builder.push(column);
+        if let Some(ref mut stb) = snapshots_table_builder {
+            stb.push(column);
+        }
     }
 }
 

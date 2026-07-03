@@ -4,9 +4,10 @@ This document details the database schemas, SQL query patterns, and relation ver
 
 ---
 
-## Core Database Architecture
-
 Luminair separates draft states from published snapshots using a **Main Table + Snapshots Table** pattern.
+
+> [!NOTE]
+> The snapshots table `{collection}_snapshots` and its corresponding relation snapshot tables are **only created and used if `draftAndPublish` is enabled** on the collection. If `draftAndPublish` is disabled (OFF), snapshot tables are not generated, and all read and write queries are executed directly on the main table `{collection}`.
 
 ### 1. Main Table: `{collection}`
 Contains the current working draft (or the last published version if no edits have been made) along with metadata and content fields.
@@ -71,7 +72,7 @@ WHERE document_id = $document_id;
 
 ## Relations Versioning Pattern
 
-To keep draft relations separate from published relations, the database utilizes relation table pairs.
+To keep draft relations separate from published relations, the database utilizes relation table pairs when `draftAndPublish` is enabled. If `draftAndPublish` is disabled, only the Working Relations table is created and queried.
 
 ### 1. Working Relations (Draft)
 ```sql

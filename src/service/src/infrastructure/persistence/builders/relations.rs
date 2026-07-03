@@ -33,10 +33,16 @@ pub fn query_find_related_documents(
     status: DocumentStatus,
     params: Vec<Uuid>,
 ) -> (String, SqlxValues) {
-    let (related_table, relation_table) = if status == DocumentStatus::Published {
-        (related_document.snapshot_table(), main_document.relation_snapshot_table(relation_attr))
+    let related_table = if status == DocumentStatus::Published && related_document.has_draft_and_publish() {
+        related_document.snapshot_table()
     } else {
-        (related_document.main_table(), main_document.relation_table(relation_attr))
+        related_document.main_table()
+    };
+
+    let relation_table = if status == DocumentStatus::Published && main_document.has_draft_and_publish() {
+        main_document.relation_snapshot_table(relation_attr)
+    } else {
+        main_document.relation_table(relation_attr)
     };
 
     let owning_document_id_column = ("r", OWNING_DOCUMENT_ID_FIELD_NAME);

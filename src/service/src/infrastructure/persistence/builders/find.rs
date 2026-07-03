@@ -102,7 +102,7 @@ fn main_document_select<'a>(
     document: &'a DocumentType,
     status: DocumentStatus,
 ) -> SelectStatement {
-    let (table_ref, status_expr, version_expr) = if status == DocumentStatus::Published {
+    let (table_ref, status_expr, version_expr) = if status == DocumentStatus::Published && document.has_draft_and_publish() {
         let table_ref = document.snapshot_table();
         (
             TableRef::from(table_ref),
