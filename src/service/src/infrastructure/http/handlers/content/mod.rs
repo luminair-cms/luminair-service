@@ -3,16 +3,15 @@ use crate::application::service::DocumentsService;
 use crate::domain::document::DocumentInstanceId;
 use crate::domain::query::{DocumentInstanceQuery, DocumentStatus};
 use crate::infrastructure::http::api::{ApiError, ApiSuccess};
-use crate::infrastructure::http::handlers::content::params::{parse_populate, parse_status, resolve_document_type, QueryParams};
+use crate::infrastructure::http::handlers::content::params::resolve_document_type;
 use crate::infrastructure::http::handlers::content::response::{
     ManyDocumentsResponse, OneDocumentResponse,
 };
-use crate::infrastructure::http::querystring::QueryString;
+use crate::infrastructure::http::querystring::QueryMap;
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
-use serde::Deserialize;
 use crate::application::commands::{DeleteDocumentCommand, FindByIdCommand, FindDocumentsCommand, PublishDocumentCommand};
 use luminair_common::AttributeId;
 
@@ -20,41 +19,33 @@ mod params;
 mod request;
 mod response;
 
-#[derive(Deserialize, Debug)]
-#[serde(rename_all = "camelCase")]
-pub struct PaginationParams {
-    #[serde(default)]
-    pub page: u16,
-    #[serde(default)]
-    pub page_size: u16,
-}
-
 pub async fn find_document_by_id<S: AppState>(
     State(state): State<S>,
     Path((api_type, id)): Path<(String, String)>,
-    axum::extract::RawQuery(raw_query): axum::extract::RawQuery,
-    QueryString(params): QueryString<QueryParams>,
+    QueryMap(query_map): QueryMap,
 ) -> Result<ApiSuccess<OneDocumentResponse>, ApiError> {
-    if params.pagination.is_some() {
+    if query_map.contains_key("pagination") {
         return Err(ApiError::UnprocessableEntity(
             "Pagination param isn't eligible for find_by_id query".to_string(),
+        ));
+    }
+    if query_map.contains_key("sort") {
+        return Err(ApiError::UnprocessableEntity(
+            "Sort param isn't eligible for find_by_id query".to_string(),
         ));
     }
 
     let document_type = resolve_document_type(&state, &api_type)?;
     let document_instance_id = DocumentInstanceId::try_from(&id)?;
-    let populate_attributes = parse_populate(params.populate, document_type)?;
-    let status = parse_status(&params.status)?;
-
-    let query_str = raw_query.unwrap_or_default();
-    let (_, populate_filters, _) = params::parse_filters_and_sorts(&query_str, document_type, &state)?;
+    let (populate, _, status, _, populate_filters, _) =
+        params::parse_query(&query_map, document_type, state.document_types())?;
 
     let query = DocumentInstanceQuery::new().with_status(status);
 
     let cmd = FindByIdCommand {
         document_type,
         document_instance_id,
-        populate: populate_attributes,
+        populate,
         populate_filters,
         query
     };
@@ -73,28 +64,23 @@ pub async fn find_document_by_id<S: AppState>(
 pub async fn find_all_documents<S: AppState>(
     State(state): State<S>,
     Path(api_type): Path<String>,
-    axum::extract::RawQuery(raw_query): axum::extract::RawQuery,
-    QueryString(params): QueryString<QueryParams>,
+    QueryMap(query_map): QueryMap,
 ) -> Result<ApiSuccess<ManyDocumentsResponse>, ApiError> {
     let document_type = resolve_document_type(&state, &api_type)?;
 
-    let query_str = raw_query.unwrap_or_default();
-    let (filter, populate_filters, sorts) = params::parse_filters_and_sorts(&query_str, document_type, &state)?;
-
-    // Extract pagination params with defaults
-    let (page, page_size) = params
-        .pagination_or_default();
+    let (populate, (page, page_size), status, filter, populate_filters, sorts) =
+        params::parse_query(&query_map, document_type, state.document_types())?;
 
     let mut query = DocumentInstanceQuery::new()
         .paginate(page, page_size)
-        .with_status(parse_status(&params.status)?)
+        .with_status(status)
         .with_filter(filter);
 
     query.sort = sorts;
 
     let cmd = FindDocumentsCommand {
         document_type,
-        populate: parse_populate(params.populate, document_type)?,
+        populate,
         populate_filters,
         query,
     };

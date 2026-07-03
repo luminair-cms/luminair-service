@@ -1,102 +1,115 @@
-use std::{ops::Deref, sync::Arc};
+use axum::{
+    extract::FromRequestParts,
+    http::{StatusCode, request::Parts},
+    response::{IntoResponse, Response},
+};
+use serde_json::{Map, Value};
+use url::form_urlencoded;
 
-use anyhow::Error;
-use axum::{extract::FromRequestParts, http::{StatusCode, request::Parts}, response::{IntoResponse, Response}};
-use serde::de::DeserializeOwned;
-use serde_querystring::ParseMode;
+#[derive(Debug, Clone, Default)]
+pub struct QueryMap(pub Map<String, Value>);
 
-#[derive(Debug, Clone, Copy, Default)]
-pub struct QueryString<T>(pub T);
-
-impl<T, S> FromRequestParts<S> for QueryString<T>
+impl<S> FromRequestParts<S> for QueryMap
 where
-    T: DeserializeOwned,
     S: Send + Sync,
 {
     type Rejection = Response;
 
     async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
-        let QueryStringConfig { mode, ehandler } = parts
-            .extensions
-            .get::<QueryStringConfig>()
-            .cloned()
-            .unwrap_or_default();
-
         let query = parts.uri.query().unwrap_or_default();
-        let value = serde_querystring::from_str(query, mode).map_err(|e| {
-            if let Some(ehandler) = ehandler {
-                ehandler(e.into())
-            } else {
-                QueryStringError::default().into_response()
-            }
+        let map = parse_query_to_json(query).map_err(|e| {
+            (StatusCode::BAD_REQUEST, e).into_response()
         })?;
-        Ok(QueryString(value))
+        Ok(QueryMap(map))
     }
 }
 
-impl<T> Deref for QueryString<T> {
-    type Target = T;
+pub fn parse_query_to_json(query_str: &str) -> Result<Map<String, Value>, String> {
+    let mut root = Map::new();
 
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
+    for (raw_key, raw_val) in form_urlencoded::parse(query_str.as_bytes()) {
+        let mut parts = Vec::new();
+        let base_end = raw_key.find('[').unwrap_or(raw_key.len());
+        parts.push(&raw_key[0..base_end]);
 
-#[derive(Clone)]
-pub struct QueryStringConfig {
-    mode: ParseMode,
-    ehandler: Option<Arc<dyn Fn(Error) -> Response + Send + Sync>>,
-}
+        let mut is_array_push = false;
+        let mut rest = &raw_key[base_end..];
+        while let Some(start) = rest.find('[') {
+            if let Some(end) = rest[start..].find(']') {
+                let segment = &rest[start + 1..start + end];
+                if segment.is_empty() {
+                    is_array_push = true;
+                } else {
+                    parts.push(segment);
+                }
+                rest = &rest[start + end + 1..];
+            } else {
+                break;
+            }
+        }
 
-impl Default for QueryStringConfig {
-    fn default() -> Self {
-        Self {
-            mode: ParseMode::Duplicate,
-            ehandler: None,
+        let mut current_map = &mut root;
+        for i in 0..parts.len() {
+            let part = parts[i].to_string();
+
+            if i == parts.len() - 1 {
+                if is_array_push {
+                    let entry = current_map.entry(part).or_insert_with(|| Value::Array(Vec::new()));
+                    if let Value::Array(arr) = entry {
+                        arr.push(Value::String(raw_val.to_string()));
+                    }
+                } else {
+                    if let Some(existing) = current_map.get_mut(&part) {
+                        match existing {
+                            Value::Array(arr) => {
+                                arr.push(Value::String(raw_val.to_string()));
+                            }
+                            other => {
+                                let old_val = other.clone();
+                                *other = Value::Array(vec![old_val, Value::String(raw_val.to_string())]);
+                            }
+                        }
+                    } else {
+                        current_map.insert(part, Value::String(raw_val.to_string()));
+                    }
+                }
+            } else {
+                if !current_map.contains_key(&part) {
+                    current_map.insert(part.clone(), Value::Object(Map::new()));
+                }
+                let entry = current_map.get_mut(&part).unwrap();
+                if !entry.is_object() {
+                    *entry = Value::Object(Map::new());
+                }
+                current_map = entry.as_object_mut().unwrap();
+            }
         }
     }
+
+    Ok(root)
 }
 
-impl QueryStringConfig {
-    pub fn new(mode: ParseMode) -> Self {
-        Self {
-            mode,
-            ehandler: None,
-        }
-    }
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-    pub fn mode(mut self, mode: ParseMode) -> Self {
-        self.mode = mode;
-        self
-    }
+    #[test]
+    fn test_parse_query_to_json_nested() {
+        let query = "filters[title][$eq]=hello&filters[description][en][$contains]=world&filters[tags][$in][]=rust&filters[tags][$in][]=axum";
+        let parsed = parse_query_to_json(query).unwrap();
 
-    pub fn ehandler<F, R>(mut self, ehandler: F) -> Self
-    where
-        F: Fn(Error) -> R + Send + Sync + 'static,
-        R: IntoResponse,
-    {
-        self.ehandler = Some(Arc::new(move |e| ehandler(e).into_response()));
-        self
-    }
-}
+        let filters = parsed.get("filters").unwrap().as_object().unwrap();
 
-#[derive(Debug)]
-struct QueryStringError {
-    status: StatusCode,
-    body: String,
-}
+        let title = filters.get("title").unwrap().as_object().unwrap();
+        assert_eq!(title.get("$eq").unwrap().as_str().unwrap(), "hello");
 
-impl Default for QueryStringError {
-    fn default() -> Self {
-        Self {
-            status: StatusCode::BAD_REQUEST,
-            body: String::from("Failed to deserialize query string"),
-        }
-    }
-}
+        let description = filters.get("description").unwrap().as_object().unwrap();
+        let en = description.get("en").unwrap().as_object().unwrap();
+        assert_eq!(en.get("$contains").unwrap().as_str().unwrap(), "world");
 
-impl IntoResponse for QueryStringError {
-    fn into_response(self) -> Response {
-        (self.status, self.body).into_response()
+        let tags = filters.get("tags").unwrap().as_object().unwrap();
+        let r#in = tags.get("$in").unwrap().as_array().unwrap();
+        assert_eq!(r#in[0].as_str().unwrap(), "rust");
+        assert_eq!(r#in[1].as_str().unwrap(), "axum");
     }
 }

@@ -26,7 +26,6 @@ sea-query = { workspace = true }
 
 axum-prometheus = "0.10.0"
 rust_decimal = { version = "1.40", features = ["serde-float", "serde-with-float"] }
-serde-querystring = "=0.3.0"
 tower-http = { version = "0.6.6", features = ["add-extension", "trace"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 email_address = "0.2.9"

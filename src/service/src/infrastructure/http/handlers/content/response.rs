@@ -1,7 +1,6 @@
 use crate::domain::document::lifecycle::PublicationState;
-use crate::domain::document::{DocumentInstance, content::ContentValue};
+use crate::domain::document::DocumentInstance;
 use chrono::{DateTime, Utc};
-use luminair_common::AttributeId;
 
 use serde::Serialize;
 use serde_json::Value as JsonValue;
