@@ -1,19 +1,164 @@
-use std::collections::{HashSet, HashMap};
+use std::collections::{HashMap, HashSet};
 use std::str::FromStr;
-use serde_json::Value;
-use luminair_common::{AttributeId, DocumentType, DocumentTypeApiId, entities::FieldType};
 
-use crate::application::AppState;
-use crate::domain::query::{DocumentStatus, FilterExpression, Sort, SortDirection};
+use luminair_common::{AttributeId, DocumentType, DocumentTypesRegistry, entities::FieldType};
+use serde_json::Value;
+
 use crate::domain::document::content::DomainValue;
+use crate::domain::query::{DocumentStatus, FilterExpression, Sort, SortDirection};
 use crate::infrastructure::http::api::ApiError;
+
+// ─── Constants ────────────────────────────────────────────────────────────────
 
 /// The wildcard token that, when supplied as the single `populate` value,
 /// expands to every owning relation declared on the document type.
 const POPULATE_WILDCARD: &str = "*";
 
-/// Parse the `?status=` query parameter into a [`DocumentStatus`].
-pub fn parse_status(s: &str) -> Result<DocumentStatus, ApiError> {
+// ─── Public structs ───────────────────────────────────────────────────────────
+
+/// Schema-agnostic representation of every bracket query parameter.
+///
+/// Produced by [`parse_raw_query`] without any domain knowledge.
+/// Use [`parse_query`] to validate and resolve it against a [`DocumentType`].
+pub(super) struct RawQueryParams {
+    /// `?populate=*` / `?populate[]=field` / `?populate=field`
+    pub populate: Option<HashSet<String>>,
+    /// `?pagination[page]=N&pagination[pageSize]=M`
+    pub pagination: (u16, u16),
+    /// `?status=draft|published` — raw string, not yet validated against the domain enum
+    pub status: String,
+    /// `?sort=field:asc,other:desc`
+    pub sorts: Vec<(String, SortDirection)>,
+    /// `?filters[...]` — the nested JSON subtree, kept opaque for the validation layer
+    pub filters: Option<Value>,
+}
+
+/// Fully resolved, domain-validated query parameters ready for the application layer.
+pub struct DocumentQuery {
+    pub populate: Option<Vec<AttributeId>>,
+    pub pagination: (u16, u16),
+    pub status: DocumentStatus,
+    pub filter: FilterExpression,
+    pub populate_filters: Option<HashMap<AttributeId, FilterExpression>>,
+    pub sorts: Vec<Sort>,
+}
+
+// ─── Public functions ─────────────────────────────────────────────────────────
+
+/// Parse a nested query-string map into [`RawQueryParams`] with no schema knowledge.
+///
+/// This is a pure structural transformation: it extracts the well-known top-level
+/// keys (`populate`, `pagination`, `status`, `sort`, `filters`) from the already-
+/// decoded bracket map and returns them in typed form, without any domain validation.
+pub(super) fn parse_raw_query(query_map: &serde_json::Map<String, Value>) -> RawQueryParams {
+    // populate
+    let populate = match query_map.get("populate") {
+        Some(Value::String(s)) => {
+            let mut set = HashSet::new();
+            set.insert(s.clone());
+            Some(set)
+        }
+        Some(Value::Array(arr)) => {
+            let set = arr
+                .iter()
+                .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                .collect::<HashSet<_>>();
+            Some(set)
+        }
+        _ => None,
+    };
+
+    // pagination
+    let pagination = if let Some(Value::Object(pag_map)) = query_map.get("pagination") {
+        let page = pag_map
+            .get("page")
+            .and_then(|v| {
+                v.as_str()
+                    .and_then(|s| s.parse::<u16>().ok())
+                    .or_else(|| v.as_u64().map(|n| n as u16))
+            })
+            .unwrap_or(1);
+        let page_size = pag_map
+            .get("pageSize")
+            .and_then(|v| {
+                v.as_str()
+                    .and_then(|s| s.parse::<u16>().ok())
+                    .or_else(|| v.as_u64().map(|n| n as u16))
+            })
+            .unwrap_or(25);
+        (page, page_size)
+    } else {
+        (1, 25)
+    };
+
+    // status
+    let status = query_map
+        .get("status")
+        .and_then(|v| v.as_str())
+        .unwrap_or("published")
+        .to_string();
+
+    // sorts
+    let sorts = query_map
+        .get("sort")
+        .and_then(|v| v.as_str())
+        .map(|sort_val| {
+            sort_val
+                .split(',')
+                .filter(|item| !item.is_empty())
+                .map(|item| {
+                    let mut parts = item.splitn(2, ':');
+                    let field = parts.next().unwrap_or("").to_string();
+                    let direction = match parts.next().map(|d| d.to_ascii_lowercase()).as_deref() {
+                        Some("desc") => SortDirection::Descending,
+                        _ => SortDirection::Ascending,
+                    };
+                    (field, direction)
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
+    // filters — keep as opaque JSON value for the validation layer
+    let filters = query_map.get("filters").cloned();
+
+    RawQueryParams { populate, pagination, status, sorts, filters }
+}
+
+/// Parse and validate all query parameters against the given [`DocumentType`] schema.
+///
+/// Internally calls [`parse_raw_query`] for structural parsing, then validates and
+/// resolves each field using domain knowledge from `document_type` and `registry`.
+pub fn parse_query(
+    query_map: &serde_json::Map<String, Value>,
+    document_type: &DocumentType,
+    registry: &dyn DocumentTypesRegistry,
+) -> Result<DocumentQuery, ApiError> {
+    let raw = parse_raw_query(query_map);
+
+    let status = parse_status(&raw.status)?;
+    let populate = resolve_populate(raw.populate, document_type)?;
+    let sorts = raw
+        .sorts
+        .into_iter()
+        .map(|(field, direction)| Sort { field, direction })
+        .collect();
+    let (filter, populate_filters) = resolve_filters(raw.filters, document_type, registry)?;
+
+    Ok(DocumentQuery {
+        populate,
+        pagination: raw.pagination,
+        status,
+        filter,
+        populate_filters,
+        sorts,
+    })
+}
+
+// ─── Private helpers ──────────────────────────────────────────────────────────
+
+/// Validate a raw `status` string into the domain [`DocumentStatus`] enum.
+fn parse_status(s: &str) -> Result<DocumentStatus, ApiError> {
     match s {
         "draft" => Ok(DocumentStatus::Draft),
         "published" => Ok(DocumentStatus::Published),
@@ -23,8 +168,10 @@ pub fn parse_status(s: &str) -> Result<DocumentStatus, ApiError> {
     }
 }
 
-/// Convert the raw `?populate=` field set into a list of [`AttributeId`]s.
-pub fn parse_populate(
+/// Resolve raw populate field names into validated [`AttributeId`]s.
+///
+/// The wildcard `*` is expanded to every owning relation on the document type.
+fn resolve_populate(
     fields: Option<HashSet<String>>,
     document_type: &DocumentType,
 ) -> Result<Option<Vec<AttributeId>>, ApiError> {
@@ -52,61 +199,190 @@ pub fn parse_populate(
     Ok(Some(attributes))
 }
 
-/// Resolve a `{api_type}` path segment to a registered [`DocumentType`].
-pub fn resolve_document_type<S: AppState>(
-    state: &S,
-    api_type: &str,
-) -> Result<&'static DocumentType, ApiError> {
-    let api_id = DocumentTypeApiId::from_str(api_type)
-        .map_err(|_| ApiError::UnprocessableEntity(format!("Invalid api_type: {}", api_type)))?;
-    state
-        .document_types()
-        .lookup(&api_id)
-        .ok_or(ApiError::NotFound)
+/// Entry point for filter resolution: dispatches the raw filter JSON value into the
+/// recursive resolver and returns the main filter and per-relation populate filters.
+fn resolve_filters(
+    filters: Option<Value>,
+    document_type: &DocumentType,
+    registry: &dyn DocumentTypesRegistry,
+) -> Result<(FilterExpression, Option<HashMap<AttributeId, FilterExpression>>), ApiError> {
+    let mut main_filter = FilterExpression::None;
+    let mut populate_filters: HashMap<AttributeId, FilterExpression> = HashMap::new();
+
+    if let Some(filters_val) = filters {
+        parse_filters_recursive(
+            &filters_val,
+            "",
+            document_type,
+            registry,
+            &mut main_filter,
+            &mut populate_filters,
+            None,
+        )?;
+    }
+
+    let populate_filters = if populate_filters.is_empty() {
+        None
+    } else {
+        Some(populate_filters)
+    };
+
+    Ok((main_filter, populate_filters))
 }
 
-fn parse_filter_value(val_str: &str, field_type: FieldType) -> Result<DomainValue, ApiError> {
-    match field_type {
-        FieldType::Integer(_) => {
-            let i = i64::from_str(val_str).map_err(|_| {
-                ApiError::UnprocessableEntity(format!("Invalid integer filter value: {}", val_str))
-            })?;
-            Ok(DomainValue::Integer(i))
+/// Recursively walk the nested filter JSON value, resolving each node to a
+/// [`FilterExpression`] using the document type schema and relation registry.
+fn parse_filters_recursive(
+    value: &Value,
+    current_path: &str,
+    document_type: &DocumentType,
+    registry: &dyn DocumentTypesRegistry,
+    main_filter: &mut FilterExpression,
+    relation_filters: &mut HashMap<AttributeId, FilterExpression>,
+    current_relation: Option<&AttributeId>,
+) -> Result<(), ApiError> {
+    match value {
+        Value::Object(map) => {
+            for (key, child) in map {
+                if key.starts_with('$') {
+                    // Operator leaf node — build an expression for the current field path
+                    let base_field = current_path.split('.').next().unwrap_or(current_path);
+                    let field_type = document_type
+                        .fields
+                        .iter()
+                        .find(|f| f.id.as_ref() == base_field)
+                        .map(|f| f.field_type)
+                        .unwrap_or(FieldType::Text);
+
+                    let expr = build_filter_expr_for_json_value(
+                        current_path.to_string(),
+                        key,
+                        child,
+                        field_type,
+                    )?;
+
+                    accumulate_filter(main_filter, relation_filters, current_relation, expr);
+                } else if let Some(rel) =
+                    document_type.relations.iter().find(|r| r.id.as_ref() == key)
+                {
+                    // Relation node — switch document type context to the relation target
+                    let target_type = registry.get(&rel.target).ok_or(ApiError::NotFound)?;
+
+                    parse_filters_recursive(
+                        child,
+                        "",
+                        target_type,
+                        registry,
+                        main_filter,
+                        relation_filters,
+                        Some(&rel.id),
+                    )?;
+                } else {
+                    // Standard field key or locale code — extend the path and recurse
+                    let new_path = if current_path.is_empty() {
+                        key.clone()
+                    } else {
+                        format!("{}.{}", current_path, key)
+                    };
+
+                    parse_filters_recursive(
+                        child,
+                        &new_path,
+                        document_type,
+                        registry,
+                        main_filter,
+                        relation_filters,
+                        current_relation,
+                    )?;
+                }
+            }
         }
-        FieldType::Decimal { .. } => {
-            let d = rust_decimal::Decimal::from_str(val_str).map_err(|_| {
-                ApiError::UnprocessableEntity(format!("Invalid decimal filter value: {}", val_str))
-            })?;
-            Ok(DomainValue::Decimal(d))
+        _ => {
+            // Bare value with no operator key — default to $eq
+            let base_field = current_path.split('.').next().unwrap_or(current_path);
+            let field_type = document_type
+                .fields
+                .iter()
+                .find(|f| f.id.as_ref() == base_field)
+                .map(|f| f.field_type)
+                .unwrap_or(FieldType::Text);
+
+            let expr = build_filter_expr_for_json_value(
+                current_path.to_string(),
+                "$eq",
+                value,
+                field_type,
+            )?;
+
+            accumulate_filter(main_filter, relation_filters, current_relation, expr);
         }
-        FieldType::Boolean => {
-            let b = bool::from_str(val_str).map_err(|_| {
-                ApiError::UnprocessableEntity(format!("Invalid boolean filter value: {}", val_str))
-            })?;
-            Ok(DomainValue::Boolean(b))
+    }
+    Ok(())
+}
+
+/// Dispatch a single `(field_path, operator, JSON value)` triple to the correct
+/// [`FilterExpression`] variant, handling list operators (`$in`, `$notIn`) separately.
+fn build_filter_expr_for_json_value(
+    field_path: String,
+    operator: &str,
+    value: &Value,
+    field_type: FieldType,
+) -> Result<FilterExpression, ApiError> {
+    if operator == "$in" || operator == "$notIn" || operator == "$not_in" {
+        let mut domain_values = Vec::new();
+        match value {
+            Value::Array(arr) => {
+                for item in arr {
+                    if let Some(s) = item.as_str() {
+                        domain_values.push(parse_filter_value(s, field_type)?);
+                    }
+                }
+            }
+            Value::String(s) => {
+                domain_values.push(parse_filter_value(s, field_type)?);
+            }
+            _ => {
+                return Err(ApiError::UnprocessableEntity(format!(
+                    "Expected array or string for operator {}",
+                    operator
+                )))
+            }
         }
-        FieldType::Date => {
-            let d = chrono::NaiveDate::parse_from_str(val_str, "%Y-%m-%d").map_err(|_| {
-                ApiError::UnprocessableEntity(format!("Invalid date filter value (expected YYYY-MM-DD): {}", val_str))
-            })?;
-            Ok(DomainValue::Date(d))
+
+        if operator == "$in" {
+            Ok(FilterExpression::In { field: field_path, values: domain_values })
+        } else {
+            Ok(FilterExpression::NotIn { field: field_path, values: domain_values })
         }
-        FieldType::DateTime => {
-            let dt = chrono::DateTime::parse_from_rfc3339(val_str).map_err(|_| {
-                ApiError::UnprocessableEntity(format!("Invalid datetime filter value (expected RFC 3339): {}", val_str))
-            })?;
-            Ok(DomainValue::DateTime(dt.with_timezone(&chrono::Utc)))
-        }
-        FieldType::Uuid => {
-            let u = uuid::Uuid::from_str(val_str).map_err(|_| {
-                ApiError::UnprocessableEntity(format!("Invalid UUID filter value: {}", val_str))
-            })?;
-            Ok(DomainValue::Uuid(u))
-        }
-        _ => Ok(DomainValue::Text(val_str.to_string())),
+    } else {
+        let val_str = match value {
+            Value::String(s) => s.as_str(),
+            Value::Number(n) => {
+                return parse_filter_value(&n.to_string(), field_type).map(|val| match operator {
+                    "$ne" => FilterExpression::NotEquals { field: field_path.clone(), value: val },
+                    "$gt" => FilterExpression::GreaterThan { field: field_path.clone(), value: val },
+                    "$gte" => FilterExpression::GreaterThanOrEqual { field: field_path.clone(), value: val },
+                    "$lt" => FilterExpression::LessThan { field: field_path.clone(), value: val },
+                    "$lte" => FilterExpression::LessThanOrEqual { field: field_path.clone(), value: val },
+                    _ => FilterExpression::Equals { field: field_path.clone(), value: val },
+                });
+            }
+            Value::Bool(b) => {
+                if *b { "true" } else { "false" }
+            }
+            _ => {
+                return Err(ApiError::UnprocessableEntity(format!(
+                    "Expected scalar value for operator {}",
+                    operator
+                )))
+            }
+        };
+
+        build_filter_expr_for_operator(field_path, operator, val_str, field_type)
     }
 }
 
+/// Map a comparison operator string + scalar string value to a [`FilterExpression`].
 fn build_filter_expr_for_operator(
     field_path: String,
     operator: &str,
@@ -138,9 +414,7 @@ fn build_filter_expr_for_operator(
             let val = parse_filter_value(val_str, field_type)?;
             Ok(FilterExpression::LessThanOrEqual { field: field_path, value: val })
         }
-        "$contains" => {
-            Ok(FilterExpression::Contains { field: field_path, value: val_str.to_string() })
-        }
+        "$contains" => Ok(FilterExpression::Contains { field: field_path, value: val_str.to_string() }),
         "$startsWith" | "$starts_with" => {
             Ok(FilterExpression::StartsWith { field: field_path, value: val_str.to_string() })
         }
@@ -148,305 +422,108 @@ fn build_filter_expr_for_operator(
             Ok(FilterExpression::EndsWith { field: field_path, value: val_str.to_string() })
         }
         "$null" => {
-            let b = val_str.parse::<bool>().unwrap_or(true);
-            if b {
+            if val_str.parse::<bool>().unwrap_or(true) {
                 Ok(FilterExpression::IsNull { field: field_path })
             } else {
                 Ok(FilterExpression::IsNotNull { field: field_path })
             }
         }
         "$notNull" | "$not_null" => {
-            let b = val_str.parse::<bool>().unwrap_or(true);
-            if b {
+            if val_str.parse::<bool>().unwrap_or(true) {
                 Ok(FilterExpression::IsNotNull { field: field_path })
             } else {
                 Ok(FilterExpression::IsNull { field: field_path })
             }
         }
-        _ => Err(ApiError::UnprocessableEntity(format!("Unsupported filter operator: {}", operator))),
+        _ => Err(ApiError::UnprocessableEntity(format!(
+            "Unsupported filter operator: {}",
+            operator
+        ))),
     }
 }
 
-use luminair_common::DocumentTypesRegistry;
-
-pub fn parse_query(
-    query_map: &serde_json::Map<String, Value>,
-    document_type: &DocumentType,
-    registry: &dyn DocumentTypesRegistry,
-) -> Result<(
-    Option<Vec<AttributeId>>, // populate
-    (u16, u16),              // pagination (page, pageSize)
-    DocumentStatus,          // status
-    FilterExpression,        // main filter
-    Option<HashMap<AttributeId, FilterExpression>>, // populate filters
-    Vec<Sort>,               // sorts
-), ApiError> {
-    // 1. Extract populate
-    let populate = match query_map.get("populate") {
-        Some(Value::String(s)) => {
-            let mut set = HashSet::new();
-            set.insert(s.clone());
-            parse_populate(Some(set), document_type)?
+/// Parse a raw scalar string into a typed [`DomainValue`] based on the field's schema type.
+fn parse_filter_value(val_str: &str, field_type: FieldType) -> Result<DomainValue, ApiError> {
+    match field_type {
+        FieldType::Integer(_) => {
+            let i = i64::from_str(val_str).map_err(|_| {
+                ApiError::UnprocessableEntity(format!("Invalid integer filter value: {}", val_str))
+            })?;
+            Ok(DomainValue::Integer(i))
         }
-        Some(Value::Array(arr)) => {
-            let mut set = HashSet::new();
-            for val in arr {
-                if let Some(s) = val.as_str() {
-                    set.insert(s.to_string());
-                }
-            }
-            parse_populate(Some(set), document_type)?
+        FieldType::Decimal { .. } => {
+            let d = rust_decimal::Decimal::from_str(val_str).map_err(|_| {
+                ApiError::UnprocessableEntity(format!("Invalid decimal filter value: {}", val_str))
+            })?;
+            Ok(DomainValue::Decimal(d))
         }
-        _ => None,
-    };
-
-    // 2. Extract pagination
-    let (page, page_size) = if let Some(Value::Object(pag_map)) = query_map.get("pagination") {
-        let page = pag_map
-            .get("page")
-            .and_then(|v| {
-                v.as_str().and_then(|s| s.parse::<u16>().ok())
-                    .or_else(|| v.as_u64().map(|n| n as u16))
-            })
-            .unwrap_or(1);
-        let page_size = pag_map
-            .get("pageSize")
-            .and_then(|v| {
-                v.as_str().and_then(|s| s.parse::<u16>().ok())
-                    .or_else(|| v.as_u64().map(|n| n as u16))
-            })
-            .unwrap_or(25);
-        (page, page_size)
-    } else {
-        (1, 25)
-    };
-
-    // 3. Extract status
-    let status_str = query_map
-        .get("status")
-        .and_then(|v| v.as_str())
-        .unwrap_or("published");
-    let status = parse_status(status_str)?;
-
-    // 4. Extract sorts
-    let mut sorts = Vec::new();
-    if let Some(sort_val) = query_map.get("sort").and_then(|v| v.as_str()) {
-        for item in sort_val.split(',') {
-            let parts: Vec<&str> = item.split(':').collect();
-            if parts.is_empty() {
-                continue;
-            }
-            let field = parts[0].to_string();
-            let direction = match parts.get(1).map(|d| d.to_ascii_lowercase()) {
-                Some(ref d) if d == "desc" => SortDirection::Descending,
-                _ => SortDirection::Ascending,
-            };
-            sorts.push(Sort { field, direction });
+        FieldType::Boolean => {
+            let b = bool::from_str(val_str).map_err(|_| {
+                ApiError::UnprocessableEntity(format!("Invalid boolean filter value: {}", val_str))
+            })?;
+            Ok(DomainValue::Boolean(b))
         }
-    }
-
-    // 5. Extract filters recursively
-    let mut main_filter = FilterExpression::None;
-    let mut populate_filters = HashMap::new();
-
-    if let Some(filters_val) = query_map.get("filters") {
-        parse_filters_recursive(
-            filters_val,
-            "",
-            document_type,
-            registry,
-            &mut main_filter,
-            &mut populate_filters,
-            None,
-        )?;
-    }
-
-    let pop_filters = if populate_filters.is_empty() {
-        None
-    } else {
-        Some(populate_filters)
-    };
-
-    Ok((populate, (page, page_size), status, main_filter, pop_filters, sorts))
-}
-
-fn parse_filters_recursive(
-    value: &Value,
-    current_path: &str,
-    document_type: &DocumentType,
-    registry: &dyn DocumentTypesRegistry,
-    main_filter: &mut FilterExpression,
-    relation_filters: &mut HashMap<AttributeId, FilterExpression>,
-    current_relation: Option<&AttributeId>,
-) -> Result<(), ApiError> {
-    match value {
-        Value::Object(map) => {
-            for (key, child) in map {
-                if key.starts_with('$') {
-                    // Operator leaf node
-                    let base_field = current_path.split('.').next().unwrap_or(current_path);
-                    let field_type = document_type
-                        .fields
-                        .iter()
-                        .find(|f| f.id.as_ref() == base_field)
-                        .map(|f| f.field_type)
-                        .unwrap_or(FieldType::Text);
-
-                    let expr = build_filter_expr_for_json_value(
-                        current_path.to_string(),
-                        key,
-                        child,
-                        field_type,
-                    )?;
-
-                    accumulate_filter(main_filter, relation_filters, current_relation, expr);
-                } else if let Some(rel) = document_type.relations.iter().find(|r| r.id.as_ref() == key) {
-                    // Relation node - switch document type context to target relation type
-                    let target_type = registry
-                        .get(&rel.target)
-                        .ok_or(ApiError::NotFound)?;
-
-                    parse_filters_recursive(
-                        child,
-                        "",
-                        target_type,
-                        registry,
-                        main_filter,
-                        relation_filters,
-                        Some(&rel.id),
-                    )?;
-                } else {
-                    // Standard field or locale node
-                    let is_localized = if let Some(field) = document_type.fields.iter().find(|f| f.id.as_ref() == current_path) {
-                        field.field_type == FieldType::LocalizedText
-                    } else {
-                        false
-                    };
-
-                    let new_path = if is_localized && !key.starts_with('$') {
-                        format!("{}.{}", current_path, key)
-                    } else if current_path.is_empty() {
-                        key.clone()
-                    } else {
-                        format!("{}.{}", current_path, key)
-                    };
-
-                    parse_filters_recursive(
-                        child,
-                        &new_path,
-                        document_type,
-                        registry,
-                        main_filter,
-                        relation_filters,
-                        current_relation,
-                    )?;
-                }
-            }
+        FieldType::Date => {
+            let d = chrono::NaiveDate::parse_from_str(val_str, "%Y-%m-%d").map_err(|_| {
+                ApiError::UnprocessableEntity(format!(
+                    "Invalid date filter value (expected YYYY-MM-DD): {}",
+                    val_str
+                ))
+            })?;
+            Ok(DomainValue::Date(d))
         }
-        _ => {
-            // Leaf node with no operator: default to $eq
-            let base_field = current_path.split('.').next().unwrap_or(current_path);
-            let field_type = document_type
-                .fields
-                .iter()
-                .find(|f| f.id.as_ref() == base_field)
-                .map(|f| f.field_type)
-                .unwrap_or(FieldType::Text);
-
-            let expr = build_filter_expr_for_json_value(
-                current_path.to_string(),
-                "$eq",
-                value,
-                field_type,
-            )?;
-
-            accumulate_filter(main_filter, relation_filters, current_relation, expr);
+        FieldType::DateTime => {
+            let dt = chrono::DateTime::parse_from_rfc3339(val_str).map_err(|_| {
+                ApiError::UnprocessableEntity(format!(
+                    "Invalid datetime filter value (expected RFC 3339): {}",
+                    val_str
+                ))
+            })?;
+            Ok(DomainValue::DateTime(dt.with_timezone(&chrono::Utc)))
         }
-    }
-    Ok(())
-}
-
-fn build_filter_expr_for_json_value(
-    field_path: String,
-    operator: &str,
-    value: &Value,
-    field_type: FieldType,
-) -> Result<FilterExpression, ApiError> {
-    if operator == "$in" || operator == "$notIn" || operator == "$not_in" {
-        let mut domain_values = Vec::new();
-        match value {
-            Value::Array(arr) => {
-                for item in arr {
-                    if let Some(s) = item.as_str() {
-                        domain_values.push(parse_filter_value(s, field_type)?);
-                    }
-                }
-            }
-            Value::String(s) => {
-                domain_values.push(parse_filter_value(s, field_type)?);
-            }
-            _ => return Err(ApiError::UnprocessableEntity(format!("Expected array or string for operator {}", operator))),
+        FieldType::Uuid => {
+            let u = uuid::Uuid::from_str(val_str).map_err(|_| {
+                ApiError::UnprocessableEntity(format!("Invalid UUID filter value: {}", val_str))
+            })?;
+            Ok(DomainValue::Uuid(u))
         }
-
-        if operator == "$in" {
-            Ok(FilterExpression::In { field: field_path, values: domain_values })
-        } else {
-            Ok(FilterExpression::NotIn { field: field_path, values: domain_values })
-        }
-    } else {
-        let val_str = match value {
-            Value::String(s) => s.as_str(),
-            Value::Number(n) => return parse_filter_value(&n.to_string(), field_type).map(|val| {
-                if operator == "$ne" {
-                    FilterExpression::NotEquals { field: field_path.clone(), value: val }
-                } else if operator == "$gt" {
-                    FilterExpression::GreaterThan { field: field_path.clone(), value: val }
-                } else if operator == "$gte" {
-                    FilterExpression::GreaterThanOrEqual { field: field_path.clone(), value: val }
-                } else if operator == "$lt" {
-                    FilterExpression::LessThan { field: field_path.clone(), value: val }
-                } else if operator == "$lte" {
-                    FilterExpression::LessThanOrEqual { field: field_path.clone(), value: val }
-                } else {
-                    FilterExpression::Equals { field: field_path.clone(), value: val }
-                }
-            }),
-            Value::Bool(b) => if *b { "true" } else { "false" },
-            _ => return Err(ApiError::UnprocessableEntity(format!("Expected scalar value for operator {}", operator))),
-        };
-
-        build_filter_expr_for_operator(field_path, operator, val_str, field_type)
+        _ => Ok(DomainValue::Text(val_str.to_string())),
     }
 }
 
+/// AND a new filter expression into the appropriate accumulator slot
+/// (main or per-relation), building up an `And` chain as needed.
 fn accumulate_filter(
     main_filter: &mut FilterExpression,
     relation_filters: &mut HashMap<AttributeId, FilterExpression>,
     current_relation: Option<&AttributeId>,
     expr: FilterExpression,
 ) {
-    if let Some(rel_id) = current_relation {
-        let current_filter = relation_filters.entry(rel_id.clone()).or_insert(FilterExpression::None);
-        let updated = match std::mem::replace(current_filter, FilterExpression::None) {
-            FilterExpression::None => expr,
-            existing => FilterExpression::And(Box::new(existing), Box::new(expr)),
-        };
-        *current_filter = updated;
+    let target = if let Some(rel_id) = current_relation {
+        relation_filters
+            .entry(rel_id.clone())
+            .or_insert(FilterExpression::None)
     } else {
-        let updated = match std::mem::replace(main_filter, FilterExpression::None) {
-            FilterExpression::None => expr,
-            existing => FilterExpression::And(Box::new(existing), Box::new(expr)),
-        };
-        *main_filter = updated;
-    }
+        main_filter
+    };
+
+    let updated = match std::mem::replace(target, FilterExpression::None) {
+        FilterExpression::None => expr,
+        existing => FilterExpression::And(Box::new(existing), Box::new(expr)),
+    };
+    *target = updated;
 }
+
+// ─── Tests ────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::infrastructure::http::querystring::parse_query_to_json;
-    use luminair_common::entities::{DocumentKind, DocumentRelation, DocumentTitle, DocumentTypeInfo, DocumentField, RelationType};
-    use luminair_common::DocumentTypeId;
+    use luminair_common::entities::{
+        DocumentField, DocumentKind, DocumentRelation, DocumentTitle, DocumentTypeInfo, RelationType,
+    };
+    use luminair_common::{DocumentTypeApiId, DocumentTypeId};
 
     #[derive(Debug)]
     struct MockRegistry {
@@ -477,15 +554,13 @@ mod tests {
                 description: None,
             },
             options: None,
-            fields: HashSet::from([
-                DocumentField {
-                    id: AttributeId::try_new("slug").unwrap(),
-                    field_type: FieldType::Text,
-                    constraints: HashSet::new(),
-                    required: false,
-                    unique: false,
-                },
-            ]),
+            fields: HashSet::from([DocumentField {
+                id: AttributeId::try_new("slug").unwrap(),
+                field_type: FieldType::Text,
+                constraints: HashSet::new(),
+                required: false,
+                unique: false,
+            }]),
             relations: HashSet::new(),
         }));
 
@@ -515,45 +590,42 @@ mod tests {
                     unique: false,
                 },
             ]),
-            relations: HashSet::from([
-                DocumentRelation {
-                    id: AttributeId::try_new("category").unwrap(),
-                    target: DocumentTypeId::try_new("category").unwrap(),
-                    relation_type: RelationType::HasOne,
-                }
-            ]),
+            relations: HashSet::from([DocumentRelation {
+                id: AttributeId::try_new("category").unwrap(),
+                target: DocumentTypeId::try_new("category").unwrap(),
+                relation_type: RelationType::HasOne,
+            }]),
         }));
 
         let mut types = HashMap::new();
         types.insert(dt_category.id.clone(), dt_category);
         types.insert(dt_restaurant.id.clone(), dt_restaurant);
-
         let registry = MockRegistry { types };
 
-        // Test mixed: simple filter, localized filter, and relation filter
-        let query = "filters[title][$eq]=hello&filters[description][en][$contains]=world&filters[category][slug][$eq]=italian&sort=title:asc&status=draft&pagination[page]=2&pagination[pageSize]=10";
+        let query = "filters[title][$eq]=hello\
+            &filters[description][en][$contains]=world\
+            &filters[category][slug][$eq]=italian\
+            &sort=title:asc\
+            &status=draft\
+            &pagination[page]=2\
+            &pagination[pageSize]=10";
         let query_map = parse_query_to_json(query).unwrap();
 
-        let (_populate, (page, page_size), status, filter, populate_filters, sorts) =
-            parse_query(&query_map, dt_restaurant, &registry).unwrap();
+        let q = parse_query(&query_map, dt_restaurant, &registry).unwrap();
 
-        assert_eq!(page, 2);
-        assert_eq!(page_size, 10);
-        assert_eq!(status, DocumentStatus::Draft);
-        assert_eq!(sorts.len(), 1);
-        assert_eq!(sorts[0].field, "title");
-        assert_eq!(sorts[0].direction, SortDirection::Ascending);
+        assert_eq!(q.pagination, (2, 10));
+        assert_eq!(q.status, DocumentStatus::Draft);
+        assert_eq!(q.sorts.len(), 1);
+        assert_eq!(q.sorts[0].field, "title");
+        assert_eq!(q.sorts[0].direction, SortDirection::Ascending);
 
-        // Verify main filter (AND of title = hello and description.en contains world)
-        // Expression has Title and Description en
-        let filter_str = format!("{:?}", filter);
+        let filter_str = format!("{:?}", q.filter);
         assert!(filter_str.contains("Equals"));
         assert!(filter_str.contains("title"));
         assert!(filter_str.contains("Contains"));
         assert!(filter_str.contains("description.en"));
 
-        // Verify populate relation filter (category relation has slug = italian)
-        let pop_filters = populate_filters.unwrap();
+        let pop_filters = q.populate_filters.unwrap();
         let cat_attr = AttributeId::try_new("category").unwrap();
         let cat_filter = pop_filters.get(&cat_attr).unwrap();
         let cat_filter_str = format!("{:?}", cat_filter);

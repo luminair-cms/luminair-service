@@ -3,7 +3,6 @@ use crate::application::service::DocumentsService;
 use crate::domain::document::DocumentInstanceId;
 use crate::domain::query::{DocumentInstanceQuery, DocumentStatus};
 use crate::infrastructure::http::api::{ApiError, ApiSuccess};
-use crate::infrastructure::http::handlers::content::params::resolve_document_type;
 use crate::infrastructure::http::handlers::content::response::{
     ManyDocumentsResponse, OneDocumentResponse,
 };
@@ -13,11 +12,25 @@ use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use crate::application::commands::{DeleteDocumentCommand, FindByIdCommand, FindDocumentsCommand, PublishDocumentCommand};
-use luminair_common::AttributeId;
+use luminair_common::{AttributeId, DocumentType, DocumentTypeApiId};
+use std::str::FromStr;
 
 mod params;
 mod request;
 mod response;
+
+/// Resolve a `{api_type}` path segment to a registered [`DocumentType`].
+fn resolve_document_type<S: AppState>(
+    state: &S,
+    api_type: &str,
+) -> Result<&'static DocumentType, ApiError> {
+    let api_id = DocumentTypeApiId::from_str(api_type)
+        .map_err(|_| ApiError::UnprocessableEntity(format!("Invalid api_type: {}", api_type)))?;
+    state
+        .document_types()
+        .lookup(&api_id)
+        .ok_or(ApiError::NotFound)
+}
 
 pub async fn find_document_by_id<S: AppState>(
     State(state): State<S>,
@@ -37,16 +50,15 @@ pub async fn find_document_by_id<S: AppState>(
 
     let document_type = resolve_document_type(&state, &api_type)?;
     let document_instance_id = DocumentInstanceId::try_from(&id)?;
-    let (populate, _, status, _, populate_filters, _) =
-        params::parse_query(&query_map, document_type, state.document_types())?;
+    let q = params::parse_query(&query_map, document_type, state.document_types())?;
 
-    let query = DocumentInstanceQuery::new().with_status(status);
+    let query = DocumentInstanceQuery::new().with_status(q.status);
 
     let cmd = FindByIdCommand {
         document_type,
         document_instance_id,
-        populate,
-        populate_filters,
+        populate: q.populate,
+        populate_filters: q.populate_filters,
         query
     };
 
@@ -67,21 +79,20 @@ pub async fn find_all_documents<S: AppState>(
     QueryMap(query_map): QueryMap,
 ) -> Result<ApiSuccess<ManyDocumentsResponse>, ApiError> {
     let document_type = resolve_document_type(&state, &api_type)?;
+    let q = params::parse_query(&query_map, document_type, state.document_types())?;
 
-    let (populate, (page, page_size), status, filter, populate_filters, sorts) =
-        params::parse_query(&query_map, document_type, state.document_types())?;
-
+    let (page, page_size) = q.pagination;
     let mut query = DocumentInstanceQuery::new()
         .paginate(page, page_size)
-        .with_status(status)
-        .with_filter(filter);
+        .with_status(q.status)
+        .with_filter(q.filter);
 
-    query.sort = sorts;
+    query.sort = q.sorts;
 
     let cmd = FindDocumentsCommand {
         document_type,
-        populate,
-        populate_filters,
+        populate: q.populate,
+        populate_filters: q.populate_filters,
         query,
     };
 
