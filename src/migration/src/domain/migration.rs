@@ -108,6 +108,8 @@ pub fn plan_migration(
         Err(DependencyError::CircularDependency(cycle_tables)) => {
             eprintln!("Circular dependency in database tables: {:?}", cycle_tables);
             // Fallback: use unordered names of actual tables
+            // TODO: analyze this case more, we shouldn't have cycle dependencies in tables
+            // TODO: if cycle dependencies can exist, use DROP CASCADE option
             actual_schema.iter().map(|t| t.name.clone()).collect()
         }
     };
