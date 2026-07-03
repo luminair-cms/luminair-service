@@ -197,6 +197,25 @@ impl<R: DocumentsRepository> DocumentsService for DocumentsServiceImpl<R> {
         self.repository
             .apply_relation_ops(cmd.document_type, cmd.document_id, &ops)
             .await
-            .map_err(ServiceError::from)
+            .map_err(ServiceError::from)?;
+
+        // Fetch draft/working copy of the document
+        let query = DocumentInstanceQuery::new().with_status(DocumentStatus::Draft);
+        let mut instance = self.repository
+            .find_by_id(cmd.document_type, cmd.document_id, &query)
+            .await
+            .map_err(ServiceError::from)?
+            .ok_or(ServiceError::DocumentNotFound)?;
+
+        // Bump the version and transition status (e.g. from PUBLISHED to MODIFIED)
+        instance.audit.version += 1;
+        instance.audit.updated_at = Utc::now();
+
+        self.repository
+            .update(cmd.document_type, &instance)
+            .await
+            .map_err(ServiceError::from)?;
+
+        Ok(())
     }
 }
