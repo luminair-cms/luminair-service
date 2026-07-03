@@ -2,7 +2,7 @@ use sea_query::{DynIden, Expr, ExprTrait, PostgresQueryBuilder, Query};
 use sea_query_sqlx::{SqlxBinder, SqlxValues};
 
 use uuid::Uuid;
-use luminair_common::{DocumentType, CREATED_FIELD_NAME, DOCUMENT_ID_FIELD_NAME, STATUS_FIELD_NAME, UPDATED_FIELD_NAME, VERSION_FIELD_NAME};
+use luminair_common::{DocumentType, CREATED_FIELD_NAME, DOCUMENT_ID_FIELD_NAME, STATUS_FIELD_NAME, UPDATED_FIELD_NAME, VERSION_FIELD_NAME, REVISION_FIELD_NAME, PUBLISHED_FIELD_NAME, PUBLISHED_BY_FIELD_NAME};
 use luminair_common::persistence::TableNameProviderConstructor;
 
 pub fn insert_document(document: &DocumentType, params: Vec<Expr>) -> (String, SqlxValues) {
@@ -50,9 +50,10 @@ fn main_insert_columns(document: &DocumentType) -> Vec<DynIden> {
         STATUS_FIELD_NAME.into(),
         CREATED_FIELD_NAME.into(),
         UPDATED_FIELD_NAME.into(),
-        // CREATED_BY_FIELD_NAME,
-        // UPDATED_BY_FIELD_NAME,
         VERSION_FIELD_NAME.into(),
+        REVISION_FIELD_NAME.into(),
+        PUBLISHED_FIELD_NAME.into(),
+        PUBLISHED_BY_FIELD_NAME.into(),
     ];
 
     for field in &document.fields {

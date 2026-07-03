@@ -170,12 +170,36 @@ impl DocumentsRepository for PostgresDocumentsRepository {
         document_type: &DocumentType,
         instance: &DocumentInstance,
     ) -> Result<(), RepositoryError> {
+        let revision: i32 = match &instance.content.publication_state {
+            PublicationState::Published { revision, .. }
+            | PublicationState::Draft { revision } => *revision,
+        };
+
+        let published_at = match &instance.content.publication_state {
+            PublicationState::Published { published_at, .. } => Expr::from(*published_at),
+            _ => Expr::null(),
+        };
+
+        let published_by = match &instance.content.publication_state {
+            PublicationState::Published { published_by, .. } => {
+                if let Some(user_id) = published_by {
+                    Expr::from(user_id.to_string())
+                } else {
+                    Expr::null()
+                }
+            }
+            _ => Expr::null(),
+        };
+
         let mut params: Vec<Expr> = vec![
             instance.document_id.0.into(),
             Expr::from(self.main_status_value(document_type, instance).to_string()),
             instance.audit.created_at.into(),
             instance.audit.updated_at.into(),
             instance.audit.version.into(),
+            revision.into(),
+            published_at,
+            published_by,
         ];
 
         for field in document_type.fields.iter() {
@@ -213,6 +237,24 @@ impl DocumentsRepository for PostgresDocumentsRepository {
                 Expr::from(self.main_status_value(document_type, instance).to_string()),
             ),
         ];
+
+        // Include publication state fields dynamically
+        match &instance.content.publication_state {
+            PublicationState::Published { revision, published_at, published_by } => {
+                column_values.push((REVISION_FIELD_NAME.into(), (*revision).into()));
+                column_values.push((PUBLISHED_FIELD_NAME.into(), (*published_at).into()));
+                let by_expr = match published_by {
+                    Some(user_id) => Expr::from(user_id.to_string()),
+                    None => Expr::null(),
+                };
+                column_values.push((PUBLISHED_BY_FIELD_NAME.into(), by_expr));
+            }
+            PublicationState::Draft { revision } => {
+                column_values.push((REVISION_FIELD_NAME.into(), (*revision).into()));
+                column_values.push((PUBLISHED_FIELD_NAME.into(), Expr::null()));
+                column_values.push((PUBLISHED_BY_FIELD_NAME.into(), Expr::null()));
+            }
+        }
 
         for field in document_type.fields.iter() {
             let expr = match instance.content.fields.get(&field.id) {
@@ -381,7 +423,13 @@ impl PostgresDocumentsRepository {
     ) -> String {
         match &instance.content.publication_state {
             PublicationState::Published { .. } => "PUBLISHED".to_string(),
-            PublicationState::Draft { .. } => "DRAFT".to_string(),
+            PublicationState::Draft { revision } => {
+                if *revision == 0 {
+                    "DRAFT".to_string()
+                } else {
+                    "MODIFIED".to_string()
+                }
+            }
         }
     }
 }

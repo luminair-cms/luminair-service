@@ -13,7 +13,7 @@ use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use serde::Deserialize;
-use crate::application::commands::{CreateDocumentCommand, DeleteDocumentCommand, FindByIdCommand, FindDocumentsCommand, PublishDocumentCommand};
+use crate::application::commands::{DeleteDocumentCommand, FindByIdCommand, FindDocumentsCommand, PublishDocumentCommand};
 use luminair_common::AttributeId;
 
 mod params;
