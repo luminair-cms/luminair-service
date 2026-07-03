@@ -1,7 +1,7 @@
-use sea_query::{DynIden, Expr, ExprTrait, PostgresQueryBuilder, Query};
+use sea_query::{DynIden, Expr, ExprTrait, PostgresQueryBuilder, Query, Alias};
 use sea_query_sqlx::{SqlxBinder, SqlxValues};
 use uuid::Uuid;
-use luminair_common::{DocumentType, CREATED_FIELD_NAME, DOCUMENT_ID_FIELD_NAME, STATUS_FIELD_NAME, UPDATED_FIELD_NAME, VERSION_FIELD_NAME, REVISION_FIELD_NAME, PUBLISHED_FIELD_NAME, PUBLISHED_BY_FIELD_NAME};
+use luminair_common::{DocumentType, AttributeId, CREATED_FIELD_NAME, DOCUMENT_ID_FIELD_NAME, STATUS_FIELD_NAME, UPDATED_FIELD_NAME, VERSION_FIELD_NAME, REVISION_FIELD_NAME, PUBLISHED_FIELD_NAME, PUBLISHED_BY_FIELD_NAME, OWNING_DOCUMENT_ID_FIELD_NAME, TARGET_DOCUMENT_ID_FIELD_NAME};
 use luminair_common::persistence::TableNameProviderConstructor;
 use crate::domain::document::{DocumentInstance, lifecycle::PublicationState};
 
@@ -114,5 +114,36 @@ pub fn build_snapshot_insert(
         .into_table(table)
         .columns(columns)
         .values_panic(values)
+        .returning(Query::returning().column(Alias::new("snapshot_id")))
         .build_sqlx(PostgresQueryBuilder)
+}
+
+pub fn build_copy_relations_to_snapshots(
+    main_document: &DocumentType,
+    relation_attr: &AttributeId,
+    document_id: Uuid,
+    snapshot_id: i64,
+) -> (String, SqlxValues) {
+    let working_table = main_document.relation_table(relation_attr);
+    let snapshot_relation_table = main_document.relation_snapshot_table(relation_attr);
+
+    let select_query = Query::select()
+        .expr(Expr::val(snapshot_id))
+        .column(Alias::new(TARGET_DOCUMENT_ID_FIELD_NAME))
+        .column(Alias::new(OWNING_DOCUMENT_ID_FIELD_NAME))
+        .from(working_table)
+        .and_where(Expr::col(Alias::new(OWNING_DOCUMENT_ID_FIELD_NAME)).eq(document_id))
+        .to_owned();
+
+    let mut insert_query = Query::insert();
+    insert_query
+        .into_table(snapshot_relation_table)
+        .columns(vec![
+            Alias::new("snapshot_id"),
+            Alias::new(TARGET_DOCUMENT_ID_FIELD_NAME),
+            Alias::new(OWNING_DOCUMENT_ID_FIELD_NAME),
+        ]);
+    insert_query.select_from(select_query).expect("valid select_from query");
+
+    insert_query.build_sqlx(PostgresQueryBuilder)
 }

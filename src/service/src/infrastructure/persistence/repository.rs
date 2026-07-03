@@ -1,6 +1,6 @@
 use crate::{
     domain::{document::{DocumentInstance, DocumentInstanceId, lifecycle::PublicationState}, query::{DocumentInstanceQuery, DocumentStatus}, repository::{DocumentsRepository, RelationMap, RelationOps, RepositoryError}},
-    infrastructure::persistence::builders::{find::{query_count_documents, query_find_document_by_criteria, query_find_document_by_id}, relations::{delete_relation_entry, insert_relation_entry, query_find_related_documents}, write::{delete_document, insert_document, update_document, build_snapshot_insert}}
+    infrastructure::persistence::builders::{find::{query_count_documents, query_find_document_by_criteria, query_find_document_by_id}, relations::{delete_relation_entry, insert_relation_entry, query_find_related_documents}, write::{delete_document, insert_document, update_document, build_snapshot_insert, build_copy_relations_to_snapshots}}
 };
 
 use futures::TryStreamExt;
@@ -188,7 +188,20 @@ impl DocumentsRepository for PostgresDocumentsRepository {
             // 1. Update main table metadata ONLY (status -> PUBLISHED, revision, published_at, version, updated_at)
             self.update_main_table_metadata_only(document_type, instance).await?;
             // 2. Copy row to snapshot table
-            self.store_snapshot_for_published_instance(document_type, instance).await?;
+            let snapshot_id = self.store_snapshot_for_published_instance(document_type, instance).await?;
+            // 3. Copy relations to snapshots
+            for relation in &document_type.relations {
+                let (sql, values) = build_copy_relations_to_snapshots(
+                    document_type,
+                    &relation.id,
+                    instance.document_id.0,
+                    snapshot_id,
+                );
+                sqlx_query_with(sql, values)
+                    .execute(self.database.database_pool())
+                    .await
+                    .map_err(|e| RepositoryError::DatabaseError(e.to_string()))?;
+            }
         } else {
             // For both remaining use cases, we perform a full content and metadata update on the main table:
             // - Use Case 1: draft-and-publish is OFF, saving an edit (status is always PUBLISHED)
@@ -424,13 +437,16 @@ impl PostgresDocumentsRepository {
         &self,
         document_type: &DocumentType,
         instance: &DocumentInstance,
-    ) -> Result<(), RepositoryError> {
+    ) -> Result<i64, RepositoryError> {
         let (sql, values) = build_snapshot_insert(document_type, instance);
-        sqlx_query_with(sql, values)
-            .execute(self.database.database_pool())
+        let row = sqlx_query_with(sql, values)
+            .fetch_one(self.database.database_pool())
             .await
             .map_err(|e| RepositoryError::DatabaseError(e.to_string()))?;
-        Ok(())
+        let snapshot_id: i64 = row.try_get("snapshot_id").map_err(|e| {
+            RepositoryError::DatabaseError(format!("Failed to retrieve snapshot_id: {}", e))
+        })?;
+        Ok(snapshot_id)
     }
 
     fn main_status_value(
