@@ -185,18 +185,18 @@ impl DocumentsRepository for PostgresDocumentsRepository {
 
         if has_draft_publish && is_publishing {
             // Use Case 3: draft-and-publish is ON, publishing
-            // 1. Update main table (status -> PUBLISHED, revision, published_at, version)
-            self.update_main_table(document_type, instance).await?;
+            // 1. Update main table metadata ONLY (status -> PUBLISHED, revision, published_at, version, updated_at)
+            self.update_main_table_metadata_only(document_type, instance).await?;
             // 2. Copy row to snapshot table
             self.store_snapshot_for_published_instance(document_type, instance).await?;
         } else if has_draft_publish && !is_publishing {
             // Use Case 2: draft-and-publish is ON, saving a draft
-            // 1. Update main table (status -> MODIFIED, clear published_at)
-            self.update_main_table(document_type, instance).await?;
+            // 1. Update main table content and metadata (status -> DRAFT/MODIFIED, clear published_at)
+            self.update_main_table_content_and_metadata(document_type, instance).await?;
         } else {
-            // Use Case 1: draft-and-publish is OFF
-            // 1. Update main table (status is always PUBLISHED)
-            self.update_main_table(document_type, instance).await?;
+            // Use Case 1: draft-and-publish is OFF, saving an edit
+            // 1. Update main table content and metadata (status is always PUBLISHED)
+            self.update_main_table_content_and_metadata(document_type, instance).await?;
         }
 
         Ok(())
@@ -327,7 +327,7 @@ impl PostgresDocumentsRepository {
         Ok(())
     }
 
-    async fn update_main_table(
+    async fn update_main_table_content_and_metadata(
         &self,
         document_type: &DocumentType,
         instance: &DocumentInstance,
@@ -365,6 +365,50 @@ impl PostgresDocumentsRepository {
                 None => Expr::null(),
             };
             column_values.push((field.id.normalized().into(), expr));
+        }
+
+        let (sql, values) = update_document(document_type, instance.document_id.0, column_values);
+        let result = sqlx_query_with(sql, values)
+            .execute(self.database.database_pool())
+            .await
+            .map_err(|e| RepositoryError::DatabaseError(e.to_string()))?;
+
+        if result.rows_affected() == 0 {
+            return Err(RepositoryError::DocumentInstanceNotFound);
+        }
+        Ok(())
+    }
+
+    async fn update_main_table_metadata_only(
+        &self,
+        document_type: &DocumentType,
+        instance: &DocumentInstance,
+    ) -> Result<(), RepositoryError> {
+        let mut column_values: Vec<(DynIden, Expr)> = vec![
+            (UPDATED_FIELD_NAME.into(), instance.audit.updated_at.into()),
+            (VERSION_FIELD_NAME.into(), instance.audit.version.into()),
+            (
+                STATUS_FIELD_NAME.into(),
+                Expr::from(self.main_status_value(document_type, instance).to_string()),
+            ),
+        ];
+
+        // Include publication state fields dynamically
+        match &instance.content.publication_state {
+            PublicationState::Published { revision, published_at, published_by } => {
+                column_values.push((REVISION_FIELD_NAME.into(), (*revision).into()));
+                column_values.push((PUBLISHED_FIELD_NAME.into(), (*published_at).into()));
+                let by_expr = match published_by {
+                    Some(user_id) => Expr::from(user_id.to_string()),
+                    None => Expr::null(),
+                };
+                column_values.push((PUBLISHED_BY_FIELD_NAME.into(), by_expr));
+            }
+            PublicationState::Draft { revision } => {
+                column_values.push((REVISION_FIELD_NAME.into(), (*revision).into()));
+                column_values.push((PUBLISHED_FIELD_NAME.into(), Expr::null()));
+                column_values.push((PUBLISHED_BY_FIELD_NAME.into(), Expr::null()));
+            }
         }
 
         let (sql, values) = update_document(document_type, instance.document_id.0, column_values);
