@@ -6,7 +6,7 @@ use crate::{
 use futures::TryStreamExt;
 use luminair_common::database::Database;
 use luminair_common::{AttributeId, DocumentType, DocumentTypesRegistry, DOCUMENT_ID_FIELD_NAME, STATUS_FIELD_NAME, PUBLISHED_BY_FIELD_NAME, PUBLISHED_FIELD_NAME, REVISION_FIELD_NAME, UPDATED_FIELD_NAME, VERSION_FIELD_NAME, OWNING_DOCUMENT_ID_FIELD_NAME};
-use sea_query::{DynIden, Expr, Query};
+use sea_query::{DynIden, Expr, ExprTrait, Query};
 use sea_query_sqlx::{SqlxBinder, SqlxValues};
 use sqlx::{AssertSqlSafe, Row};
 use std::collections::HashMap;
@@ -214,6 +214,13 @@ impl DocumentsRepository for PostgresDocumentsRepository {
             .execute(self.database.database_pool())
             .await
             .map_err(|e| RepositoryError::DatabaseError(e.to_string()))?;
+
+        // IF draftAndPublish is disabled, we must immediately store a snapshot on insert
+        if !document_type.has_draft_and_publish() {
+            self.store_snapshot_for_published_instance(document_type, instance)
+                .await?;
+        }
+
         Ok(())
     }
 
@@ -222,11 +229,15 @@ impl DocumentsRepository for PostgresDocumentsRepository {
         document_type: &DocumentType,
         instance: &DocumentInstance,
     ) -> Result<(), RepositoryError> {
-        if document_type.has_draft_and_publish() {
-            if let PublicationState::Published { .. } = &instance.content.publication_state {
-                self.store_snapshot_for_published_instance(document_type, instance)
-                    .await?;
-            }
+        if !document_type.has_draft_and_publish() {
+            // Delete existing snapshot first to avoid unique key violation (revision is always 1)
+            self.delete_snapshots_for_document(document_type, instance.document_id)
+                .await?;
+            self.store_snapshot_for_published_instance(document_type, instance)
+                .await?;
+        } else if let PublicationState::Published { .. } = &instance.content.publication_state {
+            self.store_snapshot_for_published_instance(document_type, instance)
+                .await?;
         }
 
         let mut column_values: Vec<(DynIden, Expr)> = vec![
@@ -414,6 +425,27 @@ impl PostgresDocumentsRepository {
             .columns(columns)
             .values_panic(values)
             .build_sqlx(sea_query::PostgresQueryBuilder)
+    }
+
+    async fn delete_snapshots_for_document(
+        &self,
+        document_type: &DocumentType,
+        id: DocumentInstanceId,
+    ) -> Result<(), RepositoryError> {
+        let table_name = format!("{}_snapshots", document_type.id.normalized());
+        let table = sea_query::TableName::from(table_name);
+
+        let (sql, values) = Query::delete()
+            .from_table(table)
+            .and_where(Expr::col(DOCUMENT_ID_FIELD_NAME).eq(id.0))
+            .build_sqlx(sea_query::PostgresQueryBuilder);
+
+        let query_object = sqlx_query_with(sql, values);
+        query_object
+            .execute(self.database.database_pool())
+            .await
+            .map_err(|e| RepositoryError::DatabaseError(e.to_string()))?;
+        Ok(())
     }
 
     fn main_status_value(
