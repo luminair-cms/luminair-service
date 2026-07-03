@@ -5,9 +5,7 @@ use crate::infrastructure::persistence::builders::main_select_columns;
 
 use luminair_common::persistence::TableNameProviderConstructor;
 use luminair_common::{
-    CREATED_BY_FIELD_NAME, CREATED_FIELD_NAME, DOCUMENT_ID_FIELD_NAME, DocumentType,
-    PUBLISHED_BY_FIELD_NAME, PUBLISHED_FIELD_NAME, REVISION_FIELD_NAME, STATUS_FIELD_NAME,
-    UPDATED_BY_FIELD_NAME, UPDATED_FIELD_NAME, VERSION_FIELD_NAME, entities::FieldType,
+    DOCUMENT_ID_FIELD_NAME, DocumentType, STATUS_FIELD_NAME, VERSION_FIELD_NAME, entities::FieldType,
 };
 use sea_query::{
     Alias, ColumnRef, Condition, Expr, ExprTrait, Order, PostgresQueryBuilder, Query, SelectStatement, TableRef
@@ -250,6 +248,14 @@ fn build_filter_expr(
     }
 }
 
+/// Translates a schema field path (e.g. "price" or "description.en") into a `sea-query` expression (`Expr`).
+///
+/// This handles two distinct database column layout styles:
+/// 1. **Standard Columns**: A field like `"price"` is mapped directly to standard SQL column reference `"<alias>"."price"`.
+/// 2. **Localized Columns**: A field like `"description"` of type `LocalizedText` is stored as a `JSONB` column
+///    containing locale translations. If a query path specifies a locale (e.g., `"description.en"`), this function
+///    compiles it to the PostgreSQL JSONB key extraction operator `"<alias>"."description" ->> 'en'` to extract the
+///    text value for query comparisons.
 pub fn get_column_expr(field_path: &str, document: &DocumentType, alias: &str) -> Expr {
     let parts: Vec<&str> = field_path.split('.').collect();
     let base_field = parts[0];
@@ -262,11 +268,13 @@ pub fn get_column_expr(field_path: &str, document: &DocumentType, alias: &str) -
         };
 
     if is_localized && parts.len() > 1 {
+        // Localized path extraction: compiles into standard JSONB query ("alias"."column_name" ->> 'locale')
         Expr::cust_with_values(
             format!("\"{}\".\"{}\" ->> ?", alias, column_name),
             vec![parts[1].to_string()],
         )
     } else {
+        // Standard column path reference
         Expr::col((alias.to_owned(), column_name))
     }
 }

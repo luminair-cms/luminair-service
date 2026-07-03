@@ -1,4 +1,4 @@
-use sea_query::{Expr, Value};
+use sea_query::Expr;
 use serde_json::json;
 use crate::domain::document::content::{ContentValue, DomainValue};
 

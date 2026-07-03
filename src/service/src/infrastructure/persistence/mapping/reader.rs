@@ -10,7 +10,7 @@ use crate::domain::{
 use chrono::{DateTime, Utc};
 use luminair_common::{
     AttributeId, CREATED_BY_FIELD_NAME, CREATED_FIELD_NAME, DOCUMENT_ID_FIELD_NAME, DocumentType,
-    ID_FIELD_NAME, PUBLISHED_BY_FIELD_NAME, PUBLISHED_FIELD_NAME, REVISION_FIELD_NAME,
+    PUBLISHED_BY_FIELD_NAME, PUBLISHED_FIELD_NAME, REVISION_FIELD_NAME,
     UPDATED_BY_FIELD_NAME, UPDATED_FIELD_NAME, VERSION_FIELD_NAME,
     entities::{DocumentField, FieldType},
 };
@@ -112,7 +112,7 @@ pub fn parse_field_value(
             let value: i64 = decode_value(value_ref)?;
             ContentValue::Scalar(DomainValue::Integer(value))
         }
-        FieldType::Decimal { precision, scale } => {
+        FieldType::Decimal { .. } => {
             let value: Decimal = decode_value(value_ref)?;
             ContentValue::Scalar(DomainValue::Decimal(value))
         }

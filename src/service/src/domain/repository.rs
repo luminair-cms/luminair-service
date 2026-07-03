@@ -3,7 +3,7 @@ use std::{collections::HashMap, future::Future};
 use luminair_common::{AttributeId, DocumentType};
 
 use crate::domain::{
-    document::{DatabaseRowId, DocumentInstance, DocumentInstanceId},
+    document::{DocumentInstance, DocumentInstanceId},
     query::{DocumentInstanceQuery, DocumentStatus},
 };
 

@@ -3,7 +3,7 @@ use sea_query::extension::postgres::PgExpr;
 use sea_query_sqlx::{SqlxBinder, SqlxValues};
 use uuid::Uuid;
 use luminair_common::{AttributeId, DOCUMENT_ID_FIELD_NAME, DocumentType, OWNING_DOCUMENT_ID_FIELD_NAME, TARGET_DOCUMENT_ID_FIELD_NAME};
-use luminair_common::persistence::{TableNameProvider, TableNameProviderConstructor};
+use luminair_common::persistence::TableNameProviderConstructor;
 use crate::domain::query::DocumentStatus;
 use crate::infrastructure::persistence::builders::main_select_columns;
 

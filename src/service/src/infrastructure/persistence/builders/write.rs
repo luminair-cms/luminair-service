@@ -3,7 +3,7 @@ use sea_query_sqlx::{SqlxBinder, SqlxValues};
 
 use uuid::Uuid;
 use luminair_common::{DocumentType, CREATED_FIELD_NAME, DOCUMENT_ID_FIELD_NAME, STATUS_FIELD_NAME, UPDATED_FIELD_NAME, VERSION_FIELD_NAME};
-use luminair_common::persistence::{TableNameProvider, TableNameProviderConstructor};
+use luminair_common::persistence::TableNameProviderConstructor;
 
 pub fn insert_document(document: &DocumentType, params: Vec<Expr>) -> (String, SqlxValues) {
     let table = document.main_table();

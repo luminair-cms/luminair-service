@@ -97,7 +97,7 @@ impl<R: DocumentsRepository> DocumentsService for DocumentsServiceImpl<R> {
     }
 
     async fn create(&self, cmd: CreateDocumentCommand) -> Result<DocumentInstanceId, ServiceError> {
-        // ContentValue::from_json (Phase 1.4) catches explicit-null on required
+        // ContentValue::from_json catches explicit-null on required
         // fields at parse time, but cannot see fields omitted from the payload
         // altogether — closing that gap is the service's job.
         for field in &cmd.document_type.fields {
