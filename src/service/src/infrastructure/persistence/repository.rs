@@ -189,13 +189,10 @@ impl DocumentsRepository for PostgresDocumentsRepository {
             self.update_main_table_metadata_only(document_type, instance).await?;
             // 2. Copy row to snapshot table
             self.store_snapshot_for_published_instance(document_type, instance).await?;
-        } else if has_draft_publish && !is_publishing {
-            // Use Case 2: draft-and-publish is ON, saving a draft
-            // 1. Update main table content and metadata (status -> DRAFT/MODIFIED, clear published_at)
-            self.update_main_table_content_and_metadata(document_type, instance).await?;
         } else {
-            // Use Case 1: draft-and-publish is OFF, saving an edit
-            // 1. Update main table content and metadata (status is always PUBLISHED)
+            // For both remaining use cases, we perform a full content and metadata update on the main table:
+            // - Use Case 1: draft-and-publish is OFF, saving an edit (status is always PUBLISHED)
+            // - Use Case 2: draft-and-publish is ON, saving a draft (status -> DRAFT/MODIFIED, clears published_at)
             self.update_main_table_content_and_metadata(document_type, instance).await?;
         }
 
