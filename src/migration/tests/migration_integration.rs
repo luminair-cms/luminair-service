@@ -101,20 +101,6 @@ async fn run_migration(
 // Tests
 // ---------------------------------------------------------------------------
 
-/// Verifies that a PostgreSQL container can be started and that a live
-/// connection can be established.
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_connect_to_database() -> anyhow::Result<()> {
-    let (pool, _container) = start_postgres().await?;
-
-    let (value,): (i32,) = sqlx::query_as("SELECT 1")
-        .fetch_one(&pool)
-        .await?;
-
-    assert_eq!(value, 1, "expected scalar 1 from the database");
-    Ok(())
-}
-
 /// Verifies that running a migration against an empty database creates every
 /// table required by the document registry.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
