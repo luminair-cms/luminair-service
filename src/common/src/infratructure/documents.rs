@@ -24,17 +24,17 @@ struct DocumentTypesRegistryAdapter {
 }
 
 impl DocumentTypesRegistry for DocumentTypesRegistryAdapter {
-    fn iterate(&self) -> Box<dyn Iterator<Item = &'static DocumentType> + '_> {
+    fn iterate(&self) -> Box<dyn Iterator<Item = &DocumentType> + '_> {
         Box::new(self.types.iter().copied())
     }
 
-    fn get(&self, id: &DocumentTypeId) -> Option<&'static DocumentType> {
+    fn get(&self, id: &DocumentTypeId) -> Option<&DocumentType> {
         self.types
             .get(id)
             .and_then(|idx| self.types.get(*idx).copied())
     }
 
-    fn lookup(&self, api_id: &DocumentTypeApiId) -> Option<&'static DocumentType> {
+    fn lookup(&self, api_id: &DocumentTypeApiId) -> Option<&DocumentType> {
         self.map.get(api_id.as_ref()).copied()
     }
 }

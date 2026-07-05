@@ -16,5 +16,6 @@ sea-query = { workspace = true }
 thiserror = { workspace = true }
 
 [dev-dependencies]
+luminair_common = { path = "../common", package = "common", features = ["test-helpers"] }
 testcontainers-modules = { version = "0.15.0", features = ["postgres"] }
-
+uuid = { workspace = true }

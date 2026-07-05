@@ -9,16 +9,23 @@ pub use crate::domain::entities::DocumentType;
 pub mod entities;
 pub mod persistence;
 
-pub trait DocumentTypesRegistry: Send + Sync + Debug + 'static {
-    
-    /// iterate all documents metadata
-    fn iterate(&self) -> Box<dyn Iterator<Item = &'static DocumentType> + '_>;
-    
-    /// find document metadata by its id
-    fn get(&self, id: &DocumentTypeId) -> Option<&'static DocumentType>;
+#[cfg(feature = "test-helpers")]
+pub mod test_support;
+#[cfg(feature = "test-helpers")]
+pub use test_support::InMemoryDocumentTypesRegistry;
 
-    /// Look up an API id and return the associated `DocumentType` if it exists.
-    fn lookup(&self, api_id: &DocumentTypeApiId) -> Option<&'static DocumentType>;
+
+pub trait DocumentTypesRegistry: Send + Sync + Debug + 'static {
+
+    /// Iterates all document type metadata.
+    fn iterate(&self) -> Box<dyn Iterator<Item = &DocumentType> + '_>;
+
+    /// Returns the document type for the given internal id, if it exists.
+    fn get(&self, id: &DocumentTypeId) -> Option<&DocumentType>;
+
+    /// Returns the document type for the given API id (plural for Collection,
+    /// singular for SingleType), if it exists.
+    fn lookup(&self, api_id: &DocumentTypeApiId) -> Option<&DocumentType>;
 }
 
 // A regex for IDs/names that may contain only ASCII letters, digits, and underscore.

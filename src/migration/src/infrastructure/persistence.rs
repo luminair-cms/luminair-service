@@ -1,19 +1,22 @@
 use crate::domain::tables::{Table, ForeignKeyConstraint};
-use luminair_common::database::Database;
 use anyhow::Context;
-use sqlx::Executor;
+use sqlx::{Executor, PgPool};
 
 use crate::application::Persistence;
 use crate::domain::migration::MigrationStep;
 
 #[derive(Clone)]
 pub struct PersistenceAdapter {
-    database: &'static Database,
+    pool: PgPool,
+    schema: String,
 }
 
 impl PersistenceAdapter {
-    pub fn new(database: &'static Database) -> Self {
-        Self { database }
+    pub fn new(pool: PgPool, schema: impl Into<String>) -> Self {
+        Self {
+            pool,
+            schema: schema.into(),
+        }
     }
 }
 
@@ -28,8 +31,8 @@ impl Persistence for PersistenceAdapter {
               AND table_name != 'spatial_ref_sys'";
         
         let table_names = sqlx::query_scalar::<_, String>(tables_sql)
-            .bind(self.database.database_schema())
-            .fetch_all(self.database.database_pool())
+            .bind(&self.schema)
+            .fetch_all(&self.pool)
             .await?;
         
         let mut tables_map = std::collections::HashMap::new();
@@ -56,8 +59,8 @@ impl Persistence for PersistenceAdapter {
         WHERE tc.constraint_type = 'FOREIGN KEY' AND tc.table_schema = $1";
 
         let fk_rows = sqlx::query_as::<_, (String, String, String, String)>(fkeys_sql)
-            .bind(self.database.database_schema())
-            .fetch_all(self.database.database_pool())
+            .bind(&self.schema)
+            .fetch_all(&self.pool)
             .await?;
 
         for (table_name, column_name, ref_table, ref_col) in fk_rows {
@@ -81,24 +84,23 @@ impl Persistence for PersistenceAdapter {
         while let Some(step) = stream.next().await {
             let ctx = step.ctx();
             let ddls = step.clone().ddls();
-            execute_in_transaction(self.database, ddls, ctx).await?;
+            execute_in_transaction(&self.pool, ddls, ctx).await?;
         }
     
         Ok(())
     }
     
     fn database_schema(&self) -> &str {
-        self.database.database_schema()
+        &self.schema
     }
 }
 
 async fn execute_in_transaction(
-    database: &luminair_common::database::Database,
+    pool: &PgPool,
     queries: Vec<String>,
     ctx: &'static str,
 ) -> Result<(), anyhow::Error> {
-    let mut transaction = database
-        .database_pool()
+    let mut transaction = pool
         .begin()
         .await
         .context(format!("failed to start {} transaction", ctx))?;

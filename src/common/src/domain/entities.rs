@@ -213,6 +213,30 @@ pub enum RelationType {
 // Document
 
 impl DocumentType {
+    /// Creates a minimal `Collection` document type with no fields or relations.
+    ///
+    /// Useful in tests and examples where only the table identity matters.
+    /// `id`, `singular`, and `plural` must each be a valid [`DocumentTypeId`] string.
+    pub fn new_bare_collection(
+        id: &str,
+        singular: &str,
+        plural: &str,
+    ) -> Result<Self, anyhow::Error> {
+        Ok(Self {
+            id:   DocumentTypeId::try_new(id)?,
+            kind: DocumentKind::Collection,
+            info: DocumentTypeInfo {
+                title:         DocumentTitle::try_new(id)?,
+                singular_name: DocumentTypeId::try_new(singular)?,
+                plural_name:   DocumentTypeId::try_new(plural)?,
+                description:   None,
+            },
+            options:   None,
+            fields:    HashSet::new(),
+            relations: HashSet::new(),
+        })
+    }
+
     pub fn has_localization(&self) -> bool {
         self.options.as_ref().map_or(false, |options|!options.localizations.is_empty())
     }

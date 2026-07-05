@@ -1,12 +1,8 @@
-use crate::{
+use migration::{
     application::Migration,
     infrastructure::{persistence::PersistenceAdapter, settings::Settings},
 };
 use luminair_common::{database, load_documents};
-
-pub mod application;
-pub mod domain;
-pub mod infrastructure;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -44,7 +40,10 @@ async fn main() -> anyhow::Result<()> {
 
     let database = database::connect(&settings.database).await?;
     println!("Connected to DB");
-    let persistence = PersistenceAdapter::new(database);
+    let persistence = PersistenceAdapter::new(
+        database.database_pool().clone(),
+        database.database_schema(),
+    );
 
     // migrate database schema conform documents configuration
     let migration = Migration::new(documents, persistence);

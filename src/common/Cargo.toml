@@ -3,6 +3,11 @@ name = "common"
 version = "0.1.0"
 edition = "2024"
 
+[features]
+## Exposes `InMemoryDocumentTypesRegistry` and other test utilities.
+## Never compiled into production builds.
+test-helpers = []
+
 [dependencies]
 anyhow = { workspace = true }
 futures = { workspace = true }
