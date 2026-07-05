@@ -531,13 +531,13 @@ mod tests {
     }
 
     impl DocumentTypesRegistry for MockRegistry {
-        fn iterate(&self) -> Box<dyn Iterator<Item = &'static DocumentType> + '_> {
+        fn iterate(&self) -> Box<dyn Iterator<Item = &DocumentType> + '_> {
             panic!("unimplemented")
         }
-        fn get(&self, id: &DocumentTypeId) -> Option<&'static DocumentType> {
-            self.types.get(id).copied()
+        fn get(&self, id: &DocumentTypeId) -> Option<&DocumentType> {
+            self.types.get(id).map(|r| *r)
         }
-        fn lookup(&self, _api_id: &DocumentTypeApiId) -> Option<&'static DocumentType> {
+        fn lookup(&self, _api_id: &DocumentTypeApiId) -> Option<&DocumentType> {
             None
         }
     }

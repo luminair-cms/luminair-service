@@ -16,6 +16,9 @@ use crate::entities::{DocumentType, DocumentKind};
 ///
 /// # Example
 /// ```rust
+/// use common::InMemoryDocumentTypesRegistry;
+/// use common::entities::DocumentType;
+///
 /// let registry = InMemoryDocumentTypesRegistry::from_vec(vec![
 ///     DocumentType::new_bare_collection("article", "article", "articles").unwrap(),
 /// ]);
