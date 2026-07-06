@@ -11,11 +11,14 @@ Luminair is a Schema-Driven CMS platform (similar to Strapi) focused on Speed an
 ### Reference Documentation
 - [Architecture](../documentation/architecture.md)
 - [Domain Model](../documentation/domain-model.md)
-- [API Documentation](../../documentation/api.md)
+- [API Documentation](https://github.com/luminair-cms/documentation/blob/main/api.md)
 - [Schema Formats](../documentation/schemas.md)
 - [Database Structure](../documentation/database.md)
-- [Draft & Publish Workflow](../../documentation/draft-publish.md)
+- [Draft & Publish Workflow](https://github.com/luminair-cms/documentation/blob/main/draft-publish.md)
 - [Draft & Publish Database Design](../documentation/draft-publish.md)
+
+> [!NOTE]
+> Reference documentation links starting with `https://github.com/luminair-cms/documentation/blob/main/` resolve to the local sibling directory `../documentation/`. AI agents should search and read these files from the local folder.
 
 > [!IMPORTANT]
 > If these instructions conflict with the actual codebase, the code is the source of truth. Flag any discrepancy you notice.

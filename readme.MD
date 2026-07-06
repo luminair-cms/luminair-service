@@ -12,11 +12,11 @@ This project is early stage and is primarily built as a Rust learning platform u
 
 ## Documentation
 
-- [REST API](../documentation/api.md)
+- [REST API](https://github.com/luminair-cms/documentation/blob/main/api.md)
+- [Draft & publish workflow](https://github.com/luminair-cms/documentation/blob/main/draft-publish.md)
 - [Architecture](documentation/architecture.md)
 - [Domain model](documentation/domain-model.md)
 - [Schema definitions](documentation/schemas.md)
-- [Draft & publish workflow](../documentation/draft-publish.md)
 - [Draft & publish database design](documentation/draft-publish.md)
 - [Database design](documentation/database.md)
 
