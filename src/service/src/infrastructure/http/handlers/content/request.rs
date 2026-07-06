@@ -125,6 +125,13 @@ pub fn parse_relation_operations(
             ApiError::UnprocessableEntity(format!("Field '{}' must be an object", field_name))
         })?;
 
+        if field_obj.contains_key("set") {
+            return Err(ApiError::UnprocessableEntity(format!(
+                "Relation field '{}': 'set' operation is not yet supported in the MVP",
+                field_name
+            )));
+        }
+
         let connect = parse_ids_from_list(
             field_obj
                 .get("connect")
@@ -259,6 +266,19 @@ mod tests {
         let res = extract_and_split_payload(&payload, &dt);
         assert!(res.is_err());
         assert!(res.unwrap_err().to_string().contains("Unknown field or relation"));
+    }
+
+    #[test]
+    fn test_parse_relation_operations_rejects_set() {
+        let payload = json!({
+            "author": {
+                "set": ["9c00b05b-800e-436f-8705-d14bfb2875b4"]
+            }
+        });
+
+        let res = parse_relation_operations(&payload);
+        assert!(res.is_err());
+        assert!(res.unwrap_err().to_string().contains("set' operation is not yet supported"));
     }
 }
 

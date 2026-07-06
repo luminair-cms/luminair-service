@@ -103,9 +103,7 @@ async fn test_http_integration_suite() -> anyhow::Result<()> {
     // --- TEST 2: Create a Brand (Success) & GET it ---
     let brand_location;
     {
-        let body_str = format!(
-            r#"{{"data": {{"uid": "brand-123", "name": "Brand One"}}}}"#
-        );
+        let body_str = r#"{"data": {"uid": "brand-123", "name": "Brand One"}}"#.to_string();
         let response = router
             .clone()
             .oneshot(
@@ -142,9 +140,7 @@ async fn test_http_integration_suite() -> anyhow::Result<()> {
 
     // --- TEST 3: Create Duplicate Brand (409 Conflict with RFC 7807/9457 details) ---
     {
-        let body_str = format!(
-            r#"{{"data": {{"uid": "brand-123", "name": "Brand Duplicate"}}}}"#
-        );
+        let body_str = r#"{"data": {"uid": "brand-123", "name": "Brand Duplicate"}}"#.to_string();
         let response = router
             .clone()
             .oneshot(

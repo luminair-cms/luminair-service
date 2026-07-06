@@ -659,7 +659,7 @@ mod tests {
             panic!("unimplemented")
         }
         fn get(&self, id: &DocumentTypeId) -> Option<&DocumentType> {
-            self.types.get(id).map(|r| *r)
+            self.types.get(id).copied()
         }
         fn lookup(&self, _api_id: &DocumentTypeApiId) -> Option<&DocumentType> {
             None

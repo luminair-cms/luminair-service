@@ -144,7 +144,7 @@ Relation types:
 
 ## Loading Logic
 
-The schema loading process is handled by the `load()` function in `common/src/infratructure/documents.rs`:
+The schema loading process is handled by the `load()` function in `common/src/infrastructure/documents.rs`:
 
 1. Reads all `.json` files from the configured schema directory (`schema_config_path`)
 2. Parses each JSON file into a `DocumentRecord`

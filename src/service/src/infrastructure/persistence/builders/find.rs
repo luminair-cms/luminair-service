@@ -98,8 +98,8 @@ pub fn query_find_document_by_criteria(
     select.build_sqlx(PostgresQueryBuilder)
 }
 
-fn main_document_select<'a>(
-    document: &'a DocumentType,
+fn main_document_select(
+    document: &DocumentType,
     status: DocumentStatus,
 ) -> SelectStatement {
     let (table_ref, status_expr, version_expr) = if status == DocumentStatus::Published && document.has_draft_and_publish() {
@@ -183,13 +183,7 @@ pub fn build_condition(
                 (None, None) => None,
             }
         }
-        _ => {
-            if let Some(expr) = build_filter_expr(filter, document, alias) {
-                Some(Condition::all().add(expr))
-            } else {
-                None
-            }
-        }
+        _ => build_filter_expr(filter, document, alias).map(|expr| Condition::all().add(expr)),
     }
 }
 

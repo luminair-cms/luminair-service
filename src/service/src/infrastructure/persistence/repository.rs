@@ -172,7 +172,7 @@ impl DocumentsRepository for PostgresDocumentsRepository {
                 })?;
 
                 let id = DocumentInstanceId(owning_uuid);
-                grouped.entry(id).or_insert_with(Vec::new).push(document);
+                grouped.entry(id).or_default().push(document);
             }
 
             result.insert(attr_id.clone(), grouped);

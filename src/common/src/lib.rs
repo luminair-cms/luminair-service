@@ -1,5 +1,5 @@
 mod domain;
-mod infratructure;
+mod infrastructure;
 
 // Persisted documents field names
 
@@ -28,8 +28,8 @@ pub const OWNING_DOCUMENT_ID_FIELD_NAME: &'static str = "owning_document_id";
 // expose domain module
 
 pub use domain::*;
-pub use infratructure::documents::load as load_documents;
+pub use infrastructure::documents::load as load_documents;
 
 // expose database module
 
-pub use infratructure::database;
+pub use infrastructure::database;

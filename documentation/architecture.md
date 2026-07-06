@@ -12,6 +12,29 @@ Luminair is built as a small Rust-based backend platform with explicit separatio
 
 The system is schema-driven: document metadata and JSON schema definitions are the source of truth for both table generation and runtime behavior.
 
+```mermaid
+graph TD
+    subgraph Infrastructure Layer (Adapters)
+        AxumServer[HTTP: Axum Router & Handlers]
+        SQLXRepo[Persistence: Postgres SQLX Repository]
+    end
+
+    subgraph Application Layer (Orchestrators)
+        DocService[DocumentsService Port & Impl]
+    end
+
+    subgraph Domain Layer (Core)
+        DocInstance[DocumentInstance & Core Entities]
+        DocRepo[DocumentsRepository Port]
+    end
+
+    AxumServer --> DocService
+    SQLXRepo -.-> DocRepo
+    DocService --> DocRepo
+    DocService --> DocInstance
+    DocRepo --> DocInstance
+```
+
 ## Crate responsibilities
 
 ### `common`

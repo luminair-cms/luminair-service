@@ -50,6 +50,7 @@ pub struct ModifyRelationsCommand {
     pub operations: HashMap<AttributeId, RelationOperation>,
 }
 
+#[derive(Debug)]
 pub enum RelationOperation {
     /// Partial update: add and/or remove specific relations.
     ConnectDisconnect {
