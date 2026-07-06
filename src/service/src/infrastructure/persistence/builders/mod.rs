@@ -1,10 +1,14 @@
-use sea_query::ColumnRef;
-use luminair_common::{DocumentType, CREATED_BY_FIELD_NAME, CREATED_FIELD_NAME, DOCUMENT_ID_FIELD_NAME, PUBLISHED_BY_FIELD_NAME, PUBLISHED_FIELD_NAME, REVISION_FIELD_NAME, SNAPSHOT_ID_FIELD_NAME, UPDATED_BY_FIELD_NAME, UPDATED_FIELD_NAME};
 use crate::domain::query::DocumentStatus;
+use luminair_common::{
+    CREATED_BY_FIELD_NAME, CREATED_FIELD_NAME, DOCUMENT_ID_FIELD_NAME, DocumentType,
+    PUBLISHED_BY_FIELD_NAME, PUBLISHED_FIELD_NAME, REVISION_FIELD_NAME, SNAPSHOT_ID_FIELD_NAME,
+    UPDATED_BY_FIELD_NAME, UPDATED_FIELD_NAME,
+};
+use sea_query::ColumnRef;
 
 pub mod find;
-pub mod write;
 pub mod relations;
+pub mod write;
 
 const STANDARD_SELECT_COLUMNS: [(&str, &str); 8] = [
     ("m", DOCUMENT_ID_FIELD_NAME),
@@ -17,7 +21,10 @@ const STANDARD_SELECT_COLUMNS: [(&str, &str); 8] = [
     ("m", REVISION_FIELD_NAME),
 ];
 
-pub(crate) fn main_select_columns(document: &DocumentType, status: DocumentStatus) -> Vec<ColumnRef> {
+pub(crate) fn main_select_columns(
+    document: &DocumentType,
+    status: DocumentStatus,
+) -> Vec<ColumnRef> {
     let mut columns: Vec<ColumnRef> = STANDARD_SELECT_COLUMNS
         .iter()
         .map(|c| (*c).into())

@@ -1,17 +1,32 @@
 use crate::{
-    domain::{document::{DocumentInstance, DocumentInstanceId, lifecycle::PublicationState}, query::{DocumentInstanceQuery, DocumentStatus}, repository::{DocumentsRepository, RelationMap, RelationOps, RepositoryError}},
-    infrastructure::persistence::builders::{find::{query_count_documents, query_find_document_by_criteria, query_find_document_by_id}, relations::{delete_relation_entry, insert_relation_entry, query_find_related_documents}, write::{delete_document, insert_document, update_document, build_snapshot_insert, build_copy_relations_to_snapshots}}
+    domain::{
+        document::{DocumentInstance, DocumentInstanceId, lifecycle::PublicationState},
+        query::{DocumentInstanceQuery, DocumentStatus},
+        repository::{DocumentsRepository, RelationMap, RelationOps, RepositoryError},
+    },
+    infrastructure::persistence::builders::{
+        find::{query_count_documents, query_find_document_by_criteria, query_find_document_by_id},
+        relations::{delete_relation_entry, insert_relation_entry, query_find_related_documents},
+        write::{
+            build_copy_relations_to_snapshots, build_snapshot_insert, delete_document,
+            insert_document, update_document,
+        },
+    },
 };
 
+use crate::infrastructure::persistence::mapping::reader::row_to_document;
 use futures::TryStreamExt;
 use luminair_common::database::Database;
-use luminair_common::{AttributeId, DocumentType, DocumentTypesRegistry, STATUS_FIELD_NAME, PUBLISHED_BY_FIELD_NAME, PUBLISHED_FIELD_NAME, REVISION_FIELD_NAME, UPDATED_FIELD_NAME, VERSION_FIELD_NAME, OWNING_DOCUMENT_ID_FIELD_NAME};
+use luminair_common::{
+    AttributeId, DocumentType, DocumentTypesRegistry, OWNING_DOCUMENT_ID_FIELD_NAME,
+    PUBLISHED_BY_FIELD_NAME, PUBLISHED_FIELD_NAME, REVISION_FIELD_NAME, STATUS_FIELD_NAME,
+    UPDATED_FIELD_NAME, VERSION_FIELD_NAME,
+};
 use sea_query::{DynIden, Expr};
 use sea_query_sqlx::SqlxValues;
 use sqlx::{AssertSqlSafe, Row};
 use std::collections::HashMap;
 use uuid::Uuid;
-use crate::infrastructure::persistence::mapping::reader::row_to_document;
 
 #[derive(Clone)]
 pub struct PostgresDocumentsRepository {
@@ -37,17 +52,25 @@ fn map_db_error(e: sqlx::Error) -> RepositoryError {
             // Postgres error code 23505: unique_violation
             // Raised when an insert/update violates a unique index constraint (e.g. duplicate UUID or UID).
             Some("23505") => return RepositoryError::UniqueViolation(db_err.message().to_string()),
-            
+
             // Postgres error code 23503: foreign_key_violation
             // Raised when a referenced key (such as a relation target ID) does not exist or is violated.
-            Some("23503") => return RepositoryError::ValidationFailed(format!("Relation constraint violation: {}", db_err.message())),
+            Some("23503") => {
+                return RepositoryError::ValidationFailed(format!(
+                    "Relation constraint violation: {}",
+                    db_err.message()
+                ));
+            }
             _ => {}
         }
     }
     RepositoryError::DatabaseError(e.to_string())
 }
 
-fn sqlx_query_with<'q>(sql: String, values: SqlxValues) -> sqlx::query::Query<'q, sqlx::Postgres, SqlxValues> {
+fn sqlx_query_with<'q>(
+    sql: String,
+    values: SqlxValues,
+) -> sqlx::query::Query<'q, sqlx::Postgres, SqlxValues> {
     sqlx::query_with(AssertSqlSafe(sql), values)
 }
 
@@ -144,7 +167,9 @@ impl DocumentsRepository for PostgresDocumentsRepository {
                 .get(&rel_metadata.target)
                 .ok_or(RepositoryError::DocumentInstanceNotFound)?;
 
-            let rel_filter = filters.get(attr_id).unwrap_or(&crate::domain::query::FilterExpression::None);
+            let rel_filter = filters
+                .get(attr_id)
+                .unwrap_or(&crate::domain::query::FilterExpression::None);
 
             let (sql, values) = query_find_related_documents(
                 document_type,
@@ -167,9 +192,13 @@ impl DocumentsRepository for PostgresDocumentsRepository {
                 .map_err(|e| RepositoryError::DatabaseError(e.to_string()))?
             {
                 let document = row_to_document(&row, related_document_type)?;
-                let owning_uuid: Uuid = row.try_get(OWNING_DOCUMENT_ID_FIELD_NAME).map_err(|e| {
-                    RepositoryError::DatabaseError(format!("Failed to parse owning_document_id: {}", e))
-                })?;
+                let owning_uuid: Uuid =
+                    row.try_get(OWNING_DOCUMENT_ID_FIELD_NAME).map_err(|e| {
+                        RepositoryError::DatabaseError(format!(
+                            "Failed to parse owning_document_id: {}",
+                            e
+                        ))
+                    })?;
 
                 let id = DocumentInstanceId(owning_uuid);
                 grouped.entry(id).or_default().push(document);
@@ -197,14 +226,20 @@ impl DocumentsRepository for PostgresDocumentsRepository {
         instance: &DocumentInstance,
     ) -> Result<(), RepositoryError> {
         let has_draft_publish = document_type.has_draft_and_publish();
-        let is_publishing = matches!(instance.content.publication_state, PublicationState::Published { .. });
+        let is_publishing = matches!(
+            instance.content.publication_state,
+            PublicationState::Published { .. }
+        );
 
         if has_draft_publish && is_publishing {
             // Use Case 3: draft-and-publish is ON, publishing
             // 1. Update main table metadata ONLY (status -> PUBLISHED, revision, published_at, version, updated_at)
-            self.update_main_table_metadata_only(document_type, instance).await?;
+            self.update_main_table_metadata_only(document_type, instance)
+                .await?;
             // 2. Copy row to snapshot table
-            let snapshot_id = self.store_snapshot_for_published_instance(document_type, instance).await?;
+            let snapshot_id = self
+                .store_snapshot_for_published_instance(document_type, instance)
+                .await?;
             // 3. Copy relations to snapshots
             for relation in &document_type.relations {
                 if !relation.relation_type.is_owning() {
@@ -225,7 +260,8 @@ impl DocumentsRepository for PostgresDocumentsRepository {
             // For both remaining use cases, we perform a full content and metadata update on the main table:
             // - Use Case 1: draft-and-publish is OFF, saving an edit (status is always PUBLISHED)
             // - Use Case 2: draft-and-publish is ON, saving a draft (status -> DRAFT/MODIFIED, clears published_at)
-            self.update_main_table_content_and_metadata(document_type, instance).await?;
+            self.update_main_table_content_and_metadata(document_type, instance)
+                .await?;
         }
 
         Ok(())
@@ -267,12 +303,8 @@ impl DocumentsRepository for PostgresDocumentsRepository {
 
             if !rel_ops.connect.is_empty() {
                 for target_id in &rel_ops.connect {
-                    let (sql, values) = insert_relation_entry(
-                        document_type,
-                        attr_id,
-                        document_id.0,
-                        target_id.0,
-                    );
+                    let (sql, values) =
+                        insert_relation_entry(document_type, attr_id, document_id.0, target_id.0);
                     sqlx_query_with(sql, values)
                         .execute(self.database.database_pool())
                         .await
@@ -282,12 +314,8 @@ impl DocumentsRepository for PostgresDocumentsRepository {
 
             if !rel_ops.disconnect.is_empty() {
                 for target_id in &rel_ops.disconnect {
-                    let (sql, values) = delete_relation_entry(
-                        document_type,
-                        attr_id,
-                        document_id.0,
-                        target_id.0,
-                    );
+                    let (sql, values) =
+                        delete_relation_entry(document_type, attr_id, document_id.0, target_id.0);
                     sqlx_query_with(sql, values)
                         .execute(self.database.database_pool())
                         .await
@@ -301,16 +329,15 @@ impl DocumentsRepository for PostgresDocumentsRepository {
 }
 
 impl PostgresDocumentsRepository {
-
-
     async fn insert_main_table(
         &self,
         document_type: &DocumentType,
         instance: &DocumentInstance,
     ) -> Result<(), RepositoryError> {
         let revision: i32 = match &instance.content.publication_state {
-            PublicationState::Published { revision, .. }
-            | PublicationState::Draft { revision } => *revision,
+            PublicationState::Published { revision, .. } | PublicationState::Draft { revision } => {
+                *revision
+            }
         };
 
         let published_at = match &instance.content.publication_state {
@@ -372,7 +399,11 @@ impl PostgresDocumentsRepository {
 
         // Include publication state fields dynamically
         match &instance.content.publication_state {
-            PublicationState::Published { revision, published_at, published_by } => {
+            PublicationState::Published {
+                revision,
+                published_at,
+                published_by,
+            } => {
                 column_values.push((REVISION_FIELD_NAME.into(), (*revision).into()));
                 column_values.push((PUBLISHED_FIELD_NAME.into(), (*published_at).into()));
                 let by_expr = match published_by {
@@ -424,7 +455,11 @@ impl PostgresDocumentsRepository {
 
         // Include publication state fields dynamically
         match &instance.content.publication_state {
-            PublicationState::Published { revision, published_at, published_by } => {
+            PublicationState::Published {
+                revision,
+                published_at,
+                published_by,
+            } => {
                 column_values.push((REVISION_FIELD_NAME.into(), (*revision).into()));
                 column_values.push((PUBLISHED_FIELD_NAME.into(), (*published_at).into()));
                 let by_expr = match published_by {

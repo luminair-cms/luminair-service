@@ -1,5 +1,5 @@
-use sea_query::{IntoIden, TableName, TableRef};
 use crate::{AttributeId, DocumentType};
+use sea_query::{IntoIden, TableName, TableRef};
 
 #[derive(Debug)]
 pub enum TableNameProvider<'a> {
@@ -22,7 +22,7 @@ pub enum TableNameProvider<'a> {
 impl<'a> TableNameProvider<'a> {
     pub fn table_name(&self) -> String {
         match self {
-            Self::MainTable { document } => format!("{}", document.id.normalized()),
+            Self::MainTable { document } => document.id.normalized().to_string(),
             Self::SnapshotTable { document } => format!("{}_snapshots", document.id.normalized()),
             Self::RelationTable { document, relation } => format!(
                 "{}_{}_relation",
@@ -36,10 +36,10 @@ impl<'a> TableNameProvider<'a> {
             ),
         }
     }
-    
+
     const MAIN_TABLE_ALIAS: &'static str = "m";
     const RELATION_TABLE_ALIAS: &'static str = "r";
-    
+
     pub fn alias(&self) -> &'static str {
         match self {
             Self::MainTable { .. } => Self::MAIN_TABLE_ALIAS,
@@ -71,19 +71,25 @@ impl<'a> TableNameProviderConstructor<'a> for DocumentType {
     }
 
     fn relation_table(&'a self, relation: &'a AttributeId) -> TableNameProvider<'a> {
-        TableNameProvider::RelationTable { document: self, relation }
+        TableNameProvider::RelationTable {
+            document: self,
+            relation,
+        }
     }
 
     fn relation_snapshot_table(&'a self, relation: &'a AttributeId) -> TableNameProvider<'a> {
-        TableNameProvider::RelationSnapshotTable { document: self, relation }
+        TableNameProvider::RelationSnapshotTable {
+            document: self,
+            relation,
+        }
     }
-}   
+}
 
-impl <'a> From <TableNameProvider<'a>> for TableRef {
+impl<'a> From<TableNameProvider<'a>> for TableRef {
     fn from(value: TableNameProvider<'a>) -> Self {
         TableRef::Table(
-            TableName::from(value.table_name()), 
-            Some(value.alias().into_iden())
+            TableName::from(value.table_name()),
+            Some(value.alias().into_iden()),
         )
     }
 }
@@ -91,8 +97,8 @@ impl <'a> From <TableNameProvider<'a>> for TableRef {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{DocumentTypeId, AttributeId};
     use crate::entities::{DocumentKind, DocumentTitle, DocumentTypeInfo};
+    use crate::{AttributeId, DocumentTypeId};
 
     fn make_doc(id: &str) -> DocumentType {
         DocumentType {

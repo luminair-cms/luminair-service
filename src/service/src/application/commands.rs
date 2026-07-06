@@ -1,9 +1,9 @@
-use std::collections::HashMap;
-use luminair_common::{AttributeId, DocumentType};
-use crate::domain::document::content::ContentValue;
 use crate::domain::document::DocumentInstanceId;
+use crate::domain::document::content::ContentValue;
 use crate::domain::document::lifecycle::UserId;
 use crate::domain::query::DocumentInstanceQuery;
+use luminair_common::{AttributeId, DocumentType};
+use std::collections::HashMap;
 
 pub struct FindDocumentsCommand {
     pub document_type: &'static DocumentType,

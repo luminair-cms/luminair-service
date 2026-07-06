@@ -4,11 +4,10 @@ use luminair_common::entities::{DocumentField, IntegerSize};
 use luminair_common::{
     CREATED_BY_FIELD_NAME, CREATED_FIELD_NAME, DOCUMENT_ID_FIELD_NAME, DocumentType,
     DocumentTypesRegistry, OWNING_DOCUMENT_ID_FIELD_NAME, PUBLISHED_BY_FIELD_NAME,
-    PUBLISHED_FIELD_NAME, REVISION_FIELD_NAME, SNAPSHOT_ID_FIELD_NAME, STATUS_FIELD_NAME, TARGET_DOCUMENT_ID_FIELD_NAME,
-    UPDATED_BY_FIELD_NAME, UPDATED_FIELD_NAME, VERSION_FIELD_NAME,
+    PUBLISHED_FIELD_NAME, REVISION_FIELD_NAME, SNAPSHOT_ID_FIELD_NAME, STATUS_FIELD_NAME,
+    TARGET_DOCUMENT_ID_FIELD_NAME, UPDATED_BY_FIELD_NAME, UPDATED_FIELD_NAME, VERSION_FIELD_NAME,
     entities::{DocumentRelation, FieldType},
 };
-
 
 pub struct DocumentTables {
     pub tables: Vec<Table>,
@@ -33,11 +32,7 @@ impl DocumentTables {
             tables.push(main_table);
             tables.push(snapshots_table);
         } else {
-            handle_document_fields(
-                document,
-                &mut main_table_builder,
-                None,
-            );
+            handle_document_fields(document, &mut main_table_builder, None);
             let main_table = main_table_builder.into();
             tables.push(main_table);
         }
@@ -115,7 +110,11 @@ impl SnapshotsTableBuilder {
     fn new(document: &DocumentType) -> Self {
         let table_name = format!("{}_snapshots", document.id.normalized());
         let mut columns = vec![
-            Column::primary_key(SNAPSHOT_ID_FIELD_NAME, ColumnType::Identity(IntegerSize::Int64), None),
+            Column::primary_key(
+                SNAPSHOT_ID_FIELD_NAME,
+                ColumnType::Identity(IntegerSize::Int64),
+                None,
+            ),
             Column::new(
                 DOCUMENT_ID_FIELD_NAME,
                 ColumnType::Uuid,

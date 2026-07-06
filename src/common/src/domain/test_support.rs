@@ -6,7 +6,7 @@
 use std::collections::HashMap;
 
 use crate::domain::{DocumentTypeApiId, DocumentTypeId, DocumentTypesRegistry};
-use crate::entities::{DocumentType, DocumentKind};
+use crate::entities::{DocumentKind, DocumentType};
 
 /// A lightweight in-memory [`DocumentTypesRegistry`] for use in integration tests.
 ///
@@ -25,14 +25,14 @@ use crate::entities::{DocumentType, DocumentKind};
 /// ```
 #[derive(Debug)]
 pub struct InMemoryDocumentTypesRegistry {
-    by_id:     HashMap<DocumentTypeId, DocumentType>,
+    by_id: HashMap<DocumentTypeId, DocumentType>,
     by_api_id: HashMap<String, DocumentTypeId>,
 }
 
 impl InMemoryDocumentTypesRegistry {
     /// Builds a registry from an owned list of document types.
     pub fn from_vec(docs: Vec<DocumentType>) -> Self {
-        let mut by_id     = HashMap::with_capacity(docs.len());
+        let mut by_id = HashMap::with_capacity(docs.len());
         let mut by_api_id = HashMap::with_capacity(docs.len());
 
         for doc in docs {
@@ -63,4 +63,3 @@ impl DocumentTypesRegistry for InMemoryDocumentTypesRegistry {
             .and_then(|id| self.by_id.get(id))
     }
 }
-

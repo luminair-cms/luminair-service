@@ -1,9 +1,14 @@
-use sea_query::{DynIden, Expr, ExprTrait, PostgresQueryBuilder, Query, Alias};
+use crate::domain::document::{DocumentInstance, lifecycle::PublicationState};
+use luminair_common::persistence::TableNameProviderConstructor;
+use luminair_common::{
+    AttributeId, CREATED_FIELD_NAME, DOCUMENT_ID_FIELD_NAME, DocumentType,
+    OWNING_DOCUMENT_ID_FIELD_NAME, PUBLISHED_BY_FIELD_NAME, PUBLISHED_FIELD_NAME,
+    REVISION_FIELD_NAME, SNAPSHOT_ID_FIELD_NAME, STATUS_FIELD_NAME, TARGET_DOCUMENT_ID_FIELD_NAME,
+    UPDATED_FIELD_NAME, VERSION_FIELD_NAME,
+};
+use sea_query::{Alias, DynIden, Expr, ExprTrait, PostgresQueryBuilder, Query};
 use sea_query_sqlx::{SqlxBinder, SqlxValues};
 use uuid::Uuid;
-use luminair_common::{DocumentType, AttributeId, CREATED_FIELD_NAME, DOCUMENT_ID_FIELD_NAME, STATUS_FIELD_NAME, UPDATED_FIELD_NAME, VERSION_FIELD_NAME, REVISION_FIELD_NAME, PUBLISHED_FIELD_NAME, PUBLISHED_BY_FIELD_NAME, OWNING_DOCUMENT_ID_FIELD_NAME, TARGET_DOCUMENT_ID_FIELD_NAME, SNAPSHOT_ID_FIELD_NAME};
-use luminair_common::persistence::TableNameProviderConstructor;
-use crate::domain::document::{DocumentInstance, lifecycle::PublicationState};
 
 pub fn insert_document(document: &DocumentType, params: Vec<Expr>) -> (String, SqlxValues) {
     let table = document.main_table();
@@ -97,8 +102,9 @@ pub fn build_snapshot_insert(
             _ => Expr::null(),
         },
         match &instance.content.publication_state {
-            PublicationState::Published { revision, .. }
-            | PublicationState::Draft { revision } => (*revision).into(),
+            PublicationState::Published { revision, .. } | PublicationState::Draft { revision } => {
+                (*revision).into()
+            }
         },
     ];
 
@@ -143,7 +149,9 @@ pub fn build_copy_relations_to_snapshots(
             Alias::new(TARGET_DOCUMENT_ID_FIELD_NAME),
             Alias::new(OWNING_DOCUMENT_ID_FIELD_NAME),
         ]);
-    insert_query.select_from(select_query).expect("valid select_from query");
+    insert_query
+        .select_from(select_query)
+        .expect("valid select_from query");
 
     insert_query.build_sqlx(PostgresQueryBuilder)
 }

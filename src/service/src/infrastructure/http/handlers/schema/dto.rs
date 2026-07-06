@@ -1,12 +1,12 @@
+use luminair_common::entities::FieldConstraint;
 use luminair_common::{
     DocumentType,
     entities::{
-        FieldType, DocumentField, DocumentKind, DocumentRelation,
-        DocumentTypeInfo, DocumentTypeOptions, RelationType,
+        DocumentField, DocumentKind, DocumentRelation, DocumentTypeInfo, DocumentTypeOptions,
+        FieldType, RelationType,
     },
 };
 use serde::Serialize;
-use luminair_common::entities::FieldConstraint;
 
 /// Response for list documents route
 #[derive(Debug, Clone, Serialize)]
@@ -29,7 +29,7 @@ impl From<&DocumentType> for DocumentResponse {
         Self {
             id: value.id.as_ref().to_string(),
             title: value.info.title.as_ref().to_string(),
-            kind: value.kind.clone(),
+            kind: value.kind,
             description: value.info.description.clone(),
         }
     }
@@ -113,7 +113,7 @@ impl From<&DocumentType> for DetailedDocumentResponse {
         Self {
             id: value.id.to_string(),
             title: value.info.title.to_string(),
-            kind: value.kind.clone(),
+            kind: value.kind,
             info: (&value.info).into(),
             options: value.options.as_ref().map(DocumentOptionsResponse::from),
             attributes,
@@ -146,7 +146,7 @@ impl From<&DocumentField> for AttributeResponse {
         let id = value.id.to_string();
         let constraints = value.constraints.iter().cloned().collect();
         let body = AttributeBodyResponse::Field {
-            attribute_type: value.field_type.clone(),
+            attribute_type: value.field_type,
             unique: value.unique,
             required: value.required,
             constraints,
@@ -160,7 +160,7 @@ impl From<&DocumentRelation> for AttributeResponse {
         let id = value.id.to_string();
         let target = value.target.to_string();
         let body = AttributeBodyResponse::Relation {
-            relation_type: value.relation_type.clone(),
+            relation_type: value.relation_type,
             target,
         };
         Self { id, body }

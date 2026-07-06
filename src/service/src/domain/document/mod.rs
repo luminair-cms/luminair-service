@@ -121,7 +121,7 @@ impl DocumentInstance {
         }
     }
 
-    /// Domain invariant: validate instance against its type
+    // Domain invariant: validate instance against its type
     /*
     pub fn validate(&self, document_type: &DocumentType) -> Result<(), DocumentError> {
         for (attr_name, attribute) in &document_type.attributes {
@@ -189,11 +189,11 @@ impl DocumentInstance {
 #[derive(Debug, Clone)]
 pub enum DocumentRelation {
     Id(DocumentInstanceId),
-    Instance(DocumentInstance),
+    Instance(Box<DocumentInstance>),
 }
 
 impl From<DocumentInstance> for DocumentRelation {
     fn from(relation: DocumentInstance) -> Self {
-        Self::Instance(relation)
+        Self::Instance(Box::new(relation))
     }
 }

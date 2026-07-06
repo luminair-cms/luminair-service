@@ -1,10 +1,10 @@
-pub mod implementation;
-pub mod error;
 pub mod commands;
+pub mod error;
+pub mod implementation;
 pub mod service;
 
-use luminair_common::DocumentTypesRegistry;
 use crate::application::service::DocumentsService;
+use luminair_common::DocumentTypesRegistry;
 
 /// The global application state shared between all HTTP request handlers.
 ///
@@ -35,4 +35,3 @@ impl Default for PaginationSettings {
         }
     }
 }
-

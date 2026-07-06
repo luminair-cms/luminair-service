@@ -11,11 +11,9 @@ async fn populate_loads_related_documents() -> anyhow::Result<()> {
     let (router, _c) = build_router().await?;
 
     let cat_loc = create_partner_category(&router, "pop-retail", 1).await?;
-    let cat_id = cat_loc
-        .trim_start_matches("/api/documents/partner-categories/");
+    let cat_id = cat_loc.trim_start_matches("/api/documents/partner-categories/");
 
-    let partner_loc =
-        create_partner(&router, "5000000000001", "Populated Partner Ltd").await?;
+    let partner_loc = create_partner(&router, "5000000000001", "Populated Partner Ltd").await?;
     let partner_id = partner_loc.trim_start_matches("/api/documents/partners/");
 
     // Connect the category to the partner
@@ -52,11 +50,9 @@ async fn connect_and_disconnect_relation() -> anyhow::Result<()> {
     let (router, _c) = build_router().await?;
 
     let cat_loc = create_partner_category(&router, "con-retail", 2).await?;
-    let cat_id = cat_loc
-        .trim_start_matches("/api/documents/partner-categories/");
+    let cat_id = cat_loc.trim_start_matches("/api/documents/partner-categories/");
 
-    let partner_loc =
-        create_partner(&router, "6000000000001", "Connect Test Ltd").await?;
+    let partner_loc = create_partner(&router, "6000000000001", "Connect Test Ltd").await?;
     let partner_id = partner_loc.trim_start_matches("/api/documents/partners/");
 
     // --- Connect ---
@@ -151,10 +147,6 @@ async fn draft_copy_still_accessible_after_publish() -> anyhow::Result<()> {
 
     // Published copy must also exist
     let (status, _) = get_json(&router, &loc).await?;
-    assert_eq!(
-        status,
-        StatusCode::OK,
-        "published copy must be accessible"
-    );
+    assert_eq!(status, StatusCode::OK, "published copy must be accessible");
     Ok(())
 }

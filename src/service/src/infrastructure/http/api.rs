@@ -1,5 +1,5 @@
-use axum::http::StatusCode;
 use axum::Json;
+use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use serde::Serialize;
 
@@ -54,9 +54,10 @@ impl From<ServiceError> for ApiError {
             ServiceError::DocumentTypeNotFound
             | ServiceError::DocumentNotFound
             | ServiceError::RelationNotFound(_) => Self::NotFound,
-            ServiceError::NotOwningRelation(relation) => Self::UnprocessableEntity(
-                format!("Relation is not an owning relation: {}", relation),
-            ),
+            ServiceError::NotOwningRelation(relation) => Self::UnprocessableEntity(format!(
+                "Relation is not an owning relation: {}",
+                relation
+            )),
             ServiceError::Validation(cause) => Self::UnprocessableEntity(cause.to_string()),
             ServiceError::Conflict(cause) => Self::ConflictWithServerState(cause),
             ServiceError::Internal(internal) => internal.into(),
@@ -71,11 +72,17 @@ impl IntoResponse for ApiError {
         let (status, detail) = match self {
             InternalServerError(msg) => {
                 tracing::error!("{}", msg);
-                (StatusCode::INTERNAL_SERVER_ERROR, "An internal server error occurred".to_string())
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "An internal server error occurred".to_string(),
+                )
             }
             UnprocessableEntity(msg) => (StatusCode::UNPROCESSABLE_ENTITY, msg),
             ConflictWithServerState(msg) => (StatusCode::CONFLICT, msg),
-            NotFound => (StatusCode::NOT_FOUND, "The requested resource was not found".to_string()),
+            NotFound => (
+                StatusCode::NOT_FOUND,
+                "The requested resource was not found".to_string(),
+            ),
         };
 
         let problem = ProblemDetails::new(status, detail);
@@ -104,12 +111,13 @@ impl ProblemDetails {
     pub fn new(status: StatusCode, detail: String) -> Self {
         Self {
             problem_type: "about:blank".to_string(),
-            title: status.canonical_reason().unwrap_or("Unknown Error").to_string(),
+            title: status
+                .canonical_reason()
+                .unwrap_or("Unknown Error")
+                .to_string(),
             status: status.as_u16(),
             detail,
             instance: None,
         }
     }
 }
-
-

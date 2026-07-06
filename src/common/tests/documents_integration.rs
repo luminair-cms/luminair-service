@@ -40,7 +40,9 @@ fn load_documents_from_directory() {
     // call public loader
     let registry = common::load_documents(dir.path().to_str().unwrap()).expect("load docs");
     // lookup by api id (plural for collection)
-    let dt = registry.lookup(&common::DocumentTypeApiId::try_new("mytypes").unwrap()).expect("found");
+    let dt = registry
+        .lookup(&common::DocumentTypeApiId::try_new("mytypes").unwrap())
+        .expect("found");
     assert_eq!(dt.id.as_ref(), "mytype");
     assert!(dt.has_draft_and_publish());
 

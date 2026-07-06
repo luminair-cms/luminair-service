@@ -1,6 +1,3 @@
-use std::collections::HashMap;
-use chrono::Utc;
-use luminair_common::{AttributeId, DocumentType};
 use crate::application::commands::{
     CreateDocumentCommand, CreateDocumentWithRelationsCommand, DeleteDocumentCommand,
     FindByIdCommand, FindDocumentsCommand, ModifyRelationsCommand, PublishDocumentCommand,
@@ -8,11 +5,14 @@ use crate::application::commands::{
 };
 use crate::application::error::ServiceError;
 use crate::application::service::DocumentsService;
-use crate::domain::document::{DatabaseRowId, DocumentInstance, DocumentInstanceId};
 use crate::domain::document::content::DocumentContent;
 use crate::domain::document::error::DocumentError;
+use crate::domain::document::{DatabaseRowId, DocumentInstance, DocumentInstanceId};
 use crate::domain::query::{DocumentInstanceQuery, DocumentStatus};
 use crate::domain::repository::{DocumentsRepository, RelationMap, RelationOps, RepositoryError};
+use chrono::Utc;
+use luminair_common::{AttributeId, DocumentType};
+use std::collections::HashMap;
 
 #[derive(Clone)]
 pub struct DocumentsServiceImpl<R>
@@ -61,7 +61,10 @@ impl<R: DocumentsRepository> DocumentsServiceImpl<R> {
                 let per_doc: HashMap<AttributeId, Vec<DocumentInstance>> = relation_map
                     .iter()
                     .map(|(attr_id, by_row)| {
-                        let related = by_row.get(&instance.document_id).cloned().unwrap_or_default();
+                        let related = by_row
+                            .get(&instance.document_id)
+                            .cloned()
+                            .unwrap_or_default();
                         (attr_id.clone(), related)
                     })
                     .collect();
@@ -73,18 +76,31 @@ impl<R: DocumentsRepository> DocumentsServiceImpl<R> {
     }
 }
 
-
 impl<R: DocumentsRepository> DocumentsService for DocumentsServiceImpl<R> {
-    async fn find(&self, cmd: FindDocumentsCommand) -> Result<(Vec<DocumentInstance>, u64), ServiceError> {
+    async fn find(
+        &self,
+        cmd: FindDocumentsCommand,
+    ) -> Result<(Vec<DocumentInstance>, u64), ServiceError> {
         let (instances, count) = tokio::try_join!(
             self.repository.find(cmd.document_type, &cmd.query),
             self.repository.count(cmd.document_type, &cmd.query),
         )?;
-        let enriched = self.enrich(cmd.document_type, cmd.populate, cmd.populate_filters, cmd.query.status, instances).await?;
+        let enriched = self
+            .enrich(
+                cmd.document_type,
+                cmd.populate,
+                cmd.populate_filters,
+                cmd.query.status,
+                instances,
+            )
+            .await?;
         Ok((enriched, count))
     }
 
-    async fn find_by_id(&self, cmd: FindByIdCommand) -> Result<Option<DocumentInstance>, ServiceError> {
+    async fn find_by_id(
+        &self,
+        cmd: FindByIdCommand,
+    ) -> Result<Option<DocumentInstance>, ServiceError> {
         let opt = self
             .repository
             .find_by_id(cmd.document_type, cmd.document_instance_id, &cmd.query)
@@ -94,7 +110,13 @@ impl<R: DocumentsRepository> DocumentsService for DocumentsServiceImpl<R> {
             None => return Ok(None),
         };
         let enriched = self
-            .enrich(cmd.document_type, cmd.populate, cmd.populate_filters, cmd.query.status, vec![instance])
+            .enrich(
+                cmd.document_type,
+                cmd.populate,
+                cmd.populate_filters,
+                cmd.query.status,
+                vec![instance],
+            )
             .await?;
 
         Ok(enriched.into_iter().next())
@@ -124,7 +146,10 @@ impl<R: DocumentsRepository> DocumentsService for DocumentsServiceImpl<R> {
         Ok(document_id)
     }
 
-    async fn create_with_relations(&self, cmd: CreateDocumentWithRelationsCommand) -> Result<DocumentInstanceId, ServiceError> {
+    async fn create_with_relations(
+        &self,
+        cmd: CreateDocumentWithRelationsCommand,
+    ) -> Result<DocumentInstanceId, ServiceError> {
         let create_cmd = CreateDocumentCommand {
             document_type: cmd.document_type,
             fields: cmd.fields,
@@ -143,7 +168,6 @@ impl<R: DocumentsRepository> DocumentsService for DocumentsServiceImpl<R> {
 
         Ok(created_id)
     }
-
 
     async fn update(&self, cmd: UpdateDocumentCommand) -> Result<DocumentInstance, ServiceError> {
         // Updates are applied to the draft row — the published row is immutable
@@ -164,7 +188,10 @@ impl<R: DocumentsRepository> DocumentsService for DocumentsServiceImpl<R> {
         Ok(instance)
     }
 
-    async fn update_with_relations(&self, cmd: UpdateDocumentWithRelationsCommand) -> Result<DocumentInstance, ServiceError> {
+    async fn update_with_relations(
+        &self,
+        cmd: UpdateDocumentWithRelationsCommand,
+    ) -> Result<DocumentInstance, ServiceError> {
         if !cmd.fields.is_empty() {
             let update_cmd = UpdateDocumentCommand {
                 document_type: cmd.document_type,
@@ -199,9 +226,9 @@ impl<R: DocumentsRepository> DocumentsService for DocumentsServiceImpl<R> {
             .ok_or(ServiceError::DocumentNotFound)
     }
 
-
     async fn delete(&self, cmd: DeleteDocumentCommand) -> Result<(), ServiceError> {
-        self.repository.delete(cmd.document_type, cmd.document_instance_id)
+        self.repository
+            .delete(cmd.document_type, cmd.document_instance_id)
             .await
             .map_err(ServiceError::from)
     }
@@ -242,9 +269,13 @@ impl<R: DocumentsRepository> DocumentsService for DocumentsServiceImpl<R> {
                 return Err(ServiceError::NotOwningRelation(attr_id.to_string()));
             }
             let rel_ops = match operation {
-                RelationOperation::ConnectDisconnect { connect, disconnect } => {
-                    RelationOps { connect, disconnect }
-                }
+                RelationOperation::ConnectDisconnect {
+                    connect,
+                    disconnect,
+                } => RelationOps {
+                    connect,
+                    disconnect,
+                },
                 // Full-replacement semantics land in Phase 5 (queries/relations.rs):
                 // the diff against the existing set needs DB access to compute.
                 RelationOperation::Set(_) => {
@@ -262,7 +293,8 @@ impl<R: DocumentsRepository> DocumentsService for DocumentsServiceImpl<R> {
 
         // Fetch draft/working copy of the document
         let query = DocumentInstanceQuery::new().with_status(DocumentStatus::Draft);
-        let mut instance = self.repository
+        let mut instance = self
+            .repository
             .find_by_id(cmd.document_type, cmd.document_id, &query)
             .await
             .map_err(ServiceError::from)?

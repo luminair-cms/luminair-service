@@ -1,5 +1,5 @@
-use crate::domain::document::lifecycle::PublicationState;
 use crate::domain::document::DocumentInstance;
+use crate::domain::document::lifecycle::PublicationState;
 use chrono::{DateTime, Utc};
 
 use serde::Serialize;
@@ -14,7 +14,11 @@ pub struct ManyDocumentsResponse {
 
 impl ManyDocumentsResponse {
     pub fn new(documents: Vec<DocumentInstance>, page: u16, page_size: u16, total: u64) -> Self {
-        let meta = MetadataResponse { page, page_size, total };
+        let meta = MetadataResponse {
+            page,
+            page_size,
+            total,
+        };
         Self {
             data: documents
                 .into_iter()
@@ -55,7 +59,6 @@ impl OneDocumentResponse {
     }
 }
 
-
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DocumentInstanceResponse {
@@ -86,8 +89,6 @@ pub struct DocumentInstancePublicationState {
     pub published_by: Option<String>,
     pub revision: i32,
 }
-
-
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(untagged)]
@@ -139,10 +140,7 @@ impl From<DocumentInstance> for DocumentInstanceResponse {
             .iter()
             .map(|(k, v)| {
                 let json_value = JsonValue::from(v);
-                (
-                    to_api_key(k.as_ref()),
-                    AttributeResponse::Field(json_value),
-                )
+                (to_api_key(k.as_ref()), AttributeResponse::Field(json_value))
             })
             .collect();
 
@@ -151,7 +149,7 @@ impl From<DocumentInstance> for DocumentInstanceResponse {
                 .into_iter()
                 .filter_map(|r| match r {
                     crate::domain::document::DocumentRelation::Instance(inst) => {
-                        Some(DocumentInstanceResponse::from(inst))
+                        Some(DocumentInstanceResponse::from(*inst))
                     }
                     crate::domain::document::DocumentRelation::Id(_) => None,
                 })
@@ -179,9 +177,14 @@ fn to_api_key(snake: &str) -> String {
     let mut result = String::with_capacity(snake.len());
     let mut next_upper = false;
     for c in snake.chars() {
-        if c == '_' { next_upper = true; }
-        else if next_upper { result.extend(c.to_uppercase()); next_upper = false; }
-        else { result.push(c); }
+        if c == '_' {
+            next_upper = true;
+        } else if next_upper {
+            result.extend(c.to_uppercase());
+            next_upper = false;
+        } else {
+            result.push(c);
+        }
     }
     result
 }
@@ -194,7 +197,10 @@ mod tests {
     fn test_to_api_key() {
         assert_eq!(to_api_key("first_name"), "firstName");
         assert_eq!(to_api_key("camelCase"), "camelCase");
-        assert_eq!(to_api_key("consecutive__underscores"), "consecutiveUnderscores");
+        assert_eq!(
+            to_api_key("consecutive__underscores"),
+            "consecutiveUnderscores"
+        );
         assert_eq!(to_api_key("_leading_underscore"), "LeadingUnderscore");
         assert_eq!(to_api_key("trailing_underscore_"), "trailingUnderscore");
         assert_eq!(to_api_key("a"), "a");

@@ -1,7 +1,7 @@
 use axum::http::StatusCode;
 
-pub mod schema;
 pub mod content;
+pub mod schema;
 
 // health check handler
 pub async fn health_check() -> StatusCode {

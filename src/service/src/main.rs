@@ -3,8 +3,8 @@ use service::infrastructure::AppStateImpl;
 use service::infrastructure::http::{HttpServer, HttpServerConfig};
 use service::infrastructure::settings::Settings;
 
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use service::infrastructure::persistence::repository::PostgresDocumentsRepository;
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -23,7 +23,7 @@ async fn main() -> anyhow::Result<()> {
 
     let database = database::connect(&settings.database).await?;
     tracing::debug!("Connected to DB");
-    
+
     let repository = PostgresDocumentsRepository::new(registry, database);
     let state = AppStateImpl::new(registry, repository, settings.pagination);
 

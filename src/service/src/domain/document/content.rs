@@ -125,10 +125,7 @@ impl DomainValue {
 
             FieldType::DateTime => {
                 let dt = chrono::DateTime::parse_from_rfc3339(raw).map_err(|_| {
-                    filter_err(format!(
-                        "'{}' is not a valid RFC 3339 datetime",
-                        raw
-                    ))
+                    filter_err(format!("'{}' is not a valid RFC 3339 datetime", raw))
                 })?;
                 Ok(DomainValue::DateTime(dt.with_timezone(&Utc)))
             }
@@ -152,7 +149,6 @@ impl DomainValue {
 //
 // JSON ↔ Domain lives here (domain is allowed to depend on serde_json).
 // DB   ↔ Domain lives in `infrastructure/persistence/mapping/`.
-
 
 impl ContentValue {
     /// Decode a JSON value into a [`ContentValue`] according to the field's declared type.
@@ -389,10 +385,8 @@ impl ContentValue {
             (
                 ContentValue::Scalar(DomainValue::Integer(n)),
                 FieldConstraint::MaximalIntegerValue(max),
-            ) => {
-                if *n > i64::from(*max) {
-                    return Err(violation(format!("must not exceed {}", max)));
-                }
+            ) if *n > i64::from(*max) => {
+                return Err(violation(format!("must not exceed {}", max)));
             }
             _ => {} // constraint not applicable to this value/constraint combination
         }
@@ -506,10 +500,26 @@ mod tests {
 
     #[test]
     fn test_domain_value_parse_decimal() {
-        let val = DomainValue::parse("12.3456", FieldType::Decimal { precision: 10, scale: 2 }).unwrap();
-        assert_eq!(val, DomainValue::Decimal(rust_decimal::Decimal::new(1235, 2)));
+        let val = DomainValue::parse(
+            "12.3456",
+            FieldType::Decimal {
+                precision: 10,
+                scale: 2,
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            val,
+            DomainValue::Decimal(rust_decimal::Decimal::new(1235, 2))
+        );
 
-        let err = DomainValue::parse("abc", FieldType::Decimal { precision: 10, scale: 2 });
+        let err = DomainValue::parse(
+            "abc",
+            FieldType::Decimal {
+                precision: 10,
+                scale: 2,
+            },
+        );
         assert!(err.is_err());
     }
 
@@ -528,7 +538,10 @@ mod tests {
     #[test]
     fn test_domain_value_parse_date() {
         let val = DomainValue::parse("2026-07-06", FieldType::Date).unwrap();
-        assert_eq!(val, DomainValue::Date(chrono::NaiveDate::from_ymd_opt(2026, 7, 6).unwrap()));
+        assert_eq!(
+            val,
+            DomainValue::Date(chrono::NaiveDate::from_ymd_opt(2026, 7, 6).unwrap())
+        );
 
         let err = DomainValue::parse("2026/07/06", FieldType::Date);
         assert!(err.is_err());
@@ -539,7 +552,11 @@ mod tests {
         let val = DomainValue::parse("2026-07-06T12:34:56Z", FieldType::DateTime).unwrap();
         assert_eq!(
             val,
-            DomainValue::DateTime(chrono::DateTime::parse_from_rfc3339("2026-07-06T12:34:56Z").unwrap().with_timezone(&chrono::Utc))
+            DomainValue::DateTime(
+                chrono::DateTime::parse_from_rfc3339("2026-07-06T12:34:56Z")
+                    .unwrap()
+                    .with_timezone(&chrono::Utc)
+            )
         );
 
         let err = DomainValue::parse("2026-07-06 12:34:56", FieldType::DateTime);
@@ -555,4 +572,3 @@ mod tests {
         assert!(err.is_err());
     }
 }
-

@@ -1,12 +1,7 @@
 use nutype::nutype;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
-use std::{
-    collections::HashSet,
-    borrow::Borrow,
-    hash::Hash,
-    sync::LazyLock
-};
+use std::{borrow::Borrow, collections::HashSet, hash::Hash, sync::LazyLock};
 
 use crate::domain::{AttributeId, DocumentTypeId};
 
@@ -19,14 +14,14 @@ pub struct DocumentType {
     pub info: DocumentTypeInfo,
     pub options: Option<DocumentTypeOptions>,
     pub fields: HashSet<DocumentField>,
-    pub relations: HashSet<DocumentRelation>
+    pub relations: HashSet<DocumentRelation>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub enum DocumentKind {
-    Collection,     // Many instances: Partners, Brands
-    SingleType,     // One instance: Settings, SiteConfig
+    Collection, // Many instances: Partners, Brands
+    SingleType, // One instance: Settings, SiteConfig
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -102,7 +97,7 @@ pub struct DocumentField {
 pub struct DocumentRelation {
     pub id: AttributeId,
     pub relation_type: RelationType,
-    pub target: DocumentTypeId
+    pub target: DocumentTypeId,
 }
 
 // TODO: support for more complex relations (e.g. with additional fields on the relation itself, like in a many-to-many with pivot table)
@@ -118,38 +113,32 @@ pub enum FieldType {
     Uuid, // unique identifier based on UUID
     Text,
     LocalizedText,
-    Integer (
-        #[serde(default)]
-        IntegerSize
-    ),
-    Decimal {
-        precision: usize,
-        scale: u32
-    },
+    Integer(#[serde(default)] IntegerSize),
+    Decimal { precision: usize, scale: u32 },
     Date,
     DateTime,
     Boolean,
-    Json,  // arbitrary JSON data
+    Json, // arbitrary JSON data
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
 #[serde(rename_all = "camelCase")]
 pub enum FieldConstraint {
-    Pattern(String),     // test string with regular expression
+    Pattern(String),      // test string with regular expression
     MinimalLength(usize), // test string with minimal length
     MaximalLength(usize), // test string with maximal length
     MinimalIntegerValue(i32),
-    MaximalIntegerValue(i32)
+    MaximalIntegerValue(i32),
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
 #[serde(rename_all = "camelCase")]
-pub enum IntegerSize { Int16, Int32, Int64 }
-
-impl Default for IntegerSize {
-    fn default() -> Self {
-        IntegerSize::Int32
-    }
+#[derive(Default)]
+pub enum IntegerSize {
+    Int16,
+    #[default]
+    Int32,
+    Int64,
 }
 
 impl IntegerSize {
@@ -172,7 +161,10 @@ impl FieldType {
     }
 
     pub fn is_text(&self) -> bool {
-        matches!(self, FieldType::Text | FieldType::LocalizedText | FieldType::Uid)
+        matches!(
+            self,
+            FieldType::Text | FieldType::LocalizedText | FieldType::Uid
+        )
     }
 }
 
@@ -223,26 +215,30 @@ impl DocumentType {
         plural: &str,
     ) -> Result<Self, anyhow::Error> {
         Ok(Self {
-            id:   DocumentTypeId::try_new(id)?,
+            id: DocumentTypeId::try_new(id)?,
             kind: DocumentKind::Collection,
             info: DocumentTypeInfo {
-                title:         DocumentTitle::try_new(id)?,
+                title: DocumentTitle::try_new(id)?,
                 singular_name: DocumentTypeId::try_new(singular)?,
-                plural_name:   DocumentTypeId::try_new(plural)?,
-                description:   None,
+                plural_name: DocumentTypeId::try_new(plural)?,
+                description: None,
             },
-            options:   None,
-            fields:    HashSet::new(),
+            options: None,
+            fields: HashSet::new(),
             relations: HashSet::new(),
         })
     }
 
     pub fn has_localization(&self) -> bool {
-        self.options.as_ref().map_or(false, |options|!options.localizations.is_empty())
+        self.options
+            .as_ref()
+            .is_some_and(|options| !options.localizations.is_empty())
     }
-    
+
     pub fn has_draft_and_publish(&self) -> bool {
-        self.options.as_ref().map_or(false, |options|options.draft_and_publish)
+        self.options
+            .as_ref()
+            .is_some_and(|options| options.draft_and_publish)
     }
 
     pub fn ordered_fields(&self) -> Vec<&DocumentField> {
@@ -263,11 +259,13 @@ impl DocumentType {
             }
         }
         let mut fields: Vec<_> = self.fields.iter().collect();
-        fields.sort_by_key(|f| (
-            !f.unique, // unique fields first
-            field_type_order(&f.field_type),
-            &f.id
-        ));
+        fields.sort_by_key(|f| {
+            (
+                !f.unique, // unique fields first
+                field_type_order(&f.field_type),
+                &f.id,
+            )
+        });
         fields
     }
 }
@@ -371,7 +369,13 @@ mod tests {
     fn fieldtype_predicates() {
         assert!(FieldType::Integer(IntegerSize::Int32).is_integer());
         assert!(FieldType::Integer(IntegerSize::Int16).is_number());
-        assert!(FieldType::Decimal { precision: 10, scale: 2 }.is_number());
+        assert!(
+            FieldType::Decimal {
+                precision: 10,
+                scale: 2
+            }
+            .is_number()
+        );
         assert!(FieldType::Text.is_text());
         assert!(FieldType::Uid.is_text());
     }
@@ -380,8 +384,14 @@ mod tests {
     fn fieldconstraint_applicability() {
         assert!(FieldConstraint::Pattern("x".into()).is_applicable_for(FieldType::Text));
         assert!(FieldConstraint::MinimalLength(1).is_applicable_for(FieldType::Uid));
-        assert!(!FieldConstraint::MinimalLength(1).is_applicable_for(FieldType::Integer(IntegerSize::Int32)));
-        assert!(FieldConstraint::MinimalIntegerValue(0).is_applicable_for(FieldType::Integer(IntegerSize::Int32)));
+        assert!(
+            !FieldConstraint::MinimalLength(1)
+                .is_applicable_for(FieldType::Integer(IntegerSize::Int32))
+        );
+        assert!(
+            FieldConstraint::MinimalIntegerValue(0)
+                .is_applicable_for(FieldType::Integer(IntegerSize::Int32))
+        );
     }
 
     #[test]

@@ -38,11 +38,8 @@ async fn sort_documents_by_field_ascending() -> anyhow::Result<()> {
     create_brand(&router, "srt-aaa", "Apple").await?;
     create_brand(&router, "srt-mmm", "Mango").await?;
 
-    let (status, json) = get_json(
-        &router,
-        "/api/documents/brands?status=draft&sort=uid:asc",
-    )
-    .await?;
+    let (status, json) =
+        get_json(&router, "/api/documents/brands?status=draft&sort=uid:asc").await?;
 
     assert_eq!(status, StatusCode::OK);
     let items = json["data"].as_array().expect("data must be an array");

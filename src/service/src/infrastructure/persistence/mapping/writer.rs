@@ -1,6 +1,6 @@
+use crate::domain::document::content::{ContentValue, DomainValue};
 use sea_query::Expr;
 use serde_json::json;
-use crate::domain::document::content::{ContentValue, DomainValue};
 
 impl From<&ContentValue> for Expr {
     fn from(value: &ContentValue) -> Self {

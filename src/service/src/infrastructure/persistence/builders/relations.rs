@@ -1,29 +1,34 @@
-use sea_query::{Alias, ColumnRef, DynIden, Expr, ExprTrait, JoinType, Order, PostgresQueryBuilder, Query};
-use sea_query::extension::postgres::PgExpr;
-use sea_query_sqlx::{SqlxBinder, SqlxValues};
-use uuid::Uuid;
-use luminair_common::{AttributeId, DOCUMENT_ID_FIELD_NAME, DocumentType, OWNING_DOCUMENT_ID_FIELD_NAME, TARGET_DOCUMENT_ID_FIELD_NAME, STATUS_FIELD_NAME, VERSION_FIELD_NAME};
-use luminair_common::persistence::TableNameProviderConstructor;
 use crate::domain::query::DocumentStatus;
 use crate::infrastructure::persistence::builders::main_select_columns;
+use luminair_common::persistence::TableNameProviderConstructor;
+use luminair_common::{
+    AttributeId, DOCUMENT_ID_FIELD_NAME, DocumentType, OWNING_DOCUMENT_ID_FIELD_NAME,
+    STATUS_FIELD_NAME, TARGET_DOCUMENT_ID_FIELD_NAME, VERSION_FIELD_NAME,
+};
+use sea_query::extension::postgres::PgExpr;
+use sea_query::{
+    Alias, ColumnRef, DynIden, Expr, ExprTrait, JoinType, Order, PostgresQueryBuilder, Query,
+};
+use sea_query_sqlx::{SqlxBinder, SqlxValues};
+use uuid::Uuid;
 
 /**
  * if query.status == DocumentStatus::Published:
- * 
+ *
  * SELECT r.owning_document_id, m.document_id, 'PUBLISHED' as status, ...
  * FROM article_categories_relation_snapshots r
  * JOIN related_table_snapshots m ON m.document_id = r.target_document_id
  * WHERE r.owning_document_id = ANY($1)
  * ORDER BY r.owning_document_id
- * 
+ *
  * if query.status == DocumentStatus::Draft:
- * 
+ *
  * SELECT r.owning_document_id, m.document_id, ...
  * FROM article_categories_relation r
  * JOIN related_table m ON m.document_id = r.target_document_id
  * WHERE r.owning_document_id = ANY($1)
  * ORDER BY r.owning_document_id
- * 
+ *
  */
 pub fn query_find_related_documents(
     main_document: &DocumentType,
@@ -33,17 +38,19 @@ pub fn query_find_related_documents(
     status: DocumentStatus,
     params: Vec<Uuid>,
 ) -> (String, SqlxValues) {
-    let related_table = if status == DocumentStatus::Published && related_document.has_draft_and_publish() {
-        related_document.snapshot_table()
-    } else {
-        related_document.main_table()
-    };
+    let related_table =
+        if status == DocumentStatus::Published && related_document.has_draft_and_publish() {
+            related_document.snapshot_table()
+        } else {
+            related_document.main_table()
+        };
 
-    let relation_table = if status == DocumentStatus::Published && main_document.has_draft_and_publish() {
-        main_document.relation_snapshot_table(relation_attr)
-    } else {
-        main_document.relation_table(relation_attr)
-    };
+    let relation_table =
+        if status == DocumentStatus::Published && main_document.has_draft_and_publish() {
+            main_document.relation_snapshot_table(relation_attr)
+        } else {
+            main_document.relation_table(relation_attr)
+        };
 
     let owning_document_id_column = ("r", OWNING_DOCUMENT_ID_FIELD_NAME);
 
@@ -63,19 +70,24 @@ pub fn query_find_related_documents(
         .and_where(Expr::col(owning_document_id_column).eq_any(params))
         .order_by(owning_document_id_column, Order::Asc);
 
-    let (status_expr, version_expr) = if status == DocumentStatus::Published && related_document.has_draft_and_publish() {
-        (Expr::cust("'PUBLISHED'"), Expr::cust("0"))
-    } else {
-        (
-            Expr::col(("m", STATUS_FIELD_NAME)),
-            Expr::col(("m", VERSION_FIELD_NAME)),
-        )
-    };
+    let (status_expr, version_expr) =
+        if status == DocumentStatus::Published && related_document.has_draft_and_publish() {
+            (Expr::cust("'PUBLISHED'"), Expr::cust("0"))
+        } else {
+            (
+                Expr::col(("m", STATUS_FIELD_NAME)),
+                Expr::col(("m", VERSION_FIELD_NAME)),
+            )
+        };
 
     select.expr_as(status_expr, Alias::new("status"));
     select.expr_as(version_expr, Alias::new("version"));
 
-    if let Some(condition) = crate::infrastructure::persistence::builders::find::build_condition(filter, related_document, "m") {
+    if let Some(condition) = crate::infrastructure::persistence::builders::find::build_condition(
+        filter,
+        related_document,
+        "m",
+    ) {
         select.cond_where(condition);
     }
 

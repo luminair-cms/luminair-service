@@ -9,9 +9,7 @@
 //! ```
 
 use luminair_common::{
-    DocumentTypesRegistry,
-    InMemoryDocumentTypesRegistry,
-    entities::DocumentType,
+    DocumentTypesRegistry, InMemoryDocumentTypesRegistry, entities::DocumentType,
 };
 use migration::{
     application::{Migration, Persistence},
@@ -27,9 +25,7 @@ use testcontainers_modules::{postgres::Postgres, testcontainers::runners::AsyncR
 /// Boots a fresh Postgres container and returns the connected [`PgPool`] and
 /// the container guard (must stay alive for the test duration).
 async fn start_postgres() -> anyhow::Result<(PgPool, impl Drop)> {
-    let container = Postgres::default()
-        .start()
-        .await?;
+    let container = Postgres::default().start().await?;
 
     let host = container.get_host().await?;
     let port = container.get_host_port_ipv4(5432).await?;
@@ -57,9 +53,11 @@ async fn isolated_schema(pool: &PgPool) -> anyhow::Result<String> {
 
 /// Helper to drop the isolated schema after test execution.
 async fn drop_schema(pool: &PgPool, schema: &str) -> anyhow::Result<()> {
-    sqlx::query(sqlx::AssertSqlSafe(format!("DROP SCHEMA IF EXISTS \"{schema}\" CASCADE")))
-        .execute(pool)
-        .await?;
+    sqlx::query(sqlx::AssertSqlSafe(format!(
+        "DROP SCHEMA IF EXISTS \"{schema}\" CASCADE"
+    )))
+    .execute(pool)
+    .await?;
     Ok(())
 }
 
@@ -108,20 +106,22 @@ async fn test_create_tables_on_fresh_database() -> anyhow::Result<()> {
     let (pool, _container) = start_postgres().await?;
     let schema = isolated_schema(&pool).await?;
 
-    let persistence = run_migration(&pool, &schema, vec![
-        make_document("alpha"),
-        make_document("beta"),
-    ]).await?;
+    let persistence = run_migration(
+        &pool,
+        &schema,
+        vec![make_document("alpha"), make_document("beta")],
+    )
+    .await?;
 
     let actual = persistence.load().await?;
     let names: Vec<&str> = actual.iter().map(|t| t.name.as_str()).collect();
 
     assert!(
-        names.iter().any(|&n| n == "alpha"),
+        names.contains(&"alpha"),
         "table 'alpha' must exist after migration; got: {names:?}"
     );
     assert!(
-        names.iter().any(|&n| n == "beta"),
+        names.contains(&"beta"),
         "table 'beta' must exist after migration; got: {names:?}"
     );
 
@@ -142,28 +142,30 @@ async fn test_create_additional_table() -> anyhow::Result<()> {
     let tables_v1 = persistence_v1.load().await?;
     let names_v1: Vec<&str> = tables_v1.iter().map(|t| t.name.as_str()).collect();
     assert!(
-        names_v1.iter().any(|&n| n == "gamma"),
+        names_v1.contains(&"gamma"),
         "table 'gamma' must exist after first pass; got: {names_v1:?}"
     );
     assert!(
-        !names_v1.iter().any(|&n| n == "delta"),
+        !names_v1.contains(&"delta"),
         "table 'delta' must NOT exist yet; got: {names_v1:?}"
     );
 
     // --- Second pass: add 'delta' alongside 'gamma' ---
-    let persistence_v2 = run_migration(&pool, &schema, vec![
-        make_document("gamma"),
-        make_document("delta"),
-    ]).await?;
+    let persistence_v2 = run_migration(
+        &pool,
+        &schema,
+        vec![make_document("gamma"), make_document("delta")],
+    )
+    .await?;
 
     let tables_v2 = persistence_v2.load().await?;
     let names_v2: Vec<&str> = tables_v2.iter().map(|t| t.name.as_str()).collect();
     assert!(
-        names_v2.iter().any(|&n| n == "gamma"),
+        names_v2.contains(&"gamma"),
         "table 'gamma' must still exist after second pass; got: {names_v2:?}"
     );
     assert!(
-        names_v2.iter().any(|&n| n == "delta"),
+        names_v2.contains(&"delta"),
         "table 'delta' must be created by second pass; got: {names_v2:?}"
     );
 
@@ -179,19 +181,21 @@ async fn test_remove_obsolete_table() -> anyhow::Result<()> {
     let schema = isolated_schema(&pool).await?;
 
     // --- First pass: create 'epsilon' and 'zeta' ---
-    let persistence_v1 = run_migration(&pool, &schema, vec![
-        make_document("epsilon"),
-        make_document("zeta"),
-    ]).await?;
+    let persistence_v1 = run_migration(
+        &pool,
+        &schema,
+        vec![make_document("epsilon"), make_document("zeta")],
+    )
+    .await?;
 
     let tables_v1 = persistence_v1.load().await?;
     let names_v1: Vec<&str> = tables_v1.iter().map(|t| t.name.as_str()).collect();
     assert!(
-        names_v1.iter().any(|&n| n == "epsilon"),
+        names_v1.contains(&"epsilon"),
         "table 'epsilon' must exist; got: {names_v1:?}"
     );
     assert!(
-        names_v1.iter().any(|&n| n == "zeta"),
+        names_v1.contains(&"zeta"),
         "table 'zeta' must exist; got: {names_v1:?}"
     );
 
@@ -201,11 +205,11 @@ async fn test_remove_obsolete_table() -> anyhow::Result<()> {
     let tables_v2 = persistence_v2.load().await?;
     let names_v2: Vec<&str> = tables_v2.iter().map(|t| t.name.as_str()).collect();
     assert!(
-        names_v2.iter().any(|&n| n == "epsilon"),
+        names_v2.contains(&"epsilon"),
         "table 'epsilon' must still exist; got: {names_v2:?}"
     );
     assert!(
-        !names_v2.iter().any(|&n| n == "zeta"),
+        !names_v2.contains(&"zeta"),
         "table 'zeta' must have been dropped; got: {names_v2:?}"
     );
 

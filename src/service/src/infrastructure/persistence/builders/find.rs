@@ -5,10 +5,12 @@ use crate::infrastructure::persistence::builders::main_select_columns;
 
 use luminair_common::persistence::TableNameProviderConstructor;
 use luminair_common::{
-    DOCUMENT_ID_FIELD_NAME, DocumentType, STATUS_FIELD_NAME, VERSION_FIELD_NAME, entities::FieldType,
+    DOCUMENT_ID_FIELD_NAME, DocumentType, STATUS_FIELD_NAME, VERSION_FIELD_NAME,
+    entities::FieldType,
 };
 use sea_query::{
-    Alias, ColumnRef, Condition, Expr, ExprTrait, Order, PostgresQueryBuilder, Query, SelectStatement, TableRef
+    Alias, ColumnRef, Condition, Expr, ExprTrait, Order, PostgresQueryBuilder, Query,
+    SelectStatement, TableRef,
 };
 use sea_query_sqlx::{SqlxBinder, SqlxValues};
 use uuid::Uuid;
@@ -98,28 +100,26 @@ pub fn query_find_document_by_criteria(
     select.build_sqlx(PostgresQueryBuilder)
 }
 
-fn main_document_select(
-    document: &DocumentType,
-    status: DocumentStatus,
-) -> SelectStatement {
-    let (table_ref, status_expr, version_expr) = if status == DocumentStatus::Published && document.has_draft_and_publish() {
-        let table_ref = document.snapshot_table();
-        (
-            TableRef::from(table_ref),
-            Expr::cust("'PUBLISHED'"),
-            Expr::cust("0"),
-        )
-    } else {
-        let table_ref = document.main_table();
-        let status_column: ColumnRef = ("m", STATUS_FIELD_NAME).into();
-        let version_column: ColumnRef = ("m", VERSION_FIELD_NAME).into();
+fn main_document_select(document: &DocumentType, status: DocumentStatus) -> SelectStatement {
+    let (table_ref, status_expr, version_expr) =
+        if status == DocumentStatus::Published && document.has_draft_and_publish() {
+            let table_ref = document.snapshot_table();
+            (
+                TableRef::from(table_ref),
+                Expr::cust("'PUBLISHED'"),
+                Expr::cust("0"),
+            )
+        } else {
+            let table_ref = document.main_table();
+            let status_column: ColumnRef = ("m", STATUS_FIELD_NAME).into();
+            let version_column: ColumnRef = ("m", VERSION_FIELD_NAME).into();
 
-        (
-            TableRef::from(table_ref),
-            Expr::col(status_column),
-            Expr::col(version_column),
-        )
-    };
+            (
+                TableRef::from(table_ref),
+                Expr::col(status_column),
+                Expr::col(version_column),
+            )
+        };
 
     let mut select = Query::select();
     select.from(table_ref);
@@ -146,7 +146,10 @@ pub fn query_count_documents(
 
     let mut select = Query::select();
     select
-        .expr_as(Expr::cust("COUNT(DISTINCT m.document_id)"), Alias::new("count"))
+        .expr_as(
+            Expr::cust("COUNT(DISTINCT m.document_id)"),
+            Alias::new("count"),
+        )
         .from(table_ref);
 
     if let Some(condition) = build_condition(&query.filter, document, "m") {
@@ -256,7 +259,10 @@ pub fn get_column_expr(field_path: &str, document: &DocumentType, alias: &str) -
 
     let (column_name, is_localized) =
         if let Some(field) = document.fields.iter().find(|f| f.id.as_ref() == base_field) {
-            (field.id.normalized(), field.field_type == FieldType::LocalizedText)
+            (
+                field.id.normalized(),
+                field.field_type == FieldType::LocalizedText,
+            )
         } else {
             (base_field.to_string(), false)
         };

@@ -90,11 +90,8 @@ async fn nonexistent_relation_target_returns_422_problem_details() -> anyhow::Re
 async fn page_size_is_capped_at_configured_maximum() -> anyhow::Result<()> {
     let (router, _c) = build_router().await?;
 
-    let (status, json) = get_json(
-        &router,
-        "/api/documents/brands?pagination[pageSize]=999",
-    )
-    .await?;
+    let (status, json) =
+        get_json(&router, "/api/documents/brands?pagination[pageSize]=999").await?;
 
     assert_eq!(status, StatusCode::OK);
     let meta = &json["meta"];

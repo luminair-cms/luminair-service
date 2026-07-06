@@ -1,7 +1,7 @@
 use crate::application::AppState;
 use crate::infrastructure::http::handlers::content::{
     create_new_document, delete_existing_document, find_all_documents, find_document_by_id,
-    update_document_handler, publish_document,
+    publish_document, update_document_handler,
 };
 use crate::infrastructure::http::handlers::schema::{documents_metadata, one_document_metadata};
 use axum::Router;

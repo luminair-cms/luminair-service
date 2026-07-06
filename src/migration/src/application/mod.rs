@@ -1,13 +1,18 @@
-use std::future::Future;
+use crate::domain::migration::{
+    MigrationStep, MigrationStepItem, documents_into_tables, plan_migration,
+};
 use crate::domain::tables::Table;
-use crate::domain::migration::{plan_migration, documents_into_tables, MigrationStep, MigrationStepItem};
 use luminair_common::DocumentTypesRegistry;
+use std::future::Future;
 
 pub trait Persistence: Send + Sync + Clone + 'static {
     /// load persistence from database
     fn load(&self) -> impl Future<Output = Result<Vec<Table>, anyhow::Error>>;
     /// apply migration steps to database
-    fn apply_migration_steps(&self, steps: Vec<MigrationStepItem>) -> impl Future<Output = Result<(), anyhow::Error>>;
+    fn apply_migration_steps(
+        &self,
+        steps: Vec<MigrationStepItem>,
+    ) -> impl Future<Output = Result<(), anyhow::Error>>;
     /// extract database schema
     fn database_schema(&self) -> &str;
 }
@@ -52,9 +57,7 @@ impl<P: Persistence> Migration<P> {
             return Ok(());
         }
 
-        self.persistence
-            .apply_migration_steps(steps)
-            .await?;
+        self.persistence.apply_migration_steps(steps).await?;
 
         Ok(())
     }

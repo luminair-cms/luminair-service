@@ -128,7 +128,13 @@ pub(super) fn parse_raw_query(
     // filters — kept opaque for the validation phase
     let filters = query_map.get("filters").cloned();
 
-    RawQueryParams { populate, pagination, status, sorts, filters }
+    RawQueryParams {
+        populate,
+        pagination,
+        status,
+        sorts,
+        filters,
+    }
 }
 
 // ─── Public entry point ───────────────────────────────────────────────────────
@@ -166,7 +172,11 @@ pub fn parse_query(
             .into_iter()
             .map(|(attr, nodes)| Ok((attr, build_filter_expression(nodes)?)))
             .collect::<Result<HashMap<_, _>, ApiError>>()?;
-        let pop_filters = if pop_filters.is_empty() { None } else { Some(pop_filters) };
+        let pop_filters = if pop_filters.is_empty() {
+            None
+        } else {
+            Some(pop_filters)
+        };
         (main_filter, pop_filters)
     } else {
         (FilterExpression::None, None)
@@ -304,13 +314,13 @@ fn validate_filter_tree(
                     let operator = FilterOperator::from_str(key)?;
                     let node = build_validated_node(current_path, operator, child, document_type)?;
                     nodes.push(node);
-                } else if let Some(rel) =
-                    document_type.relations.iter().find(|r| r.id.as_ref() == key)
+                } else if let Some(rel) = document_type
+                    .relations
+                    .iter()
+                    .find(|r| r.id.as_ref() == key)
                 {
                     // Relation key — recurse with the target document type.
-                    let target_type = registry
-                        .get(&rel.target)
-                        .ok_or(ApiError::NotFound)?;
+                    let target_type = registry.get(&rel.target).ok_or(ApiError::NotFound)?;
 
                     let children = validate_filter_tree(child, "", target_type, registry)?;
                     nodes.push(ValidatedFilterNode::Relation {
@@ -332,7 +342,8 @@ fn validate_filter_tree(
         }
         // Bare value with no explicit operator — treat as an implicit `$eq`.
         _ => {
-            let node = build_validated_node(current_path, FilterOperator::Eq, value, document_type)?;
+            let node =
+                build_validated_node(current_path, FilterOperator::Eq, value, document_type)?;
             nodes.push(node);
         }
     }
@@ -403,7 +414,7 @@ fn build_validated_node(
                 return Err(ApiError::UnprocessableEntity(format!(
                     "Expected an array for operator {:?} on field '{}'",
                     operator, field_path
-                )))
+                )));
             }
         };
         return Ok(ValidatedFilterNode::List {
@@ -451,13 +462,19 @@ fn json_value_to_raw_string(value: &Value) -> Option<String> {
 /// [`ValidatedFilterNode::Relation`] nodes.
 fn split_relation_filters(
     nodes: Vec<ValidatedFilterNode>,
-) -> (Vec<ValidatedFilterNode>, HashMap<AttributeId, Vec<ValidatedFilterNode>>) {
+) -> (
+    Vec<ValidatedFilterNode>,
+    HashMap<AttributeId, Vec<ValidatedFilterNode>>,
+) {
     let mut main_nodes = Vec::new();
     let mut rel_map: HashMap<AttributeId, Vec<ValidatedFilterNode>> = HashMap::new();
 
     for node in nodes {
         match node {
-            ValidatedFilterNode::Relation { relation_id, children } => {
+            ValidatedFilterNode::Relation {
+                relation_id,
+                children,
+            } => {
                 rel_map.entry(relation_id).or_default().extend(children);
             }
             other => main_nodes.push(other),
@@ -473,9 +490,7 @@ fn split_relation_filters(
 ///
 /// Multiple nodes are combined with `And`.  Uses [`DomainValue::parse`] for all
 /// type coercion — the single canonical `&str → DomainValue` path.
-fn build_filter_expression(
-    nodes: Vec<ValidatedFilterNode>,
-) -> Result<FilterExpression, ApiError> {
+fn build_filter_expression(nodes: Vec<ValidatedFilterNode>) -> Result<FilterExpression, ApiError> {
     let mut result = FilterExpression::None;
 
     for node in nodes {
@@ -492,7 +507,10 @@ fn build_filter_expression(
 /// Convert a single [`ValidatedFilterNode`] into a [`FilterExpression`].
 fn node_to_expression(node: ValidatedFilterNode) -> Result<FilterExpression, ApiError> {
     match node {
-        ValidatedFilterNode::NullCheck { field_path, is_not_null } => {
+        ValidatedFilterNode::NullCheck {
+            field_path,
+            is_not_null,
+        } => {
             if is_not_null {
                 Ok(FilterExpression::IsNotNull { field: field_path })
             } else {
@@ -500,7 +518,12 @@ fn node_to_expression(node: ValidatedFilterNode) -> Result<FilterExpression, Api
             }
         }
 
-        ValidatedFilterNode::List { field_path, operator, field_type, raw_values } => {
+        ValidatedFilterNode::List {
+            field_path,
+            operator,
+            field_type,
+            raw_values,
+        } => {
             let values = raw_values
                 .into_iter()
                 .map(|raw| {
@@ -510,23 +533,30 @@ fn node_to_expression(node: ValidatedFilterNode) -> Result<FilterExpression, Api
                 .collect::<Result<Vec<_>, _>>()?;
 
             match operator {
-                FilterOperator::In => Ok(FilterExpression::In { field: field_path, values }),
-                FilterOperator::NotIn => Ok(FilterExpression::NotIn { field: field_path, values }),
+                FilterOperator::In => Ok(FilterExpression::In {
+                    field: field_path,
+                    values,
+                }),
+                FilterOperator::NotIn => Ok(FilterExpression::NotIn {
+                    field: field_path,
+                    values,
+                }),
                 _ => unreachable!("only In/NotIn reach the List branch"),
             }
         }
 
-        ValidatedFilterNode::Scalar { field_path, operator, field_type, raw_value } => {
-            scalar_to_expression(field_path, operator, raw_value, field_type)
-        }
+        ValidatedFilterNode::Scalar {
+            field_path,
+            operator,
+            field_type,
+            raw_value,
+        } => scalar_to_expression(field_path, operator, raw_value, field_type),
 
         // Relation nodes are split out by split_relation_filters before this function
         // is called; if one reaches here it is a logic error.
-        ValidatedFilterNode::Relation { .. } => {
-            Err(ApiError::InternalServerError(
-                "Relation filter node reached domain mapping phase unexpectedly".to_owned(),
-            ))
-        }
+        ValidatedFilterNode::Relation { .. } => Err(ApiError::InternalServerError(
+            "Relation filter node reached domain mapping phase unexpectedly".to_owned(),
+        )),
     }
 }
 
@@ -644,7 +674,8 @@ mod tests {
     use super::*;
     use crate::infrastructure::http::querystring::parse_query_to_json;
     use luminair_common::entities::{
-        DocumentField, DocumentKind, DocumentRelation, DocumentTitle, DocumentTypeInfo, RelationType,
+        DocumentField, DocumentKind, DocumentRelation, DocumentTitle, DocumentTypeInfo,
+        RelationType,
     };
     use luminair_common::{DocumentTypeApiId, DocumentTypeId};
     use std::collections::{HashMap, HashSet};
@@ -734,7 +765,13 @@ mod tests {
             &pagination[pageSize]=10";
         let query_map = parse_query_to_json(query);
 
-        let q = parse_query(&query_map, dt_restaurant, &registry, &crate::application::PaginationSettings::default()).unwrap();
+        let q = parse_query(
+            &query_map,
+            dt_restaurant,
+            &registry,
+            &crate::application::PaginationSettings::default(),
+        )
+        .unwrap();
 
         assert_eq!(q.pagination, (2, 10));
         assert_eq!(q.status, DocumentStatus::Draft);
@@ -777,14 +814,25 @@ mod tests {
             relations: HashSet::new(),
         }));
 
-        let registry = MockRegistry { types: HashMap::new() };
+        let registry = MockRegistry {
+            types: HashMap::new(),
+        };
         let query = "filters[nonexistent][$eq]=foo";
         let query_map = parse_query_to_json(query);
 
-        let result = parse_query(&query_map, dt, &registry, &crate::application::PaginationSettings::default());
+        let result = parse_query(
+            &query_map,
+            dt,
+            &registry,
+            &crate::application::PaginationSettings::default(),
+        );
         assert!(matches!(result, Err(ApiError::UnprocessableEntity(_))));
         let msg = result.unwrap_err().to_string();
-        assert!(msg.contains("nonexistent"), "error should name the bad field: {}", msg);
+        assert!(
+            msg.contains("nonexistent"),
+            "error should name the bad field: {}",
+            msg
+        );
     }
 
     #[test]
@@ -809,24 +857,55 @@ mod tests {
             relations: HashSet::new(),
         }));
 
-        let registry = MockRegistry { types: HashMap::new() };
+        let registry = MockRegistry {
+            types: HashMap::new(),
+        };
         let query = "sort=ghost_field:asc";
         let query_map = parse_query_to_json(query);
 
-        let result = parse_query(&query_map, dt, &registry, &crate::application::PaginationSettings::default());
+        let result = parse_query(
+            &query_map,
+            dt,
+            &registry,
+            &crate::application::PaginationSettings::default(),
+        );
         assert!(matches!(result, Err(ApiError::UnprocessableEntity(_))));
     }
 
     #[test]
     fn test_filter_operator_aliases() {
-        assert_eq!(FilterOperator::from_str("$notIn").unwrap(), FilterOperator::NotIn);
-        assert_eq!(FilterOperator::from_str("$not_in").unwrap(), FilterOperator::NotIn);
-        assert_eq!(FilterOperator::from_str("$startsWith").unwrap(), FilterOperator::StartsWith);
-        assert_eq!(FilterOperator::from_str("$starts_with").unwrap(), FilterOperator::StartsWith);
-        assert_eq!(FilterOperator::from_str("$endsWith").unwrap(), FilterOperator::EndsWith);
-        assert_eq!(FilterOperator::from_str("$ends_with").unwrap(), FilterOperator::EndsWith);
-        assert_eq!(FilterOperator::from_str("$notNull").unwrap(), FilterOperator::IsNotNull);
-        assert_eq!(FilterOperator::from_str("$not_null").unwrap(), FilterOperator::IsNotNull);
+        assert_eq!(
+            FilterOperator::from_str("$notIn").unwrap(),
+            FilterOperator::NotIn
+        );
+        assert_eq!(
+            FilterOperator::from_str("$not_in").unwrap(),
+            FilterOperator::NotIn
+        );
+        assert_eq!(
+            FilterOperator::from_str("$startsWith").unwrap(),
+            FilterOperator::StartsWith
+        );
+        assert_eq!(
+            FilterOperator::from_str("$starts_with").unwrap(),
+            FilterOperator::StartsWith
+        );
+        assert_eq!(
+            FilterOperator::from_str("$endsWith").unwrap(),
+            FilterOperator::EndsWith
+        );
+        assert_eq!(
+            FilterOperator::from_str("$ends_with").unwrap(),
+            FilterOperator::EndsWith
+        );
+        assert_eq!(
+            FilterOperator::from_str("$notNull").unwrap(),
+            FilterOperator::IsNotNull
+        );
+        assert_eq!(
+            FilterOperator::from_str("$not_null").unwrap(),
+            FilterOperator::IsNotNull
+        );
         assert!(FilterOperator::from_str("$bogus").is_err());
     }
 }

@@ -30,10 +30,12 @@ impl From<RepositoryError> for ServiceError {
         match value {
             RepositoryError::DocumentTypeNotFound => Self::DocumentTypeNotFound,
             RepositoryError::DocumentInstanceNotFound => Self::DocumentNotFound,
-            RepositoryError::ValidationFailed(msg) => Self::Validation(DocumentError::InvalidFieldValue {
-                field: "document".to_string(),
-                reason: msg,
-            }),
+            RepositoryError::ValidationFailed(msg) => {
+                Self::Validation(DocumentError::InvalidFieldValue {
+                    field: "document".to_string(),
+                    reason: msg,
+                })
+            }
             RepositoryError::UniqueViolation(msg) => Self::Conflict(msg),
             RepositoryError::DatabaseError(msg) => Self::Internal(anyhow::anyhow!(msg)),
         }

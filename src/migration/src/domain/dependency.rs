@@ -17,26 +17,16 @@ pub struct DependencyGraph<'a> {
     pub in_degree: HashMap<&'a str, usize>,
 }
 
-pub fn build_dependency_graph<'a>(
-    tables: &'a [Table],
-) -> DependencyGraph<'a> {
+pub fn build_dependency_graph<'a>(tables: &'a [Table]) -> DependencyGraph<'a> {
     // Map table name -> Table reference
-    let table_map: HashMap<&str, &Table> = tables
-        .iter()
-        .map(|t| (t.name.as_str(), t))
-        .collect();
+    let table_map: HashMap<&str, &Table> = tables.iter().map(|t| (t.name.as_str(), t)).collect();
 
     // Build adjacency list: dependency -> dependents (who depends on it)
     // and in-degree count (how many tables this table depends on)
-    let mut dependents: HashMap<&str, Vec<&str>> = tables
-        .iter()
-        .map(|t| (t.name.as_str(), vec![]))
-        .collect();
+    let mut dependents: HashMap<&str, Vec<&str>> =
+        tables.iter().map(|t| (t.name.as_str(), vec![])).collect();
 
-    let mut in_degree: HashMap<&str, usize> = tables
-        .iter()
-        .map(|t| (t.name.as_str(), 0))
-        .collect();
+    let mut in_degree: HashMap<&str, usize> = tables.iter().map(|t| (t.name.as_str(), 0)).collect();
 
     for table in tables {
         let deps: HashSet<&str> = table
@@ -63,7 +53,11 @@ pub fn build_dependency_graph<'a>(
 }
 
 pub fn resolve_table_order(tables: &[Table]) -> Result<Vec<&Table>, DependencyError> {
-    let DependencyGraph { table_map, dependents, mut in_degree } = build_dependency_graph(tables);
+    let DependencyGraph {
+        table_map,
+        dependents,
+        mut in_degree,
+    } = build_dependency_graph(tables);
 
     // Kahn's algorithm: start with tables that have no dependencies
     let mut queue: VecDeque<&str> = in_degree

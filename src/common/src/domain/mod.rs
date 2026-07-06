@@ -14,9 +14,7 @@ pub mod test_support;
 #[cfg(feature = "test-helpers")]
 pub use test_support::InMemoryDocumentTypesRegistry;
 
-
 pub trait DocumentTypesRegistry: Send + Sync + Debug + 'static {
-
     /// Iterates all document type metadata.
     fn iterate(&self) -> Box<dyn Iterator<Item = &DocumentType> + '_>;
 
@@ -137,6 +135,9 @@ mod tests {
     #[test]
     fn document_type_id_rejects_invalid_symbols() {
         let result = DocumentTypeId::try_new("invalid symbol");
-        assert!(result.is_err(), "spaces are not allowed in document type ids");
+        assert!(
+            result.is_err(),
+            "spaces are not allowed in document type ids"
+        );
     }
 }

@@ -1,8 +1,4 @@
-use axum::{
-    extract::FromRequestParts,
-    http::request::Parts,
-    response::Response,
-};
+use axum::{extract::FromRequestParts, http::request::Parts, response::Response};
 use serde_json::{Map, Value};
 use url::form_urlencoded;
 
@@ -61,7 +57,9 @@ pub fn parse_query_to_json(query_str: &str) -> Map<String, Value> {
 
             if i == parts.len() - 1 {
                 if is_array_push {
-                    let entry = current_map.entry(part).or_insert_with(|| Value::Array(Vec::new()));
+                    let entry = current_map
+                        .entry(part)
+                        .or_insert_with(|| Value::Array(Vec::new()));
                     if let Value::Array(arr) = entry {
                         arr.push(Value::String(raw_val.to_string()));
                     }
@@ -73,7 +71,8 @@ pub fn parse_query_to_json(query_str: &str) -> Map<String, Value> {
                             }
                             other => {
                                 let old_val = other.clone();
-                                *other = Value::Array(vec![old_val, Value::String(raw_val.to_string())]);
+                                *other =
+                                    Value::Array(vec![old_val, Value::String(raw_val.to_string())]);
                             }
                         }
                     } else {

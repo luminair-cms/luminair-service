@@ -1,4 +1,8 @@
 use crate::application::AppState;
+use crate::application::commands::{
+    CreateDocumentWithRelationsCommand, DeleteDocumentCommand, FindByIdCommand,
+    FindDocumentsCommand, PublishDocumentCommand, UpdateDocumentWithRelationsCommand,
+};
 use crate::application::service::DocumentsService;
 use crate::domain::document::DocumentInstanceId;
 use crate::domain::query::DocumentInstanceQuery;
@@ -10,10 +14,6 @@ use crate::infrastructure::http::querystring::QueryMap;
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
-use crate::application::commands::{
-    CreateDocumentWithRelationsCommand, DeleteDocumentCommand, FindByIdCommand,
-    FindDocumentsCommand, PublishDocumentCommand, UpdateDocumentWithRelationsCommand,
-};
 use luminair_common::{DocumentType, DocumentTypeApiId};
 use std::str::FromStr;
 
@@ -52,7 +52,12 @@ pub async fn find_document_by_id<S: AppState>(
 
     let document_type = resolve_document_type(&state, &api_type)?;
     let document_instance_id = DocumentInstanceId::try_from(&id)?;
-    let q = params::parse_query(&query_map, document_type, state.document_types(), &state.pagination_settings())?;
+    let q = params::parse_query(
+        &query_map,
+        document_type,
+        state.document_types(),
+        &state.pagination_settings(),
+    )?;
 
     let query = DocumentInstanceQuery::new().with_status(q.status);
 
@@ -61,13 +66,10 @@ pub async fn find_document_by_id<S: AppState>(
         document_instance_id,
         populate: q.populate,
         populate_filters: q.populate_filters,
-        query
+        query,
     };
 
-    let document_instance = state
-        .documents_service()
-        .find_by_id(cmd)
-        .await?;
+    let document_instance = state.documents_service().find_by_id(cmd).await?;
 
     OneDocumentResponse::from_optional(document_instance)
         .map(|response| ApiSuccess::new(StatusCode::OK, response))
@@ -80,7 +82,12 @@ pub async fn find_all_documents<S: AppState>(
     QueryMap(query_map): QueryMap,
 ) -> Result<ApiSuccess<ManyDocumentsResponse>, ApiError> {
     let document_type = resolve_document_type(&state, &api_type)?;
-    let q = params::parse_query(&query_map, document_type, state.document_types(), &state.pagination_settings())?;
+    let q = params::parse_query(
+        &query_map,
+        document_type,
+        state.document_types(),
+        &state.pagination_settings(),
+    )?;
 
     let (page, page_size) = q.pagination;
     let mut query = DocumentInstanceQuery::new()
@@ -97,12 +104,12 @@ pub async fn find_all_documents<S: AppState>(
         query,
     };
 
-    let (documents, total) = state.documents_service()
-        .find(cmd).await?;
+    let (documents, total) = state.documents_service().find(cmd).await?;
 
     Ok(ApiSuccess::new(
         StatusCode::OK,
-        ManyDocumentsResponse::new(documents, page, page_size, total)))
+        ManyDocumentsResponse::new(documents, page, page_size, total),
+    ))
 }
 
 pub async fn create_new_document<S: AppState>(
@@ -113,9 +120,13 @@ pub async fn create_new_document<S: AppState>(
     let document_type = resolve_document_type(&state, &api_type)?;
     let split = request::extract_and_split_payload(&payload, document_type)?;
 
-    let fields = request::build_fields_from_payload(document_type, &serde_json::Value::Object(split.field_payload))
-        .map_err(|e| ApiError::UnprocessableEntity(e.to_string()))?;
-    let relation_operations = request::parse_relation_operations(&serde_json::Value::Object(split.relation_payload))?;
+    let fields = request::build_fields_from_payload(
+        document_type,
+        &serde_json::Value::Object(split.field_payload),
+    )
+    .map_err(|e| ApiError::UnprocessableEntity(e.to_string()))?;
+    let relation_operations =
+        request::parse_relation_operations(&serde_json::Value::Object(split.relation_payload))?;
 
     let cmd = CreateDocumentWithRelationsCommand {
         document_type,
@@ -124,10 +135,7 @@ pub async fn create_new_document<S: AppState>(
         user_id: None,
     };
 
-    let created_document_id = state
-        .documents_service()
-        .create_with_relations(cmd)
-        .await?;
+    let created_document_id = state.documents_service().create_with_relations(cmd).await?;
 
     let created_id: String = created_document_id.into();
     let location = format!("/api/documents/{}/{}", api_type, created_id);
@@ -150,13 +158,10 @@ pub async fn delete_existing_document<S: AppState>(
 
     let cmd = DeleteDocumentCommand {
         document_type,
-        document_instance_id
+        document_instance_id,
     };
 
-    state
-        .documents_service()
-        .delete(cmd)
-        .await?;
+    state.documents_service().delete(cmd).await?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -174,9 +179,13 @@ pub async fn update_document_handler<S: AppState>(
 
     let split = request::extract_and_split_payload(&payload, document_type)?;
 
-    let fields = request::build_fields_from_payload(document_type, &serde_json::Value::Object(split.field_payload))
-        .map_err(|e| ApiError::UnprocessableEntity(e.to_string()))?;
-    let relation_operations = request::parse_relation_operations(&serde_json::Value::Object(split.relation_payload))?;
+    let fields = request::build_fields_from_payload(
+        document_type,
+        &serde_json::Value::Object(split.field_payload),
+    )
+    .map_err(|e| ApiError::UnprocessableEntity(e.to_string()))?;
+    let relation_operations =
+        request::parse_relation_operations(&serde_json::Value::Object(split.relation_payload))?;
 
     let cmd = UpdateDocumentWithRelationsCommand {
         document_type,
@@ -186,15 +195,11 @@ pub async fn update_document_handler<S: AppState>(
         user_id: None,
     };
 
-    let updated_instance = state
-        .documents_service()
-        .update_with_relations(cmd)
-        .await?;
+    let updated_instance = state.documents_service().update_with_relations(cmd).await?;
 
     Ok(ApiSuccess::new(
         StatusCode::OK,
-        OneDocumentResponse::from_optional(Some(updated_instance))
-            .ok_or(ApiError::NotFound)?,
+        OneDocumentResponse::from_optional(Some(updated_instance)).ok_or(ApiError::NotFound)?,
     ))
 }
 
@@ -220,8 +225,6 @@ pub async fn publish_document<S: AppState>(
 
     Ok(ApiSuccess::new(
         StatusCode::OK,
-        OneDocumentResponse::from_optional(Some(published_instance))
-            .ok_or(ApiError::NotFound)?,
+        OneDocumentResponse::from_optional(Some(published_instance)).ok_or(ApiError::NotFound)?,
     ))
 }
-

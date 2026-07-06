@@ -1,18 +1,17 @@
 use anyhow::Context;
-use axum::routing::get;
 use axum::Router;
+use axum::routing::get;
 use axum_prometheus::PrometheusMetricLayer;
 
+use crate::application::AppState;
 use crate::infrastructure::http::handlers::health_check;
 use crate::infrastructure::http::routes::api_routes;
-use crate::application::AppState;
 use tokio::net;
 
 pub mod api;
 pub mod handlers;
 mod querystring;
 pub mod routes;
-
 
 /// Configuration for the HTTP server.
 #[derive(Debug, Clone, PartialEq, Eq)]

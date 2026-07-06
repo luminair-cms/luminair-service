@@ -84,7 +84,7 @@ impl Column {
         let primary_key = false;
         Self {
             name: name.into(),
-            column_type: column_type,
+            column_type,
             column_length,
             not_null,
             unique,

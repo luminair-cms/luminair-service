@@ -1,4 +1,4 @@
-use crate::domain::tables::{Table, ForeignKeyConstraint};
+use crate::domain::tables::{ForeignKeyConstraint, Table};
 use anyhow::Context;
 use sqlx::{Executor, PgPool};
 
@@ -29,18 +29,15 @@ impl Persistence for PersistenceAdapter {
               AND table_type = 'BASE TABLE'
               AND table_name != 'geometry_columns'
               AND table_name != 'spatial_ref_sys'";
-        
+
         let table_names = sqlx::query_scalar::<_, String>(tables_sql)
             .bind(&self.schema)
             .fetch_all(&self.pool)
             .await?;
-        
+
         let mut tables_map = std::collections::HashMap::new();
         for name in table_names {
-            tables_map.insert(
-                name.clone(),
-                Table::new(name, vec![], vec![], vec![]),
-            );
+            tables_map.insert(name.clone(), Table::new(name, vec![], vec![], vec![]));
         }
 
         let fkeys_sql = "SELECT
@@ -77,19 +74,22 @@ impl Persistence for PersistenceAdapter {
         Ok(tables_map.into_values().collect())
     }
 
-    async fn apply_migration_steps(&self, steps: Vec<crate::domain::migration::MigrationStepItem>) -> Result<(), anyhow::Error> {
+    async fn apply_migration_steps(
+        &self,
+        steps: Vec<crate::domain::migration::MigrationStepItem>,
+    ) -> Result<(), anyhow::Error> {
         use futures::stream::{self, StreamExt};
-    
+
         let mut stream = stream::iter(steps);
         while let Some(step) = stream.next().await {
             let ctx = step.ctx();
             let ddls = step.clone().ddls();
             execute_in_transaction(&self.pool, ddls, ctx).await?;
         }
-    
+
         Ok(())
     }
-    
+
     fn database_schema(&self) -> &str {
         &self.schema
     }

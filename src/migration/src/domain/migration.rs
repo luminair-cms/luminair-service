@@ -101,7 +101,10 @@ pub fn plan_migration(
         Ok(ordered) => {
             // Creation order: independent first, dependent last.
             // Drop order: dependent first, independent last (so we reverse the creation order).
-            let mut reversed = ordered.into_iter().map(|t| t.name.clone()).collect::<Vec<_>>();
+            let mut reversed = ordered
+                .into_iter()
+                .map(|t| t.name.clone())
+                .collect::<Vec<_>>();
             reversed.reverse();
             reversed
         }
@@ -189,8 +192,7 @@ fn column_ddl(column: &Column) -> String {
         ColumnType::Text => "TEXT",
         ColumnType::Varchar => "VARCHAR",
         ColumnType::Integer(size) => size.to_sql_type(),
-        ColumnType::Decimal { precision, scale } => 
-            &format!("DECIMAL({},{})", precision, scale),
+        ColumnType::Decimal { precision, scale } => &format!("DECIMAL({},{})", precision, scale),
         ColumnType::Date => "DATE",
         ColumnType::TimestampTZ => "TIMESTAMPTZ",
         ColumnType::Boolean => "BOOLEAN",
@@ -263,14 +265,24 @@ mod tests {
     #[test]
     fn test_drop_table_ddl() {
         let ddl = drop_table_ddl("my_schema", "my_table");
-        assert_eq!(ddl, "DROP TABLE IF EXISTS \"my_schema\".\"my_table\" CASCADE");
+        assert_eq!(
+            ddl,
+            "DROP TABLE IF EXISTS \"my_schema\".\"my_table\" CASCADE"
+        );
     }
 
     #[test]
     fn test_create_table_ddl_basic() {
         let id_column = Column::primary_key("id", ColumnType::Uuid, None);
         let name_column = Column::new("name", ColumnType::Text, None, true, false, None);
-        let status_column = Column::new("status", ColumnType::Text, None, true, false, Some("'DRAFT'"));
+        let status_column = Column::new(
+            "status",
+            ColumnType::Text,
+            None,
+            true,
+            false,
+            Some("'DRAFT'"),
+        );
         let columns = vec![id_column, name_column, status_column];
         let table = Table::new("my_table".to_string(), columns, vec![], vec![]);
 
@@ -286,12 +298,7 @@ mod tests {
 
     #[test]
     fn test_create_fk_ddl() {
-        let fk = ForeignKeyConstraint::new(
-            "child_table",
-            "parent_id",
-            "parent_table",
-            "id",
-        );
+        let fk = ForeignKeyConstraint::new("child_table", "parent_id", "parent_table", "id");
         let ddl = create_fk_ddl("my_schema", &fk);
         assert_eq!(
             ddl,

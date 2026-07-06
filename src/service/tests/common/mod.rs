@@ -3,25 +3,24 @@
 use std::sync::OnceLock;
 
 pub use axum::{
+    Router,
     body::Body,
     http::{Request, StatusCode},
     routing::get,
-    Router,
 };
 pub use serde_json::Value;
-pub use service::{
-    infrastructure::{
-        AppStateImpl,
-        http::{handlers::health_check, routes::api_routes},
-        persistence::repository::PostgresDocumentsRepository,
-    },
+pub use service::infrastructure::{
+    AppStateImpl,
+    http::{handlers::health_check, routes::api_routes},
+    persistence::repository::PostgresDocumentsRepository,
 };
 pub use testcontainers_modules::{postgres::Postgres, testcontainers::runners::AsyncRunner};
 pub use tower::ServiceExt;
 
 pub use luminair_common::{
+    DocumentTypesRegistry,
     database::{self, DatabaseConnection, DatabaseCredentials, DatabaseSettings},
-    load_documents, DocumentTypesRegistry,
+    load_documents,
 };
 pub use migration::{application::Migration, infrastructure::persistence::PersistenceAdapter};
 

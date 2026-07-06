@@ -1,15 +1,28 @@
-use std::{collections::{HashMap, HashSet}, path::Path, sync::{Arc, OnceLock}};
+use std::{
+    collections::{HashMap, HashSet},
+    path::Path,
+    sync::{Arc, OnceLock},
+};
 
-use anyhow::{*, Context};
+use anyhow::{Context, *};
 use serde::Deserialize;
 
-use crate::{AttributeId, domain::{DocumentType, DocumentTypeId, DocumentTypesRegistry}, entities::{FieldType, DocumentField, DocumentKind, DocumentRelation, DocumentTitle, DocumentTypeInfo, DocumentTypeOptions, LocalizationId, LocalizationIdError, RelationType}, DocumentTypeApiId};
 use crate::entities::FieldConstraint;
+use crate::{
+    AttributeId, DocumentTypeApiId,
+    domain::{DocumentType, DocumentTypeId, DocumentTypesRegistry},
+    entities::{
+        DocumentField, DocumentKind, DocumentRelation, DocumentTitle, DocumentTypeInfo,
+        DocumentTypeOptions, FieldType, LocalizationId, LocalizationIdError, RelationType,
+    },
+};
 
 pub fn load(schema_config_path: &str) -> Result<&'static dyn DocumentTypesRegistry, anyhow::Error> {
     let loaded = DocumentTypesRegistryAdapter::load(schema_config_path)?;
     // store loaded documents in static variable
-   DOCUMENTS_REGISTRY.set(Arc::new(loaded)).expect("Failed to set documents");
+    DOCUMENTS_REGISTRY
+        .set(Arc::new(loaded))
+        .expect("Failed to set documents");
     // get reference to Documents trait with static lifetime
     let documents: &'static dyn DocumentTypesRegistry = DOCUMENTS_REGISTRY.get().unwrap().as_ref();
     Ok(documents)
@@ -70,10 +83,8 @@ impl DocumentTypesRegistryAdapter {
         let mut map = HashMap::new();
         for dt in types.iter() {
             let api_id = match dt.kind {
-                DocumentKind::SingleType => 
-                    dt.info.singular_name.as_ref().to_string(),
-                DocumentKind::Collection => 
-                    dt.info.plural_name.as_ref().to_string()
+                DocumentKind::SingleType => dt.info.singular_name.as_ref().to_string(),
+                DocumentKind::Collection => dt.info.plural_name.as_ref().to_string(),
             };
             map.insert(api_id, *dt);
         }
@@ -98,7 +109,7 @@ fn load_document(path: &Path) -> Result<DocumentType, anyhow::Error> {
         .file_stem()
         .and_then(|os_str| os_str.to_str())
         .ok_or_else(|| anyhow!("failed to get file stem for path '{}'", path_str))?;
-    (id,document_record).try_into()
+    (id, document_record).try_into()
 }
 
 fn is_json(path: &Path) -> bool {
@@ -107,18 +118,17 @@ fn is_json(path: &Path) -> bool {
 
 #[cfg(test)]
 mod tests {
-        use super::*;
-    
+    use super::*;
 
-        #[test]
-        fn is_json_checks_extension() {
-                assert!(is_json(&Path::new("/tmp/a.json")));
-                assert!(!is_json(&Path::new("/tmp/a.txt")));
-                assert!(!is_json(&Path::new("/tmp/a")));
-        }
+    #[test]
+    fn is_json_checks_extension() {
+        assert!(is_json(Path::new("/tmp/a.json")));
+        assert!(!is_json(Path::new("/tmp/a.txt")));
+        assert!(!is_json(Path::new("/tmp/a")));
+    }
 
-        // The more comprehensive parsing test was moved to an integration test using
-        // the `tempfile` crate to ensure safe cleanup.
+    // The more comprehensive parsing test was moved to an integration test using
+    // the `tempfile` crate to ensure safe cleanup.
 }
 
 // internal structs for Deserializing
@@ -185,7 +195,11 @@ impl<'a> TryFrom<(&'a str, DocumentRecord<'a>)> for DocumentType {
         let record = &value.1;
         let kind = record.kind;
         let info = DocumentTypeInfo::try_from(&record.info)?;
-        let options = record.options.as_ref().map(DocumentTypeOptions::try_from).transpose()?;
+        let options = record
+            .options
+            .as_ref()
+            .map(DocumentTypeOptions::try_from)
+            .transpose()?;
 
         let mut fields = HashSet::new();
         let mut relations = HashSet::new();
@@ -203,14 +217,18 @@ impl<'a> TryFrom<(&'a str, DocumentRecord<'a>)> for DocumentType {
                 } => {
                     let field_type = *field_type;
 
-                    let constraints_are_valid = constraints.iter().all(|constraint| 
-                        constraint.is_applicable_for(field_type)
-                    );
+                    let constraints_are_valid = constraints
+                        .iter()
+                        .all(|constraint| constraint.is_applicable_for(field_type));
                     if !constraints_are_valid {
-                        return Err(anyhow!("Invalid constraints for field '{}': constraints are not applicable for field type '{:?}'", id, field_type));
+                        return Err(anyhow!(
+                            "Invalid constraints for field '{}': constraints are not applicable for field type '{:?}'",
+                            id,
+                            field_type
+                        ));
                     }
-                    let constraints = constraints.into_iter().map(|it|it.clone()).collect();
-                    
+                    let constraints = constraints.iter().cloned().collect();
+
                     let field = DocumentField {
                         id,
                         field_type,
@@ -222,14 +240,14 @@ impl<'a> TryFrom<(&'a str, DocumentRecord<'a>)> for DocumentType {
                 }
                 AttributeRecord::Relation {
                     relation_type,
-                    target
+                    target,
                 } => {
                     let target = DocumentTypeId::try_new(target.to_owned())?;
-                    
+
                     let relation = DocumentRelation {
                         id,
                         relation_type: *relation_type,
-                        target
+                        target,
                     };
                     relations.insert(relation);
                 }

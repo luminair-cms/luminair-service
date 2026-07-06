@@ -36,9 +36,8 @@ pub fn extract_and_split_payload(
     let mut relation_payload = serde_json::Map::new();
 
     for (k, v) in data_obj {
-        let attr_id = AttributeId::try_new(k).map_err(|_| {
-            ApiError::UnprocessableEntity(format!("Invalid field name: {}", k))
-        })?;
+        let attr_id = AttributeId::try_new(k)
+            .map_err(|_| ApiError::UnprocessableEntity(format!("Invalid field name: {}", k)))?;
 
         if document_type.relations.contains(&attr_id) {
             relation_payload.insert(k.clone(), v.clone());
@@ -46,12 +45,16 @@ pub fn extract_and_split_payload(
             field_payload.insert(k.clone(), v.clone());
         } else {
             return Err(ApiError::UnprocessableEntity(format!(
-                "Unknown field or relation: {}", k
+                "Unknown field or relation: {}",
+                k
             )));
         }
     }
 
-    Ok(SplitPayload { field_payload, relation_payload })
+    Ok(SplitPayload {
+        field_payload,
+        relation_payload,
+    })
 }
 
 /// Parse and validate a JSON request body into a field map.
@@ -189,7 +192,8 @@ fn parse_ids_from_list(value: &serde_json::Value) -> Result<Vec<DocumentInstance
 mod tests {
     use super::*;
     use luminair_common::entities::{
-        DocumentField, DocumentKind, DocumentRelation, DocumentTitle, DocumentTypeInfo, RelationType,
+        DocumentField, DocumentKind, DocumentRelation, DocumentTitle, DocumentTypeInfo,
+        RelationType,
     };
     use luminair_common::{AttributeId, DocumentType, DocumentTypeId};
     use serde_json::json;
@@ -206,22 +210,18 @@ mod tests {
                 description: None,
             },
             options: None,
-            fields: HashSet::from([
-                DocumentField {
-                    id: AttributeId::try_new("title").unwrap(),
-                    field_type: luminair_common::entities::FieldType::Text,
-                    constraints: HashSet::new(),
-                    required: true,
-                    unique: false,
-                },
-            ]),
-            relations: HashSet::from([
-                DocumentRelation {
-                    id: AttributeId::try_new("author").unwrap(),
-                    target: DocumentTypeId::try_new("author").unwrap(),
-                    relation_type: RelationType::HasOne,
-                },
-            ]),
+            fields: HashSet::from([DocumentField {
+                id: AttributeId::try_new("title").unwrap(),
+                field_type: luminair_common::entities::FieldType::Text,
+                constraints: HashSet::new(),
+                required: true,
+                unique: false,
+            }]),
+            relations: HashSet::from([DocumentRelation {
+                id: AttributeId::try_new("author").unwrap(),
+                target: DocumentTypeId::try_new("author").unwrap(),
+                relation_type: RelationType::HasOne,
+            }]),
         }
     }
 
@@ -238,7 +238,10 @@ mod tests {
         });
 
         let split = extract_and_split_payload(&payload, &dt).unwrap();
-        assert_eq!(split.field_payload.get("title").unwrap().as_str().unwrap(), "My Article");
+        assert_eq!(
+            split.field_payload.get("title").unwrap().as_str().unwrap(),
+            "My Article"
+        );
         assert!(split.relation_payload.contains_key("author"));
     }
 
@@ -265,7 +268,11 @@ mod tests {
 
         let res = extract_and_split_payload(&payload, &dt);
         assert!(res.is_err());
-        assert!(res.unwrap_err().to_string().contains("Unknown field or relation"));
+        assert!(
+            res.unwrap_err()
+                .to_string()
+                .contains("Unknown field or relation")
+        );
     }
 
     #[test]
@@ -278,7 +285,10 @@ mod tests {
 
         let res = parse_relation_operations(&payload);
         assert!(res.is_err());
-        assert!(res.unwrap_err().to_string().contains("set' operation is not yet supported"));
+        assert!(
+            res.unwrap_err()
+                .to_string()
+                .contains("set' operation is not yet supported")
+        );
     }
 }
-
