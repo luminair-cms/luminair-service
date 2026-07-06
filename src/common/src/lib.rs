@@ -24,6 +24,7 @@ pub const REVISION_FIELD_NAME: &'static str = "revision";
 pub const OWNING_ID_FIELD_NAME: &'static str = "owning_id";
 pub const INVERSE_ID_FIELD_NAME: &'static str = "inverse_id";
 pub const OWNING_DOCUMENT_ID_FIELD_NAME: &'static str = "owning_document_id";
+pub const SNAPSHOT_ID_FIELD_NAME: &'static str = "snapshot_id";
 
 // expose domain module
 

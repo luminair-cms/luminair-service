@@ -4,12 +4,11 @@ use luminair_common::entities::{DocumentField, IntegerSize};
 use luminair_common::{
     CREATED_BY_FIELD_NAME, CREATED_FIELD_NAME, DOCUMENT_ID_FIELD_NAME, DocumentType,
     DocumentTypesRegistry, OWNING_DOCUMENT_ID_FIELD_NAME, PUBLISHED_BY_FIELD_NAME,
-    PUBLISHED_FIELD_NAME, REVISION_FIELD_NAME, STATUS_FIELD_NAME, TARGET_DOCUMENT_ID_FIELD_NAME,
+    PUBLISHED_FIELD_NAME, REVISION_FIELD_NAME, SNAPSHOT_ID_FIELD_NAME, STATUS_FIELD_NAME, TARGET_DOCUMENT_ID_FIELD_NAME,
     UPDATED_BY_FIELD_NAME, UPDATED_FIELD_NAME, VERSION_FIELD_NAME,
     entities::{DocumentRelation, FieldType},
 };
 
-const SNAPSHOT_ID_FIELD_NAME: &str = "snapshot_id";
 
 pub struct DocumentTables {
     pub tables: Vec<Table>,

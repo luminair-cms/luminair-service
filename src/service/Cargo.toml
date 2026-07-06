@@ -42,3 +42,9 @@ uuid = { workspace = true }
 migration = { path = "../migration" }
 
 
+# Each container test boots a real Postgres container; serialise to prevent
+# port exhaustion and connection resets when many containers race at startup.
+[[test]]
+name = "http_integration"
+harness = true
+

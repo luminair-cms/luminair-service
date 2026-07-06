@@ -8,13 +8,10 @@ use crate::infrastructure::http::routes::api_routes;
 use crate::application::AppState;
 use tokio::net;
 
-mod api;
-mod handlers;
+pub mod api;
+pub mod handlers;
 mod querystring;
 pub mod routes;
-
-#[cfg(test)]
-mod integration_tests;
 
 
 /// Configuration for the HTTP server.

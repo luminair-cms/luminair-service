@@ -1,14 +1,10 @@
 use luminair_common::{database, load_documents};
-use crate::infrastructure::AppStateImpl;
-use crate::infrastructure::http::{HttpServer, HttpServerConfig};
-use crate::infrastructure::settings::Settings;
+use service::infrastructure::AppStateImpl;
+use service::infrastructure::http::{HttpServer, HttpServerConfig};
+use service::infrastructure::settings::Settings;
 
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
-use crate::infrastructure::persistence::repository::PostgresDocumentsRepository;
-
-mod domain;
-mod infrastructure;
-pub mod application;
+use service::infrastructure::persistence::repository::PostgresDocumentsRepository;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {

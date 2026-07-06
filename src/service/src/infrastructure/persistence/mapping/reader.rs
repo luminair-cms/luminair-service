@@ -10,7 +10,7 @@ use crate::domain::{
 use chrono::{DateTime, Utc};
 use luminair_common::{
     AttributeId, CREATED_BY_FIELD_NAME, CREATED_FIELD_NAME, DOCUMENT_ID_FIELD_NAME, DocumentType,
-    PUBLISHED_BY_FIELD_NAME, PUBLISHED_FIELD_NAME, REVISION_FIELD_NAME,
+    PUBLISHED_BY_FIELD_NAME, PUBLISHED_FIELD_NAME, REVISION_FIELD_NAME, SNAPSHOT_ID_FIELD_NAME,
     UPDATED_BY_FIELD_NAME, UPDATED_FIELD_NAME, VERSION_FIELD_NAME,
     entities::{DocumentField, FieldType},
 };
@@ -33,7 +33,7 @@ pub fn row_to_document(
     use sqlx::Row;
 
     // Extract system fields
-    let id = match row.try_get::<i64, _>("snapshot_id") {
+    let id = match row.try_get::<i64, _>(SNAPSHOT_ID_FIELD_NAME) {
         Ok(sid) => DatabaseRowId(sid),
         Err(_) => DatabaseRowId(0),
     };

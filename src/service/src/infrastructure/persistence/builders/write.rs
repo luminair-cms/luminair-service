@@ -1,7 +1,7 @@
 use sea_query::{DynIden, Expr, ExprTrait, PostgresQueryBuilder, Query, Alias};
 use sea_query_sqlx::{SqlxBinder, SqlxValues};
 use uuid::Uuid;
-use luminair_common::{DocumentType, AttributeId, CREATED_FIELD_NAME, DOCUMENT_ID_FIELD_NAME, STATUS_FIELD_NAME, UPDATED_FIELD_NAME, VERSION_FIELD_NAME, REVISION_FIELD_NAME, PUBLISHED_FIELD_NAME, PUBLISHED_BY_FIELD_NAME, OWNING_DOCUMENT_ID_FIELD_NAME, TARGET_DOCUMENT_ID_FIELD_NAME};
+use luminair_common::{DocumentType, AttributeId, CREATED_FIELD_NAME, DOCUMENT_ID_FIELD_NAME, STATUS_FIELD_NAME, UPDATED_FIELD_NAME, VERSION_FIELD_NAME, REVISION_FIELD_NAME, PUBLISHED_FIELD_NAME, PUBLISHED_BY_FIELD_NAME, OWNING_DOCUMENT_ID_FIELD_NAME, TARGET_DOCUMENT_ID_FIELD_NAME, SNAPSHOT_ID_FIELD_NAME};
 use luminair_common::persistence::TableNameProviderConstructor;
 use crate::domain::document::{DocumentInstance, lifecycle::PublicationState};
 
@@ -114,7 +114,7 @@ pub fn build_snapshot_insert(
         .into_table(table)
         .columns(columns)
         .values_panic(values)
-        .returning(Query::returning().column(Alias::new("snapshot_id")))
+        .returning(Query::returning().column(Alias::new(SNAPSHOT_ID_FIELD_NAME)))
         .build_sqlx(PostgresQueryBuilder)
 }
 
@@ -139,7 +139,7 @@ pub fn build_copy_relations_to_snapshots(
     insert_query
         .into_table(snapshot_relation_table)
         .columns(vec![
-            Alias::new("snapshot_id"),
+            Alias::new(SNAPSHOT_ID_FIELD_NAME),
             Alias::new(TARGET_DOCUMENT_ID_FIELD_NAME),
             Alias::new(OWNING_DOCUMENT_ID_FIELD_NAME),
         ]);

@@ -9,6 +9,7 @@ use nutype::nutype;
 /// # Construction
 ///
 /// ```rust
+/// # use service::domain::document::lifecycle::UserId;
 /// let id = UserId::try_new("alice".to_string()).expect("non-empty");
 /// ```
 ///
