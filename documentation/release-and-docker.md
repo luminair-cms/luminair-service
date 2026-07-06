@@ -8,9 +8,8 @@ This document describes the workflow for creating releases, publishing Docker im
 
 The CI/CD pipeline is automated via GitHub Actions in [.github/workflows/docker-publish.yml](file:///Users/dmitri.astafiev/luminair/luminair-service/.github/workflows/docker-publish.yml).
 
-- **On Pull Request to `main`**: Runs tests and Clippy lints to verify stability.
-- **On Push to `main`**: Runs tests and Clippy. If successful, builds and pushes both the `luminair-service` and `migration-cli` Docker images tagged as `latest` and `sha-<commit_sha>`.
-- **On Push of a Version Tag (e.g. `v1.0.0`)**: Runs tests and Clippy. If successful, builds and pushes both images tagged with the semantic version, and automatically creates a new GitHub Release with generated release notes.
+- **On Pull Request or Push to `main`**: Runs formatting, clippy lints, and test checks to verify the code compiles and passes all checks. It does *not* build or push Docker images.
+- **On Push of a Version Tag (e.g. `v1.0.0` or `1.0.0`)**: Runs formatting, clippy, and tests. If successful, builds and pushes both images (`luminair-service` and `luminair-migration`) tagged with the version and `latest`, and automatically creates a new GitHub Release with generated release notes.
 
 ---
 

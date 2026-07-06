@@ -43,7 +43,7 @@ COPY config /app/config
 
 # Stage 3: Service image
 FROM runtime-base AS service
-COPY --from=builder /usr/src/luminair-service/target/release/luminair-service /app/luminair-service
+COPY --from=builder /usr/src/luminair-service/target/release/service /app/luminair-service
 EXPOSE 8080
 CMD ["/app/luminair-service"]
 
