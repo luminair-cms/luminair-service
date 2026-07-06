@@ -17,4 +17,22 @@ pub trait AppState: Clone + Send + Sync + 'static {
     fn document_types(&self) -> &'static dyn DocumentTypesRegistry;
 
     fn documents_service(&self) -> &Self::D;
+
+    fn pagination_settings(&self) -> PaginationSettings;
 }
+
+#[derive(Debug, Clone, Copy, serde::Deserialize)]
+pub struct PaginationSettings {
+    pub default_page_size: u16,
+    pub max_page_size: u16,
+}
+
+impl Default for PaginationSettings {
+    fn default() -> Self {
+        Self {
+            default_page_size: 25,
+            max_page_size: 100,
+        }
+    }
+}
+

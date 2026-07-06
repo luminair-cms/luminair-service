@@ -31,6 +31,22 @@ impl PostgresDocumentsRepository {
     }
 }
 
+fn map_db_error(e: sqlx::Error) -> RepositoryError {
+    if let Some(db_err) = e.as_database_error() {
+        match db_err.code().as_deref() {
+            // Postgres error code 23505: unique_violation
+            // Raised when an insert/update violates a unique index constraint (e.g. duplicate UUID or UID).
+            Some("23505") => return RepositoryError::UniqueViolation(db_err.message().to_string()),
+            
+            // Postgres error code 23503: foreign_key_violation
+            // Raised when a referenced key (such as a relation target ID) does not exist or is violated.
+            Some("23503") => return RepositoryError::ValidationFailed(format!("Relation constraint violation: {}", db_err.message())),
+            _ => {}
+        }
+    }
+    RepositoryError::DatabaseError(e.to_string())
+}
+
 fn sqlx_query_with<'q>(sql: String, values: SqlxValues) -> sqlx::query::Query<'q, sqlx::Postgres, SqlxValues> {
     sqlx::query_with(AssertSqlSafe(sql), values)
 }
@@ -200,7 +216,7 @@ impl DocumentsRepository for PostgresDocumentsRepository {
                 sqlx_query_with(sql, values)
                     .execute(self.database.database_pool())
                     .await
-                    .map_err(|e| RepositoryError::DatabaseError(e.to_string()))?;
+                    .map_err(map_db_error)?;
             }
         } else {
             // For both remaining use cases, we perform a full content and metadata update on the main table:
@@ -221,7 +237,7 @@ impl DocumentsRepository for PostgresDocumentsRepository {
         sqlx_query_with(sql, values)
             .execute(self.database.database_pool())
             .await
-            .map_err(|e| RepositoryError::DatabaseError(e.to_string()))?;
+            .map_err(map_db_error)?;
         Ok(())
     }
 
@@ -257,7 +273,7 @@ impl DocumentsRepository for PostgresDocumentsRepository {
                     sqlx_query_with(sql, values)
                         .execute(self.database.database_pool())
                         .await
-                        .map_err(|e| RepositoryError::DatabaseError(e.to_string()))?;
+                        .map_err(map_db_error)?;
                 }
             }
 
@@ -272,7 +288,7 @@ impl DocumentsRepository for PostgresDocumentsRepository {
                     sqlx_query_with(sql, values)
                         .execute(self.database.database_pool())
                         .await
-                        .map_err(|e| RepositoryError::DatabaseError(e.to_string()))?;
+                        .map_err(map_db_error)?;
                 }
             }
         }
@@ -332,7 +348,7 @@ impl PostgresDocumentsRepository {
         sqlx_query_with(sql, values)
             .execute(self.database.database_pool())
             .await
-            .map_err(|e| RepositoryError::DatabaseError(e.to_string()))?;
+            .map_err(map_db_error)?;
 
         Ok(())
     }
@@ -381,7 +397,7 @@ impl PostgresDocumentsRepository {
         let result = sqlx_query_with(sql, values)
             .execute(self.database.database_pool())
             .await
-            .map_err(|e| RepositoryError::DatabaseError(e.to_string()))?;
+            .map_err(map_db_error)?;
 
         if result.rows_affected() == 0 {
             return Err(RepositoryError::DocumentInstanceNotFound);
@@ -425,7 +441,7 @@ impl PostgresDocumentsRepository {
         let result = sqlx_query_with(sql, values)
             .execute(self.database.database_pool())
             .await
-            .map_err(|e| RepositoryError::DatabaseError(e.to_string()))?;
+            .map_err(map_db_error)?;
 
         if result.rows_affected() == 0 {
             return Err(RepositoryError::DocumentInstanceNotFound);
@@ -442,7 +458,7 @@ impl PostgresDocumentsRepository {
         let row = sqlx_query_with(sql, values)
             .fetch_one(self.database.database_pool())
             .await
-            .map_err(|e| RepositoryError::DatabaseError(e.to_string()))?;
+            .map_err(map_db_error)?;
         let snapshot_id: i64 = row.try_get("snapshot_id").map_err(|e| {
             RepositoryError::DatabaseError(format!("Failed to retrieve snapshot_id: {}", e))
         })?;

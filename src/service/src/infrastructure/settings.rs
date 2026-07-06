@@ -6,11 +6,14 @@ use dotenvy::dotenv;
 use luminair_common::database::DatabaseSettings;
 use serde::Deserialize;
 
+use crate::application::PaginationSettings;
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct Settings {
     pub server_port: u16,
     pub schema_config_path: String,
     pub database: DatabaseSettings,
+    pub pagination: PaginationSettings,
 }
 
 impl Settings {

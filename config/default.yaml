@@ -5,3 +5,6 @@ database:
     min_connections: 1
     max_connections: 5
     acquire_timeout_seconds: 3
+pagination:
+  default_page_size: 25
+  max_page_size: 100

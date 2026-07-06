@@ -29,7 +29,7 @@ async fn main() -> anyhow::Result<()> {
     tracing::debug!("Connected to DB");
     
     let repository = PostgresDocumentsRepository::new(registry, database);
-    let state = AppStateImpl::new(registry, repository);
+    let state = AppStateImpl::new(registry, repository, settings.pagination);
 
     let server_config = HttpServerConfig {
         port: settings.server_port,

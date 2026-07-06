@@ -34,3 +34,11 @@ url = "2.5.8"
 [dependencies.sea-query-sqlx]
 version = "0.9.1"
 features = ["sqlx-postgres", "postgres-array", "postgres-vector", "with-chrono", "with-json", "with-rust_decimal", "with-uuid"]
+
+[dev-dependencies]
+testcontainers-modules = { version = "0.15.0", features = ["postgres"] }
+tower = { version = "0.5.2", features = ["util"] }
+uuid = { workspace = true }
+migration = { path = "../migration" }
+
+

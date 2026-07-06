@@ -68,59 +68,48 @@ impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         use ApiError::*;
 
-        match self {
-            InternalServerError(e) => {
-                tracing::error!("{}", e);
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(ApiResponseBody::new_error(
-                        StatusCode::INTERNAL_SERVER_ERROR,
-                        "Internal server error".to_string(),
-                    )),
-                )
-                    .into_response()
+        let (status, detail) = match self {
+            InternalServerError(msg) => {
+                tracing::error!("{}", msg);
+                (StatusCode::INTERNAL_SERVER_ERROR, "An internal server error occurred".to_string())
             }
-            UnprocessableEntity(message) => (
-                StatusCode::UNPROCESSABLE_ENTITY,
-                Json(ApiResponseBody::new_error(
-                    StatusCode::UNPROCESSABLE_ENTITY,
-                    message,
-                )),
-            )
-                .into_response(),
-            ConflictWithServerState(message) => (
-                StatusCode::CONFLICT,
-                Json(ApiResponseBody::new_error(
-                    StatusCode::CONFLICT, 
-                    message
-                ))
-            )
-                .into_response(),
-            NotFound => StatusCode::NOT_FOUND.into_response(),
-        }
+            UnprocessableEntity(msg) => (StatusCode::UNPROCESSABLE_ENTITY, msg),
+            ConflictWithServerState(msg) => (StatusCode::CONFLICT, msg),
+            NotFound => (StatusCode::NOT_FOUND, "The requested resource was not found".to_string()),
+        };
+
+        let problem = ProblemDetails::new(status, detail);
+        (
+            status,
+            [("content-type", "application/problem+json")],
+            Json(problem),
+        )
+            .into_response()
     }
 }
 
-// Generic response structure shared by all API responses.
-
+/// Standard-compliant RFC 7807 / RFC 9457 Problem Details structure for HTTP API errors.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct ApiResponseBody<T: Serialize + PartialEq> {
-    pub status_code: u16,
-    pub data: T,
+pub struct ProblemDetails {
+    #[serde(rename = "type")]
+    pub problem_type: String,
+    pub title: String,
+    pub status: u16,
+    pub detail: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub instance: Option<String>,
 }
 
-impl ApiResponseBody<ApiErrorData> {
-    pub fn new_error(status_code: StatusCode, message: String) -> Self {
+impl ProblemDetails {
+    pub fn new(status: StatusCode, detail: String) -> Self {
         Self {
-            status_code: status_code.as_u16(),
-            data: ApiErrorData { message },
+            problem_type: "about:blank".to_string(),
+            title: status.canonical_reason().unwrap_or("Unknown Error").to_string(),
+            status: status.as_u16(),
+            detail,
+            instance: None,
         }
     }
 }
 
-/// The response data format for all error responses.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct ApiErrorData {
-    pub message: String,
-}
 

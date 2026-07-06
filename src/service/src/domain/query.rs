@@ -159,16 +159,10 @@ impl DocumentInstanceQuery {
     ///
     /// Enforces invariants:
     /// - Page defaults to 1 if 0
-    /// - Page size is capped at 200
-    pub fn paginate(mut self, mut page: u16, mut page_size: u16) -> Self {
+    pub fn paginate(mut self, mut page: u16, page_size: u16) -> Self {
         // Ensure page is at least 1
         if page == 0 {
             page = 1;
-        }
-
-        // Ensure page_size doesn't exceed 200
-        if page_size > 200 {
-            page_size = 200;
         }
 
         if page > 0 && page_size > 0 {

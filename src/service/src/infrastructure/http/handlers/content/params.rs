@@ -52,6 +52,7 @@ pub struct DocumentQuery {
 /// decoded bracket map and returns them in typed form, without any domain validation.
 pub(super) fn parse_raw_query(
     query_map: &serde_json::Map<String, Value>,
+    pagination_settings: &crate::application::PaginationSettings,
 ) -> RawQueryParams {
     use std::collections::HashSet;
 
@@ -89,10 +90,11 @@ pub(super) fn parse_raw_query(
                     .and_then(|s| s.parse::<u16>().ok())
                     .or_else(|| v.as_u64().map(|n| n as u16))
             })
-            .unwrap_or(25);
+            .unwrap_or(pagination_settings.default_page_size)
+            .min(pagination_settings.max_page_size);
         (page, page_size)
     } else {
-        (1, 25)
+        (1, pagination_settings.default_page_size)
     };
 
     // status
@@ -148,8 +150,9 @@ pub fn parse_query(
     query_map: &serde_json::Map<String, Value>,
     document_type: &DocumentType,
     registry: &dyn DocumentTypesRegistry,
+    pagination_settings: &crate::application::PaginationSettings,
 ) -> Result<DocumentQuery, ApiError> {
-    let raw = parse_raw_query(query_map);
+    let raw = parse_raw_query(query_map, pagination_settings);
 
     let status = parse_status(&raw.status)?;
     let populate = resolve_populate(raw.populate, document_type)?;
@@ -731,7 +734,7 @@ mod tests {
             &pagination[pageSize]=10";
         let query_map = parse_query_to_json(query);
 
-        let q = parse_query(&query_map, dt_restaurant, &registry).unwrap();
+        let q = parse_query(&query_map, dt_restaurant, &registry, &crate::application::PaginationSettings::default()).unwrap();
 
         assert_eq!(q.pagination, (2, 10));
         assert_eq!(q.status, DocumentStatus::Draft);
@@ -778,7 +781,7 @@ mod tests {
         let query = "filters[nonexistent][$eq]=foo";
         let query_map = parse_query_to_json(query);
 
-        let result = parse_query(&query_map, dt, &registry);
+        let result = parse_query(&query_map, dt, &registry, &crate::application::PaginationSettings::default());
         assert!(matches!(result, Err(ApiError::UnprocessableEntity(_))));
         let msg = result.unwrap_err().to_string();
         assert!(msg.contains("nonexistent"), "error should name the bad field: {}", msg);
@@ -810,7 +813,7 @@ mod tests {
         let query = "sort=ghost_field:asc";
         let query_map = parse_query_to_json(query);
 
-        let result = parse_query(&query_map, dt, &registry);
+        let result = parse_query(&query_map, dt, &registry, &crate::application::PaginationSettings::default());
         assert!(matches!(result, Err(ApiError::UnprocessableEntity(_))));
     }
 

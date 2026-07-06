@@ -52,7 +52,7 @@ pub async fn find_document_by_id<S: AppState>(
 
     let document_type = resolve_document_type(&state, &api_type)?;
     let document_instance_id = DocumentInstanceId::try_from(&id)?;
-    let q = params::parse_query(&query_map, document_type, state.document_types())?;
+    let q = params::parse_query(&query_map, document_type, state.document_types(), &state.pagination_settings())?;
 
     let query = DocumentInstanceQuery::new().with_status(q.status);
 
@@ -80,7 +80,7 @@ pub async fn find_all_documents<S: AppState>(
     QueryMap(query_map): QueryMap,
 ) -> Result<ApiSuccess<ManyDocumentsResponse>, ApiError> {
     let document_type = resolve_document_type(&state, &api_type)?;
-    let q = params::parse_query(&query_map, document_type, state.document_types())?;
+    let q = params::parse_query(&query_map, document_type, state.document_types(), &state.pagination_settings())?;
 
     let (page, page_size) = q.pagination;
     let mut query = DocumentInstanceQuery::new()

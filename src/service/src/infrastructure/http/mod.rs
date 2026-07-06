@@ -13,6 +13,10 @@ mod handlers;
 mod querystring;
 pub mod routes;
 
+#[cfg(test)]
+mod integration_tests;
+
+
 /// Configuration for the HTTP server.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HttpServerConfig {

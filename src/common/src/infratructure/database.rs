@@ -39,21 +39,34 @@ pub struct DatabaseCredentials {
 static DATABASE: OnceLock<Arc<Database>> = OnceLock::new();
 
 pub async fn connect(settings: &DatabaseSettings) -> Result<&'static Database, anyhow::Error> {
+    if let Some(db) = DATABASE.get() {
+        return Ok(db.as_ref());
+    }
     let database = Database::new(settings).await?;
-    DATABASE.set(Arc::new(database)).expect("Failed to set database");
+    let _ = DATABASE.set(Arc::new(database));
     Ok(DATABASE.get().unwrap().as_ref())
 }
 
 impl Database {
     async fn new(settings: &DatabaseSettings) -> Result<Self, anyhow::Error> {
         let credentials = &settings.credentials;
+        let mut host = settings.host.as_str();
+        let mut port = 5432;
+        if let Some((h, p)) = settings.host.split_once(':') {
+            host = h;
+            if let Ok(parsed_port) = p.parse::<u16>() {
+                port = parsed_port;
+            }
+        }
+
         let pg_connect_options = PgConnectOptions::new()
-            .host(&settings.host)
-            .port(5432)
+            .host(host)
+            .port(port)
             .username(&credentials.username)
             .password(&credentials.password)
             .database(&settings.db)
-            .ssl_mode(PgSslMode::Prefer);
+            .ssl_mode(PgSslMode::Prefer)
+            .options([("search_path", settings.schema.as_str())]);
 
         let connection = &settings.connection;
         let pool = PgPoolOptions::new()
