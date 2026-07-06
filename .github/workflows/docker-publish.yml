@@ -60,7 +60,7 @@ jobs:
 
       - name: Extract Service metadata
         id: meta-service
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ env.SERVICE_IMAGE }}
           tags: |
@@ -70,7 +70,7 @@ jobs:
 
       - name: Extract Migration metadata
         id: meta-migration
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ env.MIGRATION_IMAGE }}
           tags: |
@@ -79,10 +79,10 @@ jobs:
             type=raw,value=latest,enable=true
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Build & Push Service Image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           target: service
@@ -93,7 +93,7 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Build & Push Migration Image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           target: migration
@@ -117,7 +117,7 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Create Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           draft: false
           prerelease: false
