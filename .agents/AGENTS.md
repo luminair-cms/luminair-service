@@ -80,6 +80,10 @@ Luminair is a Schema-Driven CMS platform (similar to Strapi) focused on Speed an
 * **Documentation Guidelines**:
   * Document all public structs, enums, traits, and functions using docstrings (`///`).
   * Keep inline documentation synchronized with code changes.
+* **Dependency Sorting & Management**: In Cargo manifests (`Cargo.toml`):
+  1. All dependencies under `[dependencies]` and `[dev-dependencies]` must be sorted alphabetically.
+  2. Local workspace dependencies (e.g. `luminair_common = { path = ... }`) should be placed first, separated by a blank line from third-party/external dependencies.
+  3. Shared third-party dependency versions must be centralized in the workspace root `Cargo.toml` under `[workspace.dependencies]`, and inherited in sub-crates using `{ workspace = true }`.
 
 ---
 

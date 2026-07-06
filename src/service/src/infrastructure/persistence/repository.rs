@@ -207,6 +207,9 @@ impl DocumentsRepository for PostgresDocumentsRepository {
             let snapshot_id = self.store_snapshot_for_published_instance(document_type, instance).await?;
             // 3. Copy relations to snapshots
             for relation in &document_type.relations {
+                if !relation.relation_type.is_owning() {
+                    continue;
+                }
                 let (sql, values) = build_copy_relations_to_snapshots(
                     document_type,
                     &relation.id,

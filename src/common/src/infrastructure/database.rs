@@ -48,7 +48,7 @@ pub async fn connect(settings: &DatabaseSettings) -> Result<&'static Database, a
 }
 
 impl Database {
-    async fn new(settings: &DatabaseSettings) -> Result<Self, anyhow::Error> {
+    pub async fn new(settings: &DatabaseSettings) -> Result<Self, anyhow::Error> {
         let credentials = &settings.credentials;
         let mut host = settings.host.as_str();
         let mut port = 5432;

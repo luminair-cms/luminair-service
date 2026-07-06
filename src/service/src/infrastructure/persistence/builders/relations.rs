@@ -1,8 +1,8 @@
-use sea_query::{ColumnRef, DynIden, Expr, ExprTrait, JoinType, Order, PostgresQueryBuilder, Query};
+use sea_query::{Alias, ColumnRef, DynIden, Expr, ExprTrait, JoinType, Order, PostgresQueryBuilder, Query};
 use sea_query::extension::postgres::PgExpr;
 use sea_query_sqlx::{SqlxBinder, SqlxValues};
 use uuid::Uuid;
-use luminair_common::{AttributeId, DOCUMENT_ID_FIELD_NAME, DocumentType, OWNING_DOCUMENT_ID_FIELD_NAME, TARGET_DOCUMENT_ID_FIELD_NAME};
+use luminair_common::{AttributeId, DOCUMENT_ID_FIELD_NAME, DocumentType, OWNING_DOCUMENT_ID_FIELD_NAME, TARGET_DOCUMENT_ID_FIELD_NAME, STATUS_FIELD_NAME, VERSION_FIELD_NAME};
 use luminair_common::persistence::TableNameProviderConstructor;
 use crate::domain::query::DocumentStatus;
 use crate::infrastructure::persistence::builders::main_select_columns;
@@ -62,6 +62,18 @@ pub fn query_find_related_documents(
         )
         .and_where(Expr::col(owning_document_id_column).eq_any(params))
         .order_by(owning_document_id_column, Order::Asc);
+
+    let (status_expr, version_expr) = if status == DocumentStatus::Published && related_document.has_draft_and_publish() {
+        (Expr::cust("'PUBLISHED'"), Expr::cust("0"))
+    } else {
+        (
+            Expr::col(("m", STATUS_FIELD_NAME)),
+            Expr::col(("m", VERSION_FIELD_NAME)),
+        )
+    };
+
+    select.expr_as(status_expr, Alias::new("status"));
+    select.expr_as(version_expr, Alias::new("version"));
 
     if let Some(condition) = crate::infrastructure::persistence::builders::find::build_condition(filter, related_document, "m") {
         select.cond_where(condition);

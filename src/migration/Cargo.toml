@@ -9,13 +9,13 @@ anyhow = { workspace = true }
 config = { workspace = true }
 dotenvy = { workspace = true }
 futures = { workspace = true }
+sea-query = { workspace = true }
 serde = { workspace = true }
 sqlx = { workspace = true }
-tokio = { workspace = true }
-sea-query = { workspace = true }
 thiserror = { workspace = true }
+tokio = { workspace = true }
 
 [dev-dependencies]
 luminair_common = { path = "../common", package = "common", features = ["test-helpers"] }
-testcontainers-modules = { version = "0.15.0", features = ["postgres"] }
+testcontainers-modules = { workspace = true }
 uuid = { workspace = true }
