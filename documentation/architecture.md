@@ -14,16 +14,16 @@ The system is schema-driven: document metadata and JSON schema definitions are t
 
 ```mermaid
 graph TD
-    subgraph Infrastructure Layer (Adapters)
+    subgraph "Infrastructure Layer (Adapters)"
         AxumServer[HTTP: Axum Router & Handlers]
         SQLXRepo[Persistence: Postgres SQLX Repository]
     end
 
-    subgraph Application Layer (Orchestrators)
+    subgraph "Application Layer (Orchestrators)"
         DocService[DocumentsService Port & Impl]
     end
 
-    subgraph Domain Layer (Core)
+    subgraph "Domain Layer (Core)"
         DocInstance[DocumentInstance & Core Entities]
         DocRepo[DocumentsRepository Port]
     end
