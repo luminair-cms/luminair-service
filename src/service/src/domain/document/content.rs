@@ -57,6 +57,92 @@ pub enum DomainValue {
     Json(HashMap<String, String>),
 }
 
+// ── String → Domain codec ────────────────────────────────────────────────────
+//
+// Used by the filter-parsing layer to coerce raw query-string values into typed
+// `DomainValue`s. This is the **single canonical** `&str → DomainValue` path
+// so that filter behaviour always matches the write path in `ContentValue::from_json`.
+
+impl DomainValue {
+    /// Parse a raw string into a typed [`DomainValue`] based on the field's schema type.
+    ///
+    /// This is the canonical coercion path shared by filter parsing.
+    /// Adding a new [`FieldType`] variant will produce a compile error here,
+    /// preventing silent gaps in filter behaviour.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`DocumentError::InvalidFieldValue`] when:
+    /// - The raw string cannot be parsed as the expected type.
+    /// - The field type is `LocalizedText` or `Json` (compound types that cannot
+    ///   be compared with a scalar filter operator).
+    pub fn parse(raw: &str, field_type: FieldType) -> Result<Self, DocumentError> {
+        let filter_err = |reason: String| DocumentError::InvalidFieldValue {
+            field: "<filter>".into(),
+            reason,
+        };
+
+        match field_type {
+            FieldType::Text | FieldType::Uid => Ok(DomainValue::Text(raw.to_owned())),
+
+            FieldType::Uuid => {
+                let u = uuid::Uuid::parse_str(raw)
+                    .map_err(|_| filter_err(format!("'{}' is not a valid UUID", raw)))?;
+                Ok(DomainValue::Uuid(u))
+            }
+
+            FieldType::Integer(_) => {
+                let n = raw
+                    .parse::<i64>()
+                    .map_err(|_| filter_err(format!("'{}' is not a valid integer", raw)))?;
+                Ok(DomainValue::Integer(n))
+            }
+
+            FieldType::Decimal { scale, .. } => {
+                let mut d = raw
+                    .parse::<Decimal>()
+                    .map_err(|_| filter_err(format!("'{}' is not a valid decimal", raw)))?;
+                d.rescale(scale);
+                Ok(DomainValue::Decimal(d))
+            }
+
+            FieldType::Boolean => {
+                let b = raw
+                    .parse::<bool>()
+                    .map_err(|_| filter_err(format!("'{}' is not a valid boolean", raw)))?;
+                Ok(DomainValue::Boolean(b))
+            }
+
+            FieldType::Date => {
+                let d = chrono::NaiveDate::parse_from_str(raw, "%Y-%m-%d").map_err(|_| {
+                    filter_err(format!(
+                        "'{}' is not a valid date (expected YYYY-MM-DD)",
+                        raw
+                    ))
+                })?;
+                Ok(DomainValue::Date(d))
+            }
+
+            FieldType::DateTime => {
+                let dt = chrono::DateTime::parse_from_rfc3339(raw).map_err(|_| {
+                    filter_err(format!(
+                        "'{}' is not a valid RFC 3339 datetime",
+                        raw
+                    ))
+                })?;
+                Ok(DomainValue::DateTime(dt.with_timezone(&Utc)))
+            }
+
+            // Compound types cannot be compared with a scalar filter operator.
+            // Reject explicitly rather than silently falling back to text comparison.
+            FieldType::LocalizedText | FieldType::Json => Err(filter_err(format!(
+                "cannot use a scalar filter on a {:?} field",
+                field_type
+            ))),
+        }
+    }
+}
+
 // ── JSON codec ──────────────────────────────────────────────────────────────
 //
 // All four field-level conversions (JSON→Domain, Domain→JSON, DB→Domain,
@@ -66,6 +152,7 @@ pub enum DomainValue {
 //
 // JSON ↔ Domain lives here (domain is allowed to depend on serde_json).
 // DB   ↔ Domain lives in `infrastructure/persistence/mapping/`.
+
 
 impl ContentValue {
     /// Decode a JSON value into a [`ContentValue`] according to the field's declared type.
@@ -383,3 +470,89 @@ fn is_valid_url(s: &str) -> bool {
     derive(Debug, Clone, PartialEq, Eq, AsRef, Hash, FromStr, Serialize, Deserialize)
 )]
 pub(crate) struct Url(String);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use luminair_common::entities::IntegerSize;
+
+    #[test]
+    fn test_domain_value_parse_text() {
+        let val = DomainValue::parse("hello", FieldType::Text).unwrap();
+        assert_eq!(val, DomainValue::Text("hello".to_owned()));
+
+        let val = DomainValue::parse("hello", FieldType::Uid).unwrap();
+        assert_eq!(val, DomainValue::Text("hello".to_owned()));
+    }
+
+    #[test]
+    fn test_domain_value_parse_uuid() {
+        let raw = "9c00b05b-800e-436f-8705-d14bfb2875b4";
+        let val = DomainValue::parse(raw, FieldType::Uuid).unwrap();
+        assert_eq!(val, DomainValue::Uuid(uuid::Uuid::parse_str(raw).unwrap()));
+
+        let err = DomainValue::parse("invalid-uuid", FieldType::Uuid);
+        assert!(err.is_err());
+    }
+
+    #[test]
+    fn test_domain_value_parse_integer() {
+        let val = DomainValue::parse("123", FieldType::Integer(IntegerSize::Int32)).unwrap();
+        assert_eq!(val, DomainValue::Integer(123));
+
+        let err = DomainValue::parse("abc", FieldType::Integer(IntegerSize::Int32));
+        assert!(err.is_err());
+    }
+
+    #[test]
+    fn test_domain_value_parse_decimal() {
+        let val = DomainValue::parse("12.3456", FieldType::Decimal { precision: 10, scale: 2 }).unwrap();
+        assert_eq!(val, DomainValue::Decimal(rust_decimal::Decimal::new(1235, 2)));
+
+        let err = DomainValue::parse("abc", FieldType::Decimal { precision: 10, scale: 2 });
+        assert!(err.is_err());
+    }
+
+    #[test]
+    fn test_domain_value_parse_boolean() {
+        let val = DomainValue::parse("true", FieldType::Boolean).unwrap();
+        assert_eq!(val, DomainValue::Boolean(true));
+
+        let val = DomainValue::parse("false", FieldType::Boolean).unwrap();
+        assert_eq!(val, DomainValue::Boolean(false));
+
+        let err = DomainValue::parse("yes", FieldType::Boolean);
+        assert!(err.is_err());
+    }
+
+    #[test]
+    fn test_domain_value_parse_date() {
+        let val = DomainValue::parse("2026-07-06", FieldType::Date).unwrap();
+        assert_eq!(val, DomainValue::Date(chrono::NaiveDate::from_ymd_opt(2026, 7, 6).unwrap()));
+
+        let err = DomainValue::parse("2026/07/06", FieldType::Date);
+        assert!(err.is_err());
+    }
+
+    #[test]
+    fn test_domain_value_parse_datetime() {
+        let val = DomainValue::parse("2026-07-06T12:34:56Z", FieldType::DateTime).unwrap();
+        assert_eq!(
+            val,
+            DomainValue::DateTime(chrono::DateTime::parse_from_rfc3339("2026-07-06T12:34:56Z").unwrap().with_timezone(&chrono::Utc))
+        );
+
+        let err = DomainValue::parse("2026-07-06 12:34:56", FieldType::DateTime);
+        assert!(err.is_err());
+    }
+
+    #[test]
+    fn test_domain_value_parse_compound_rejected() {
+        let err = DomainValue::parse("foo", FieldType::LocalizedText);
+        assert!(err.is_err());
+
+        let err = DomainValue::parse("foo", FieldType::Json);
+        assert!(err.is_err());
+    }
+}
+

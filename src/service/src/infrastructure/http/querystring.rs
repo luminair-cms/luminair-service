@@ -1,7 +1,7 @@
 use axum::{
     extract::FromRequestParts,
-    http::{StatusCode, request::Parts},
-    response::{IntoResponse, Response},
+    http::request::Parts,
+    response::Response,
 };
 use serde_json::{Map, Value};
 use url::form_urlencoded;
@@ -17,14 +17,21 @@ where
 
     async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
         let query = parts.uri.query().unwrap_or_default();
-        let map = parse_query_to_json(query).map_err(|e| {
-            (StatusCode::BAD_REQUEST, e).into_response()
-        })?;
-        Ok(QueryMap(map))
+        Ok(QueryMap(parse_query_to_json(query)))
     }
 }
 
-pub fn parse_query_to_json(query_str: &str) -> Result<Map<String, Value>, String> {
+/// Parse a URL-encoded bracket query string into a nested JSON `Map`.
+///
+/// Supports:
+/// - Simple keys: `foo=bar` → `{"foo": "bar"}`
+/// - Nested bracket notation: `a[b][c]=v` → `{"a": {"b": {"c": "v"}}}`
+/// - Array push notation: `a[]=1&a[]=2` → `{"a": ["1", "2"]}`
+///
+/// This function is infallible — malformed input is silently discarded rather
+/// than propagated as an error, because individual key-parse failures should
+/// not abort the entire query.
+pub fn parse_query_to_json(query_str: &str) -> Map<String, Value> {
     let mut root = Map::new();
 
     for (raw_key, raw_val) in form_urlencoded::parse(query_str.as_bytes()) {
@@ -86,7 +93,7 @@ pub fn parse_query_to_json(query_str: &str) -> Result<Map<String, Value>, String
         }
     }
 
-    Ok(root)
+    root
 }
 
 #[cfg(test)]
@@ -96,7 +103,7 @@ mod tests {
     #[test]
     fn test_parse_query_to_json_nested() {
         let query = "filters[title][$eq]=hello&filters[description][en][$contains]=world&filters[tags][$in][]=rust&filters[tags][$in][]=axum";
-        let parsed = parse_query_to_json(query).unwrap();
+        let parsed = parse_query_to_json(query);
 
         let filters = parsed.get("filters").unwrap().as_object().unwrap();
 

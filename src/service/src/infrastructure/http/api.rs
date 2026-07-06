@@ -5,7 +5,7 @@ use serde::Serialize;
 
 use crate::application::error::ServiceError;
 
-// ApiSucess is a wrapper around a response that includes a status code.
+// ApiSuccess is a wrapper around a response that includes a status code.
 
 #[derive(Debug, Clone)]
 pub struct ApiSuccess<T: Serialize>(StatusCode, Json<T>);
@@ -22,14 +22,24 @@ impl<T: Serialize> IntoResponse for ApiSuccess<T> {
     }
 }
 
-// ApiError is a wrapper around a response that includes a status code.
-
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// The error type returned by all API handlers.
+///
+/// Each variant maps to an HTTP status code in the [`IntoResponse`] impl.
+/// Implements [`std::error::Error`] via `thiserror` so it participates in the
+/// standard Rust error chain and can be inspected programmatically.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum ApiError {
+    #[error("Internal server error: {0}")]
     InternalServerError(String),
+
+    #[error("Unprocessable entity: {0}")]
     UnprocessableEntity(String),
+
+    #[error("Conflict: {0}")]
     ConflictWithServerState(String),
-    NotFound
+
+    #[error("Not found")]
+    NotFound,
 }
 
 impl From<anyhow::Error> for ApiError {

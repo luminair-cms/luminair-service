@@ -1,7 +1,11 @@
 use std::collections::HashMap;
 use chrono::Utc;
 use luminair_common::{AttributeId, DocumentType};
-use crate::application::commands::{CreateDocumentCommand, DeleteDocumentCommand, FindByIdCommand, FindDocumentsCommand, ModifyRelationsCommand, PublishDocumentCommand, RelationOperation, UpdateDocumentCommand};
+use crate::application::commands::{
+    CreateDocumentCommand, CreateDocumentWithRelationsCommand, DeleteDocumentCommand,
+    FindByIdCommand, FindDocumentsCommand, ModifyRelationsCommand, PublishDocumentCommand,
+    RelationOperation, UpdateDocumentCommand, UpdateDocumentWithRelationsCommand,
+};
 use crate::application::error::ServiceError;
 use crate::application::service::DocumentsService;
 use crate::domain::document::{DatabaseRowId, DocumentInstance, DocumentInstanceId};
@@ -120,6 +124,27 @@ impl<R: DocumentsRepository> DocumentsService for DocumentsServiceImpl<R> {
         Ok(document_id)
     }
 
+    async fn create_with_relations(&self, cmd: CreateDocumentWithRelationsCommand) -> Result<DocumentInstanceId, ServiceError> {
+        let create_cmd = CreateDocumentCommand {
+            document_type: cmd.document_type,
+            fields: cmd.fields,
+            user_id: cmd.user_id.clone(),
+        };
+        let created_id = self.create(create_cmd).await?;
+
+        if !cmd.relation_operations.is_empty() {
+            let modify_cmd = ModifyRelationsCommand {
+                document_type: cmd.document_type,
+                document_id: created_id,
+                operations: cmd.relation_operations,
+            };
+            self.modify_relations(modify_cmd).await?;
+        }
+
+        Ok(created_id)
+    }
+
+
     async fn update(&self, cmd: UpdateDocumentCommand) -> Result<DocumentInstance, ServiceError> {
         // Updates are applied to the draft row — the published row is immutable
         // until the next `publish()` call propagates the draft forward.
@@ -138,6 +163,42 @@ impl<R: DocumentsRepository> DocumentsService for DocumentsServiceImpl<R> {
         self.repository.update(cmd.document_type, &instance).await?;
         Ok(instance)
     }
+
+    async fn update_with_relations(&self, cmd: UpdateDocumentWithRelationsCommand) -> Result<DocumentInstance, ServiceError> {
+        if !cmd.fields.is_empty() {
+            let update_cmd = UpdateDocumentCommand {
+                document_type: cmd.document_type,
+                document_id: cmd.document_id,
+                fields: cmd.fields,
+                user_id: cmd.user_id.clone(),
+            };
+            self.update(update_cmd).await?;
+        }
+
+        if !cmd.relation_operations.is_empty() {
+            let modify_cmd = ModifyRelationsCommand {
+                document_type: cmd.document_type,
+                document_id: cmd.document_id,
+                operations: cmd.relation_operations,
+            };
+            self.modify_relations(modify_cmd).await?;
+        }
+
+        // Return the fully updated document state (with status: Draft)
+        let query = DocumentInstanceQuery::new().with_status(DocumentStatus::Draft);
+        let find_cmd = FindByIdCommand {
+            document_type: cmd.document_type,
+            document_instance_id: cmd.document_id,
+            populate: None,
+            populate_filters: None,
+            query,
+        };
+
+        self.find_by_id(find_cmd)
+            .await?
+            .ok_or(ServiceError::DocumentNotFound)
+    }
+
 
     async fn delete(&self, cmd: DeleteDocumentCommand) -> Result<(), ServiceError> {
         self.repository.delete(cmd.document_type, cmd.document_instance_id)

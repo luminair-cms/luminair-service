@@ -59,3 +59,18 @@ pub enum RelationOperation {
     /// Full replacement: remove all existing relations and replace with this set.
     Set(Vec<DocumentInstanceId>),
 }
+
+pub struct CreateDocumentWithRelationsCommand {
+    pub document_type: &'static DocumentType,
+    pub fields: HashMap<AttributeId, ContentValue>,
+    pub relation_operations: HashMap<AttributeId, RelationOperation>,
+    pub user_id: Option<UserId>,
+}
+
+pub struct UpdateDocumentWithRelationsCommand {
+    pub document_type: &'static DocumentType,
+    pub document_id: DocumentInstanceId,
+    pub fields: HashMap<AttributeId, ContentValue>,
+    pub relation_operations: HashMap<AttributeId, RelationOperation>,
+    pub user_id: Option<UserId>,
+}

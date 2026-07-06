@@ -5,7 +5,7 @@ use axum_prometheus::PrometheusMetricLayer;
 
 use crate::infrastructure::http::handlers::health_check;
 use crate::infrastructure::http::routes::api_routes;
-use crate::infrastructure::AppState;
+use crate::application::AppState;
 use tokio::net;
 
 mod api;
@@ -15,8 +15,8 @@ pub mod routes;
 
 /// Configuration for the HTTP server.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct HttpServerConfig<'a> {
-    pub port: &'a str,
+pub struct HttpServerConfig {
+    pub port: u16,
 }
 
 /// The application's HTTP server. The underlying HTTP package is opaque to module consumers.
@@ -27,7 +27,7 @@ pub struct HttpServer {
 
 impl HttpServer {
     /// Returns a new HTTP server bound to the port specified in `config`.
-    pub async fn new<S: AppState>(state: S, config: HttpServerConfig<'_>) -> anyhow::Result<Self> {
+    pub async fn new<S: AppState>(state: S, config: HttpServerConfig) -> anyhow::Result<Self> {
         let trace_layer = tower_http::trace::TraceLayer::new_for_http().make_span_with(
             |request: &axum::extract::Request<_>| {
                 let uri = request.uri().to_string();
@@ -55,7 +55,7 @@ impl HttpServer {
 
     /// Runs the HTTP server.
     pub async fn run(self) -> anyhow::Result<()> {
-        tracing::debug!("listening on {}", self.listener.local_addr().unwrap());
+        tracing::debug!("listening on {:?}", self.listener.local_addr());
         axum::serve(self.listener, self.router)
             .await
             .context("received error from running server")?;

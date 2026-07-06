@@ -65,18 +65,18 @@ pub struct DocumentOptionsResponse {
     pub localizations: Vec<String>,
 }
 
-/// Attribute of Document resonse
+/// Attribute of a Document response
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AttributeResponse {
     id: String,
     #[serde(flatten)]
-    body: AttribteBodyResponse,
+    body: AttributeBodyResponse,
 }
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase", untagged)]
-pub enum AttribteBodyResponse {
+pub enum AttributeBodyResponse {
     Field {
         #[serde(rename = "type")]
         attribute_type: FieldType,
@@ -144,8 +144,8 @@ impl From<&DocumentTypeOptions> for DocumentOptionsResponse {
 impl From<&DocumentField> for AttributeResponse {
     fn from(value: &DocumentField) -> Self {
         let id = value.id.to_string();
-        let constraints = value.constraints.iter().map(|c| c.clone()).collect();
-        let body = AttribteBodyResponse::Field {
+        let constraints = value.constraints.iter().cloned().collect();
+        let body = AttributeBodyResponse::Field {
             attribute_type: value.field_type.clone(),
             unique: value.unique,
             required: value.required,
@@ -159,7 +159,7 @@ impl From<&DocumentRelation> for AttributeResponse {
     fn from(value: &DocumentRelation) -> Self {
         let id = value.id.to_string();
         let target = value.target.to_string();
-        let body = AttribteBodyResponse::Relation {
+        let body = AttributeBodyResponse::Relation {
             relation_type: value.relation_type.clone(),
             target,
         };

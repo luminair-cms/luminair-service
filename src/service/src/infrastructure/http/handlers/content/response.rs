@@ -4,7 +4,7 @@ use chrono::{DateTime, Utc};
 
 use serde::Serialize;
 use serde_json::Value as JsonValue;
-use std::{collections::HashMap, io::ErrorKind};
+use std::collections::HashMap;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ManyDocumentsResponse {
@@ -43,17 +43,18 @@ impl PartialEq for OneDocumentResponse {
     }
 }
 
-impl TryFrom<Option<DocumentInstance>> for OneDocumentResponse {
-    type Error = std::io::Error;
-
-    fn try_from(value: Option<DocumentInstance>) -> Result<Self, Self::Error> {
-        value
-            .map(|row| OneDocumentResponse {
-                data: DocumentInstanceResponse::from(row),
-            })
-            .ok_or_else(|| std::io::Error::new(ErrorKind::NotFound, "Document not found"))
+impl OneDocumentResponse {
+    /// Convert an optional [`DocumentInstance`] into a response.
+    ///
+    /// Returns `Some` with the serialisable response if the instance is present,
+    /// or `None` if the caller should produce a 404.
+    pub fn from_optional(value: Option<DocumentInstance>) -> Option<Self> {
+        value.map(|row| OneDocumentResponse {
+            data: DocumentInstanceResponse::from(row),
+        })
     }
 }
+
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -183,4 +184,20 @@ fn to_api_key(snake: &str) -> String {
         else { result.push(c); }
     }
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_to_api_key() {
+        assert_eq!(to_api_key("first_name"), "firstName");
+        assert_eq!(to_api_key("camelCase"), "camelCase");
+        assert_eq!(to_api_key("consecutive__underscores"), "consecutiveUnderscores");
+        assert_eq!(to_api_key("_leading_underscore"), "LeadingUnderscore");
+        assert_eq!(to_api_key("trailing_underscore_"), "trailingUnderscore");
+        assert_eq!(to_api_key("a"), "a");
+        assert_eq!(to_api_key(""), "");
+    }
 }

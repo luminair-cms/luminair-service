@@ -1,7 +1,7 @@
 use crate::application::AppState;
 use crate::application::service::DocumentsService;
 use crate::domain::document::DocumentInstanceId;
-use crate::domain::query::{DocumentInstanceQuery, DocumentStatus};
+use crate::domain::query::DocumentInstanceQuery;
 use crate::infrastructure::http::api::{ApiError, ApiSuccess};
 use crate::infrastructure::http::handlers::content::response::{
     ManyDocumentsResponse, OneDocumentResponse,
@@ -10,9 +10,11 @@ use crate::infrastructure::http::querystring::QueryMap;
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
-use axum::response::IntoResponse;
-use crate::application::commands::{DeleteDocumentCommand, FindByIdCommand, FindDocumentsCommand, PublishDocumentCommand};
-use luminair_common::{AttributeId, DocumentType, DocumentTypeApiId};
+use crate::application::commands::{
+    CreateDocumentWithRelationsCommand, DeleteDocumentCommand, FindByIdCommand,
+    FindDocumentsCommand, PublishDocumentCommand, UpdateDocumentWithRelationsCommand,
+};
+use luminair_common::{DocumentType, DocumentTypeApiId};
 use std::str::FromStr;
 
 mod params;
@@ -65,12 +67,11 @@ pub async fn find_document_by_id<S: AppState>(
     let document_instance = state
         .documents_service()
         .find_by_id(cmd)
-        .await
-        .map_err(|err| ApiError::from(err))?;
+        .await?;
 
-    OneDocumentResponse::try_from(document_instance)
+    OneDocumentResponse::from_optional(document_instance)
         .map(|response| ApiSuccess::new(StatusCode::OK, response))
-        .map_err(|_| ApiError::NotFound)
+        .ok_or(ApiError::NotFound)
 }
 
 pub async fn find_all_documents<S: AppState>(
@@ -108,66 +109,27 @@ pub async fn create_new_document<S: AppState>(
     State(state): State<S>,
     Path(api_type): Path<String>,
     Json(payload): Json<serde_json::Value>,
-) -> Result<impl IntoResponse, ApiError> {
+) -> Result<(StatusCode, axum::http::HeaderMap), ApiError> {
     let document_type = resolve_document_type(&state, &api_type)?;
+    let split = request::extract_and_split_payload(&payload, document_type)?;
 
-    let root_obj = payload.as_object().ok_or(ApiError::UnprocessableEntity(
-        "body must be a JSON object".into(),
-    ))?;
-    let data_value = root_obj.get("data").ok_or(ApiError::UnprocessableEntity(
-        "missing 'data' node in request body".into(),
-    ))?;
+    let fields = request::build_fields_from_payload(document_type, &serde_json::Value::Object(split.field_payload))
+        .map_err(|e| ApiError::UnprocessableEntity(e.to_string()))?;
+    let relation_operations = request::parse_relation_operations(&serde_json::Value::Object(split.relation_payload))?;
 
-    let data_obj = data_value.as_object().ok_or(ApiError::UnprocessableEntity(
-        "payload must be a JSON object".into(),
-    ))?;
-
-    // Split payload fields into normal content fields vs relation operations
-    let mut field_payload = serde_json::Map::new();
-    let mut relation_payload = serde_json::Map::new();
-
-    for (k, v) in data_obj {
-        let attr_id = AttributeId::try_new(k).map_err(|_| {
-            ApiError::UnprocessableEntity(format!("Invalid field name: {}", k))
-        })?;
-
-        if document_type.relations.contains(&attr_id) {
-            relation_payload.insert(k.clone(), v.clone());
-        } else if document_type.fields.contains(&attr_id) {
-            field_payload.insert(k.clone(), v.clone());
-        } else {
-            return Err(ApiError::UnprocessableEntity(format!(
-                "Unknown field or relation: {}",
-                k
-            )));
-        }
-    }
-
-    // 1. Create document using content fields
-    let create_cmd = request::parse_create_command(
+    let cmd = CreateDocumentWithRelationsCommand {
         document_type,
-        &serde_json::Value::Object(field_payload),
-        None,
-    )?;
+        fields,
+        relation_operations,
+        user_id: None,
+    };
 
     let created_document_id = state
         .documents_service()
-        .create(create_cmd)
-        .await
-        .map_err(|err| ApiError::from(err))?;
-
-    // 2. Connect relations if any are specified in the payload
-    if !relation_payload.is_empty() {
-        let modify_cmd = request::parse_modify_relations_command(
-            document_type,
-            created_document_id,
-            &serde_json::Value::Object(relation_payload),
-        )?;
-        state.documents_service().modify_relations(modify_cmd).await?;
-    }
+        .create_with_relations(cmd)
+        .await?;
 
     let created_id: String = created_document_id.into();
-
     let location = format!("/api/documents/{}/{}", api_type, created_id);
     let mut headers = axum::http::HeaderMap::new();
     headers.insert(
@@ -182,7 +144,7 @@ pub async fn create_new_document<S: AppState>(
 pub async fn delete_existing_document<S: AppState>(
     State(state): State<S>,
     Path((api_type, id)): Path<(String, String)>,
-) -> Result<impl IntoResponse, ApiError> {
+) -> Result<StatusCode, ApiError> {
     let document_type = resolve_document_type(&state, &api_type)?;
     let document_instance_id = DocumentInstanceId::try_from(&id)?;
 
@@ -194,10 +156,9 @@ pub async fn delete_existing_document<S: AppState>(
     state
         .documents_service()
         .delete(cmd)
-        .await
-        .map_err(|err| ApiError::from(err))?;
+        .await?;
 
-    Ok((StatusCode::NO_CONTENT, ()))
+    Ok(StatusCode::NO_CONTENT)
 }
 
 /// Handle updating document fields and/or modifying relations in a single PUT request.
@@ -211,79 +172,29 @@ pub async fn update_document_handler<S: AppState>(
     let document_type = resolve_document_type(&state, &api_type)?;
     let document_instance_id = DocumentInstanceId::try_from(&id)?;
 
-    let root_obj = payload.as_object().ok_or(ApiError::UnprocessableEntity(
-        "body must be a JSON object".into(),
-    ))?;
-    let data_value = root_obj.get("data").ok_or(ApiError::UnprocessableEntity(
-        "missing 'data' node in request body".into(),
-    ))?;
+    let split = request::extract_and_split_payload(&payload, document_type)?;
 
-    let data_obj = data_value.as_object().ok_or(ApiError::UnprocessableEntity(
-        "payload must be a JSON object".into(),
-    ))?;
+    let fields = request::build_fields_from_payload(document_type, &serde_json::Value::Object(split.field_payload))
+        .map_err(|e| ApiError::UnprocessableEntity(e.to_string()))?;
+    let relation_operations = request::parse_relation_operations(&serde_json::Value::Object(split.relation_payload))?;
 
-    // Split payload fields into normal content fields vs relation operations
-    let mut field_payload = serde_json::Map::new();
-    let mut relation_payload = serde_json::Map::new();
-
-    for (k, v) in data_obj {
-        let attr_id = AttributeId::try_new(k).map_err(|_| {
-            ApiError::UnprocessableEntity(format!("Invalid field name: {}", k))
-        })?;
-
-        if document_type.relations.contains(&attr_id) {
-            relation_payload.insert(k.clone(), v.clone());
-        } else if document_type.fields.contains(&attr_id) {
-            field_payload.insert(k.clone(), v.clone());
-        } else {
-            return Err(ApiError::UnprocessableEntity(format!(
-                "Unknown field or relation: {}",
-                k
-            )));
-        }
-    }
-
-    // 1. Apply field updates if present
-    if !field_payload.is_empty() {
-        let cmd = request::parse_update_command(
-            document_type,
-            document_instance_id,
-            &serde_json::Value::Object(field_payload),
-            None,
-        )?;
-        state.documents_service().update(cmd).await?;
-    }
-
-    // 2. Apply relation operations if present
-    if !relation_payload.is_empty() {
-        let cmd = request::parse_modify_relations_command(
-            document_type,
-            document_instance_id,
-            &serde_json::Value::Object(relation_payload),
-        )?;
-        state.documents_service().modify_relations(cmd).await?;
-    }
-
-    // 3. Return the fully updated document state (with status: Draft to see the latest working copy)
-    let query = DocumentInstanceQuery::new().with_status(DocumentStatus::Draft);
-    let find_cmd = FindByIdCommand {
+    let cmd = UpdateDocumentWithRelationsCommand {
         document_type,
-        document_instance_id,
-        populate: None,
-        populate_filters: None,
-        query,
+        document_id: document_instance_id,
+        fields,
+        relation_operations,
+        user_id: None,
     };
 
     let updated_instance = state
         .documents_service()
-        .find_by_id(find_cmd)
-        .await?
-        .ok_or(ApiError::NotFound)?;
+        .update_with_relations(cmd)
+        .await?;
 
     Ok(ApiSuccess::new(
         StatusCode::OK,
-        OneDocumentResponse::try_from(Some(updated_instance))
-            .map_err(|_| ApiError::NotFound)?,
+        OneDocumentResponse::from_optional(Some(updated_instance))
+            .ok_or(ApiError::NotFound)?,
     ))
 }
 
@@ -309,37 +220,8 @@ pub async fn publish_document<S: AppState>(
 
     Ok(ApiSuccess::new(
         StatusCode::OK,
-        OneDocumentResponse::try_from(Some(published_instance))
-            .map_err(|_| ApiError::NotFound)?,
+        OneDocumentResponse::from_optional(Some(published_instance))
+            .ok_or(ApiError::NotFound)?,
     ))
 }
 
-/// Parse a JSON array of document IDs in shorthand (`"uuid-string"`) or
-/// longhand (`{ "documentId": "uuid-string" }`) format into `DocumentInstanceId`s.
-fn parse_ids_from_list(value: &serde_json::Value) -> Result<Vec<DocumentInstanceId>, ApiError> {
-    let arr = value.as_array().ok_or_else(|| {
-        ApiError::UnprocessableEntity("connect/disconnect must be an array".into())
-    })?;
-
-    arr.iter()
-        .map(|item| {
-            let uuid_str = match item {
-                serde_json::Value::String(s) => s.as_str(),
-                serde_json::Value::Object(obj) => obj
-                    .get("documentId")
-                    .and_then(|v| v.as_str())
-                    .ok_or_else(|| {
-                        ApiError::UnprocessableEntity("documentId must be a string".into())
-                    })?,
-                _ => {
-                    return Err(ApiError::UnprocessableEntity(
-                        "each entry must be a UUID string or { documentId: '...' }".into(),
-                    ));
-                }
-            };
-            DocumentInstanceId::try_from(uuid_str).map_err(|_| {
-                ApiError::UnprocessableEntity(format!("'{}' is not a valid UUID", uuid_str))
-            })
-        })
-        .collect()
-}

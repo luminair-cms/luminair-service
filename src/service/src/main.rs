@@ -32,7 +32,7 @@ async fn main() -> anyhow::Result<()> {
     let state = AppStateImpl::new(registry, repository);
 
     let server_config = HttpServerConfig {
-        port: &settings.server_port,
+        port: settings.server_port,
     };
     let http_server = HttpServer::new(state, server_config).await?;
     http_server.run().await
