@@ -32,7 +32,9 @@ pub async fn one_document_metadata<S: AppState>(
         .document_types()
         .get(&document_type_id)
         .map(DetailedDocumentResponse::from)
-        .ok_or(ApiError::NotFound)?;
+        .ok_or_else(|| {
+            ApiError::NotFound(format!("Document type metadata for ID '{}' not found", id))
+        })?;
 
     Ok(ApiSuccess::new(StatusCode::OK, result))
 }

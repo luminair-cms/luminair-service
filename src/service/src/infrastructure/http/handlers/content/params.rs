@@ -320,7 +320,12 @@ fn validate_filter_tree(
                     .find(|r| r.id.as_ref() == key)
                 {
                     // Relation key — recurse with the target document type.
-                    let target_type = registry.get(&rel.target).ok_or(ApiError::NotFound)?;
+                    let target_type = registry.get(&rel.target).ok_or_else(|| {
+                        ApiError::NotFound(format!(
+                            "Target document type '{}' not found in registry",
+                            rel.target
+                        ))
+                    })?;
 
                     let children = validate_filter_tree(child, "", target_type, registry)?;
                     nodes.push(ValidatedFilterNode::Relation {

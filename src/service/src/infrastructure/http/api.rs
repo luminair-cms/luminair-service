@@ -38,8 +38,8 @@ pub enum ApiError {
     #[error("Conflict: {0}")]
     ConflictWithServerState(String),
 
-    #[error("Not found")]
-    NotFound,
+    #[error("Not found: {0}")]
+    NotFound(String),
 }
 
 impl From<anyhow::Error> for ApiError {
@@ -51,9 +51,15 @@ impl From<anyhow::Error> for ApiError {
 impl From<ServiceError> for ApiError {
     fn from(value: ServiceError) -> Self {
         match value {
-            ServiceError::DocumentTypeNotFound
-            | ServiceError::DocumentNotFound
-            | ServiceError::RelationNotFound(_) => Self::NotFound,
+            ServiceError::DocumentTypeNotFound => {
+                Self::NotFound("Document type not found".to_string())
+            }
+            ServiceError::DocumentNotFound => {
+                Self::NotFound("Document not found".to_string())
+            }
+            ServiceError::RelationNotFound(relation) => {
+                Self::NotFound(format!("Relation '{}' not found", relation))
+            }
             ServiceError::NotOwningRelation(relation) => Self::UnprocessableEntity(format!(
                 "Relation is not an owning relation: {}",
                 relation
@@ -69,23 +75,33 @@ impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         use ApiError::*;
 
-        let (status, detail) = match self {
+        let (status, detail, problem_type) = match self {
             InternalServerError(msg) => {
                 tracing::error!("{}", msg);
                 (
                     StatusCode::INTERNAL_SERVER_ERROR,
                     "An internal server error occurred".to_string(),
+                    "/errors/internal-server-error".to_string(),
                 )
             }
-            UnprocessableEntity(msg) => (StatusCode::UNPROCESSABLE_ENTITY, msg),
-            ConflictWithServerState(msg) => (StatusCode::CONFLICT, msg),
-            NotFound => (
+            UnprocessableEntity(msg) => (
+                StatusCode::UNPROCESSABLE_ENTITY,
+                msg,
+                "/errors/unprocessable-entity".to_string(),
+            ),
+            ConflictWithServerState(msg) => (
+                StatusCode::CONFLICT,
+                msg,
+                "/errors/conflict".to_string(),
+            ),
+            NotFound(msg) => (
                 StatusCode::NOT_FOUND,
-                "The requested resource was not found".to_string(),
+                msg,
+                "/errors/not-found".to_string(),
             ),
         };
 
-        let problem = ProblemDetails::new(status, detail);
+        let problem = ProblemDetails::new(status, detail).with_type(problem_type);
         (
             status,
             [("content-type", "application/problem+json")],
@@ -119,5 +135,10 @@ impl ProblemDetails {
             detail,
             instance: None,
         }
+    }
+
+    pub fn with_type(mut self, problem_type: String) -> Self {
+        self.problem_type = problem_type;
+        self
     }
 }

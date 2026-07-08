@@ -52,7 +52,7 @@ async fn duplicate_unique_field_returns_409_problem_details() -> anyhow::Result<
     let json: Value = serde_json::from_slice(&bytes)?;
 
     assert_eq!(status, StatusCode::CONFLICT);
-    assert_eq!(json["type"], "about:blank");
+    assert_eq!(json["type"], "/errors/conflict");
     assert_eq!(json["status"], 409);
     Ok(())
 }
@@ -69,7 +69,7 @@ async fn nonexistent_relation_target_returns_422_problem_details() -> anyhow::Re
     let json: Value = serde_json::from_slice(&bytes)?;
 
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
-    assert_eq!(json["type"], "about:blank");
+    assert_eq!(json["type"], "/errors/unprocessable-entity");
     assert_eq!(json["status"], 422);
     assert!(
         json["detail"]

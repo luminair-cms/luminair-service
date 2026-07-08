@@ -31,7 +31,7 @@ fn resolve_document_type<S: AppState>(
     state
         .document_types()
         .lookup(&api_id)
-        .ok_or(ApiError::NotFound)
+        .ok_or_else(|| ApiError::NotFound(format!("Document type '{}' not found", api_type)))
 }
 
 pub async fn find_document_by_id<S: AppState>(
@@ -73,7 +73,7 @@ pub async fn find_document_by_id<S: AppState>(
 
     OneDocumentResponse::from_optional(document_instance)
         .map(|response| ApiSuccess::new(StatusCode::OK, response))
-        .ok_or(ApiError::NotFound)
+        .ok_or_else(|| ApiError::NotFound(format!("Document instance with ID '{}' not found", id)))
 }
 
 pub async fn find_all_documents<S: AppState>(
@@ -199,7 +199,9 @@ pub async fn update_document_handler<S: AppState>(
 
     Ok(ApiSuccess::new(
         StatusCode::OK,
-        OneDocumentResponse::from_optional(Some(updated_instance)).ok_or(ApiError::NotFound)?,
+        OneDocumentResponse::from_optional(Some(updated_instance)).ok_or_else(|| {
+            ApiError::NotFound("Document instance not found after update".to_string())
+        })?,
     ))
 }
 
@@ -225,6 +227,8 @@ pub async fn publish_document<S: AppState>(
 
     Ok(ApiSuccess::new(
         StatusCode::OK,
-        OneDocumentResponse::from_optional(Some(published_instance)).ok_or(ApiError::NotFound)?,
+        OneDocumentResponse::from_optional(Some(published_instance)).ok_or_else(|| {
+            ApiError::NotFound("Document instance not found after publish".to_string())
+        })?,
     ))
 }
