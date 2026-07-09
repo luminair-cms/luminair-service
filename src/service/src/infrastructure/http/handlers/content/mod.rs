@@ -118,15 +118,12 @@ pub async fn create_new_document<S: AppState>(
     Json(payload): Json<serde_json::Value>,
 ) -> Result<(StatusCode, axum::http::HeaderMap), ApiError> {
     let document_type = resolve_document_type(&state, &api_type)?;
-    let split = request::extract_and_split_payload(&payload, document_type)?;
+    let data_obj = request::extract_data_envelope(&payload)?;
+    let classified = request::classify_document_data(data_obj, document_type)?;
 
-    let fields = request::build_fields_from_payload(
-        document_type,
-        &serde_json::Value::Object(split.field_payload),
-    )
-    .map_err(|e| ApiError::UnprocessableEntity(e.to_string()))?;
-    let relation_operations =
-        request::parse_relation_operations(&serde_json::Value::Object(split.relation_payload))?;
+    let fields = request::build_fields_from_map(document_type, &classified.fields)
+        .map_err(|e| ApiError::UnprocessableEntity(e.to_string()))?;
+    let relation_operations = request::parse_relation_operations(&classified.relations)?;
 
     let cmd = CreateDocumentWithRelationsCommand {
         document_type,
@@ -149,23 +146,6 @@ pub async fn create_new_document<S: AppState>(
     Ok((StatusCode::CREATED, headers))
 }
 
-pub async fn delete_existing_document<S: AppState>(
-    State(state): State<S>,
-    Path((api_type, id)): Path<(String, String)>,
-) -> Result<StatusCode, ApiError> {
-    let document_type = resolve_document_type(&state, &api_type)?;
-    let document_instance_id = DocumentInstanceId::try_from(&id)?;
-
-    let cmd = DeleteDocumentCommand {
-        document_type,
-        document_instance_id,
-    };
-
-    state.documents_service().delete(cmd).await?;
-
-    Ok(StatusCode::NO_CONTENT)
-}
-
 /// Handle updating document fields and/or modifying relations in a single PUT request.
 ///
 /// Accepts a flat JSON payload or a nested `{ "data": { ... } }` payload.
@@ -177,15 +157,12 @@ pub async fn update_document_handler<S: AppState>(
     let document_type = resolve_document_type(&state, &api_type)?;
     let document_instance_id = DocumentInstanceId::try_from(&id)?;
 
-    let split = request::extract_and_split_payload(&payload, document_type)?;
+    let data_obj = request::extract_data_envelope(&payload)?;
+    let classified = request::classify_document_data(data_obj, document_type)?;
 
-    let fields = request::build_fields_from_payload(
-        document_type,
-        &serde_json::Value::Object(split.field_payload),
-    )
-    .map_err(|e| ApiError::UnprocessableEntity(e.to_string()))?;
-    let relation_operations =
-        request::parse_relation_operations(&serde_json::Value::Object(split.relation_payload))?;
+    let fields = request::build_fields_from_map(document_type, &classified.fields)
+        .map_err(|e| ApiError::UnprocessableEntity(e.to_string()))?;
+    let relation_operations = request::parse_relation_operations(&classified.relations)?;
 
     let cmd = UpdateDocumentWithRelationsCommand {
         document_type,
@@ -203,6 +180,23 @@ pub async fn update_document_handler<S: AppState>(
             ApiError::NotFound("Document instance not found after update".to_string())
         })?,
     ))
+}
+
+pub async fn delete_existing_document<S: AppState>(
+    State(state): State<S>,
+    Path((api_type, id)): Path<(String, String)>,
+) -> Result<StatusCode, ApiError> {
+    let document_type = resolve_document_type(&state, &api_type)?;
+    let document_instance_id = DocumentInstanceId::try_from(&id)?;
+
+    let cmd = DeleteDocumentCommand {
+        document_type,
+        document_instance_id,
+    };
+
+    state.documents_service().delete(cmd).await?;
+
+    Ok(StatusCode::NO_CONTENT)
 }
 
 /// Handle publishing a draft document.

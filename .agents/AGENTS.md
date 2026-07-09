@@ -80,6 +80,11 @@ Luminair is a Schema-Driven CMS platform (similar to Strapi) focused on Speed an
 * **Documentation Guidelines**:
   * Document all public structs, enums, traits, and functions using docstrings (`///`).
   * Keep inline documentation synchronized with code changes.
+* **Code Formatting**:
+  * Before committing changes, you must check formatting by running:
+    ```bash
+    cargo fmt --all --check
+    ```
 * **Dependency Sorting & Management**: In Cargo manifests (`Cargo.toml`):
   1. All dependencies under `[dependencies]` and `[dev-dependencies]` must be sorted alphabetically.
   2. Local workspace dependencies (e.g. `luminair_common = { path = ... }`) should be placed first, separated by a blank line from third-party/external dependencies.
@@ -93,6 +98,7 @@ Luminair is a Schema-Driven CMS platform (similar to Strapi) focused on Speed an
 ```bash
 cargo build
 cargo check --workspace
+cargo fmt --all --check            # Verify code formatting
 ```
 
 ### Running Tests

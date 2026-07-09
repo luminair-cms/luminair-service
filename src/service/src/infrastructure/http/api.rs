@@ -54,9 +54,7 @@ impl From<ServiceError> for ApiError {
             ServiceError::DocumentTypeNotFound => {
                 Self::NotFound("Document type not found".to_string())
             }
-            ServiceError::DocumentNotFound => {
-                Self::NotFound("Document not found".to_string())
-            }
+            ServiceError::DocumentNotFound => Self::NotFound("Document not found".to_string()),
             ServiceError::RelationNotFound(relation) => {
                 Self::NotFound(format!("Relation '{}' not found", relation))
             }
@@ -89,16 +87,10 @@ impl IntoResponse for ApiError {
                 msg,
                 "/errors/unprocessable-entity".to_string(),
             ),
-            ConflictWithServerState(msg) => (
-                StatusCode::CONFLICT,
-                msg,
-                "/errors/conflict".to_string(),
-            ),
-            NotFound(msg) => (
-                StatusCode::NOT_FOUND,
-                msg,
-                "/errors/not-found".to_string(),
-            ),
+            ConflictWithServerState(msg) => {
+                (StatusCode::CONFLICT, msg, "/errors/conflict".to_string())
+            }
+            NotFound(msg) => (StatusCode::NOT_FOUND, msg, "/errors/not-found".to_string()),
         };
 
         let problem = ProblemDetails::new(status, detail).with_type(problem_type);

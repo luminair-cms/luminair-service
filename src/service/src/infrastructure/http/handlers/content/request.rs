@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 
 use luminair_common::{AttributeId, DocumentType};
-use serde_json::Value as JsonValue;
 
 use crate::application::commands::RelationOperation;
 use crate::domain::document::DocumentInstanceId;
@@ -9,40 +8,46 @@ use crate::domain::document::content::ContentValue;
 use crate::domain::document::error::DocumentError;
 use crate::infrastructure::http::api::ApiError;
 
-/// Parsed and split request payload, ready for command construction.
+/// Classified JSON fields and relations, ready for parsing into domain types/operations.
 #[derive(Debug)]
-pub struct SplitPayload {
-    pub field_payload: serde_json::Map<String, serde_json::Value>,
-    pub relation_payload: serde_json::Map<String, serde_json::Value>,
+pub struct ClassifiedDocumentData {
+    pub fields: HashMap<AttributeId, serde_json::Value>,
+    pub relations: HashMap<AttributeId, serde_json::Value>,
 }
 
-/// Extract the `data` envelope from a JSON body and split its keys into
-/// field values and relation operations based on the document type schema.
-pub fn extract_and_split_payload(
+/// Extract the `data` envelope from a JSON body.
+pub fn extract_data_envelope(
     payload: &serde_json::Value,
-    document_type: &DocumentType,
-) -> Result<SplitPayload, ApiError> {
-    let root_obj = payload.as_object().ok_or(ApiError::UnprocessableEntity(
-        "body must be a JSON object".into(),
-    ))?;
-    let data_value = root_obj.get("data").ok_or(ApiError::UnprocessableEntity(
-        "missing 'data' node in request body".into(),
-    ))?;
-    let data_obj = data_value.as_object().ok_or(ApiError::UnprocessableEntity(
-        "payload must be a JSON object".into(),
-    ))?;
+) -> Result<&serde_json::Map<String, serde_json::Value>, ApiError> {
+    let root_obj = payload
+        .as_object()
+        .ok_or_else(|| ApiError::UnprocessableEntity("body must be a JSON object".into()))?;
+    let data_value = root_obj.get("data").ok_or_else(|| {
+        ApiError::UnprocessableEntity("missing 'data' node in request body".into())
+    })?;
+    let data_obj = data_value
+        .as_object()
+        .ok_or_else(|| ApiError::UnprocessableEntity("payload must be a JSON object".into()))?;
+    Ok(data_obj)
+}
 
-    let mut field_payload = serde_json::Map::new();
-    let mut relation_payload = serde_json::Map::new();
+/// Classify the document data keys into field values and relation operations
+/// based on the document type schema.
+pub fn classify_document_data(
+    data_obj: &serde_json::Map<String, serde_json::Value>,
+    document_type: &DocumentType,
+) -> Result<ClassifiedDocumentData, ApiError> {
+    let mut fields = HashMap::new();
+    let mut relations = HashMap::new();
 
     for (k, v) in data_obj {
         let attr_id = AttributeId::try_new(k)
             .map_err(|_| ApiError::UnprocessableEntity(format!("Invalid field name: {}", k)))?;
 
-        if document_type.relations.contains(&attr_id) {
-            relation_payload.insert(k.clone(), v.clone());
-        } else if document_type.fields.contains(&attr_id) {
-            field_payload.insert(k.clone(), v.clone());
+        if document_type.fields.contains(&attr_id) {
+            fields.insert(attr_id, v.clone());
+        } else if document_type.relations.contains(&attr_id) {
+            relations.insert(attr_id, v.clone());
         } else {
             return Err(ApiError::UnprocessableEntity(format!(
                 "Unknown field or relation: {}",
@@ -51,13 +56,10 @@ pub fn extract_and_split_payload(
         }
     }
 
-    Ok(SplitPayload {
-        field_payload,
-        relation_payload,
-    })
+    Ok(ClassifiedDocumentData { fields, relations })
 }
 
-/// Parse and validate a JSON request body into a field map.
+/// Parse and validate a JSON request map into a field map.
 ///
 /// Each key in the payload must be a valid [`AttributeId`] that exists on the
 /// document type. Unknown fields are rejected. Fields that are declared
@@ -69,40 +71,25 @@ pub fn extract_and_split_payload(
 /// # Errors
 ///
 /// Returns [`DocumentError`] for:
-/// - A payload that is not a JSON object
-/// - Field names that are not valid attribute identifiers
 /// - Fields not declared on the document type
 /// - Type mismatches or constraint violations (via the codec)
 /// - Required fields explicitly set to `null`
-pub fn build_fields_from_payload(
+pub fn build_fields_from_map(
     document_type: &DocumentType,
-    payload: &JsonValue,
+    fields_map: &HashMap<AttributeId, serde_json::Value>,
 ) -> Result<HashMap<AttributeId, ContentValue>, DocumentError> {
-    let payload_obj = payload
-        .as_object()
-        .ok_or_else(|| DocumentError::InvalidFieldValue {
-            field: "<body>".into(),
-            reason: "request body must be a JSON object".into(),
-        })?;
+    let mut fields = HashMap::with_capacity(fields_map.len());
 
-    let mut fields = HashMap::with_capacity(payload_obj.len());
-
-    for (field_name, field_value) in payload_obj {
-        let attribute_id =
-            AttributeId::try_new(field_name).map_err(|_| DocumentError::InvalidFieldValue {
-                field: field_name.clone(),
-                reason: "invalid field name".into(),
-            })?;
-
-        let field_def = document_type.fields.get(&attribute_id).ok_or_else(|| {
+    for (attribute_id, field_value) in fields_map {
+        let field_def = document_type.fields.get(attribute_id).ok_or_else(|| {
             DocumentError::InvalidFieldValue {
-                field: field_name.clone(),
+                field: attribute_id.as_ref().to_string(),
                 reason: "unknown field for this document type".into(),
             }
         })?;
 
         fields.insert(
-            attribute_id,
+            attribute_id.clone(),
             ContentValue::from_json(field_value, field_def)?,
         );
     }
@@ -111,27 +98,19 @@ pub fn build_fields_from_payload(
 }
 
 pub fn parse_relation_operations(
-    payload: &serde_json::Value,
+    relations_map: &HashMap<AttributeId, serde_json::Value>,
 ) -> Result<HashMap<AttributeId, RelationOperation>, ApiError> {
-    let data_obj = payload.as_object().ok_or(ApiError::UnprocessableEntity(
-        "body must be a JSON object".into(),
-    ))?;
-
     let mut operations = HashMap::new();
 
-    for (field_name, field_value) in data_obj {
-        let attr_id = AttributeId::try_new(field_name).map_err(|_| {
-            ApiError::UnprocessableEntity(format!("Invalid relation field: {}", field_name))
-        })?;
-
+    for (attr_id, field_value) in relations_map {
         let field_obj = field_value.as_object().ok_or_else(|| {
-            ApiError::UnprocessableEntity(format!("Field '{}' must be an object", field_name))
+            ApiError::UnprocessableEntity(format!("Field '{}' must be an object", attr_id.as_ref()))
         })?;
 
         if field_obj.contains_key("set") {
             return Err(ApiError::UnprocessableEntity(format!(
                 "Relation field '{}': 'set' operation is not yet supported in the MVP",
-                field_name
+                attr_id.as_ref()
             )));
         }
 
@@ -147,7 +126,7 @@ pub fn parse_relation_operations(
         )?;
 
         operations.insert(
-            attr_id,
+            attr_id.clone(),
             RelationOperation::ConnectDisconnect {
                 connect,
                 disconnect,
@@ -226,47 +205,63 @@ mod tests {
     }
 
     #[test]
-    fn test_extract_and_split_payload_success() {
-        let dt = mock_document_type();
+    fn test_extract_data_envelope_success() {
         let payload = json!({
             "data": {
-                "title": "My Article",
-                "author": {
-                    "connect": ["9c00b05b-800e-436f-8705-d14bfb2875b4"]
-                }
+                "title": "My Article"
             }
         });
-
-        let split = extract_and_split_payload(&payload, &dt).unwrap();
-        assert_eq!(
-            split.field_payload.get("title").unwrap().as_str().unwrap(),
-            "My Article"
-        );
-        assert!(split.relation_payload.contains_key("author"));
+        let data = extract_data_envelope(&payload).unwrap();
+        assert_eq!(data.get("title").unwrap().as_str().unwrap(), "My Article");
     }
 
     #[test]
-    fn test_extract_and_split_payload_missing_data() {
-        let dt = mock_document_type();
+    fn test_extract_data_envelope_missing() {
         let payload = json!({
             "title": "My Article"
         });
-
-        let res = extract_and_split_payload(&payload, &dt);
+        let res = extract_data_envelope(&payload);
         assert!(res.is_err());
         assert!(res.unwrap_err().to_string().contains("missing 'data'"));
     }
 
     #[test]
-    fn test_extract_and_split_payload_unknown_field() {
+    fn test_classify_document_data_success() {
         let dt = mock_document_type();
         let payload = json!({
-            "data": {
-                "ghost": "boo"
+            "title": "My Article",
+            "author": {
+                "connect": ["9c00b05b-800e-436f-8705-d14bfb2875b4"]
             }
         });
+        let data_map = payload.as_object().unwrap();
 
-        let res = extract_and_split_payload(&payload, &dt);
+        let classified = classify_document_data(data_map, &dt).unwrap();
+        assert_eq!(
+            classified
+                .fields
+                .get(&AttributeId::try_new("title").unwrap())
+                .unwrap()
+                .as_str()
+                .unwrap(),
+            "My Article"
+        );
+        assert!(
+            classified
+                .relations
+                .contains_key(&AttributeId::try_new("author").unwrap())
+        );
+    }
+
+    #[test]
+    fn test_classify_document_data_unknown_field() {
+        let dt = mock_document_type();
+        let payload = json!({
+            "ghost": "boo"
+        });
+        let data_map = payload.as_object().unwrap();
+
+        let res = classify_document_data(data_map, &dt);
         assert!(res.is_err());
         assert!(
             res.unwrap_err()
@@ -282,8 +277,13 @@ mod tests {
                 "set": ["9c00b05b-800e-436f-8705-d14bfb2875b4"]
             }
         });
+        let mut map = HashMap::new();
+        map.insert(
+            AttributeId::try_new("author").unwrap(),
+            payload.get("author").unwrap().clone(),
+        );
 
-        let res = parse_relation_operations(&payload);
+        let res = parse_relation_operations(&map);
         assert!(res.is_err());
         assert!(
             res.unwrap_err()
