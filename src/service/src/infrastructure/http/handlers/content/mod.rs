@@ -17,8 +17,8 @@ use axum::http::StatusCode;
 use luminair_common::{DocumentType, DocumentTypeApiId};
 use std::str::FromStr;
 
-mod params;
-mod request;
+mod query_params;
+mod request_body;
 mod response;
 
 /// Resolve a `{api_type}` path segment to a registered [`DocumentType`].
@@ -52,7 +52,7 @@ pub async fn find_document_by_id<S: AppState>(
 
     let document_type = resolve_document_type(&state, &api_type)?;
     let document_instance_id = DocumentInstanceId::try_from(&id)?;
-    let q = params::parse_query(
+    let q = query_params::parse_query(
         &query_map,
         document_type,
         state.document_types(),
@@ -82,7 +82,7 @@ pub async fn find_all_documents<S: AppState>(
     QueryMap(query_map): QueryMap,
 ) -> Result<ApiSuccess<ManyDocumentsResponse>, ApiError> {
     let document_type = resolve_document_type(&state, &api_type)?;
-    let q = params::parse_query(
+    let q = query_params::parse_query(
         &query_map,
         document_type,
         state.document_types(),
@@ -118,12 +118,12 @@ pub async fn create_new_document<S: AppState>(
     Json(payload): Json<serde_json::Value>,
 ) -> Result<(StatusCode, axum::http::HeaderMap), ApiError> {
     let document_type = resolve_document_type(&state, &api_type)?;
-    let data_obj = request::extract_data_envelope(&payload)?;
-    let classified = request::classify_document_data(data_obj, document_type)?;
+    let data_obj = request_body::extract_data_envelope(&payload)?;
+    let classified = request_body::classify_document_data(data_obj, document_type)?;
 
-    let fields = request::build_fields_from_map(document_type, &classified.fields)
+    let fields = request_body::build_fields_from_map(document_type, &classified.fields)
         .map_err(|e| ApiError::UnprocessableEntity(e.to_string()))?;
-    let relation_operations = request::parse_relation_operations(&classified.relations)?;
+    let relation_operations = request_body::parse_relation_operations(&classified.relations)?;
 
     let cmd = CreateDocumentWithRelationsCommand {
         document_type,
@@ -157,12 +157,12 @@ pub async fn update_document_handler<S: AppState>(
     let document_type = resolve_document_type(&state, &api_type)?;
     let document_instance_id = DocumentInstanceId::try_from(&id)?;
 
-    let data_obj = request::extract_data_envelope(&payload)?;
-    let classified = request::classify_document_data(data_obj, document_type)?;
+    let data_obj = request_body::extract_data_envelope(&payload)?;
+    let classified = request_body::classify_document_data(data_obj, document_type)?;
 
-    let fields = request::build_fields_from_map(document_type, &classified.fields)
+    let fields = request_body::build_fields_from_map(document_type, &classified.fields)
         .map_err(|e| ApiError::UnprocessableEntity(e.to_string()))?;
-    let relation_operations = request::parse_relation_operations(&classified.relations)?;
+    let relation_operations = request_body::parse_relation_operations(&classified.relations)?;
 
     let cmd = UpdateDocumentWithRelationsCommand {
         document_type,
