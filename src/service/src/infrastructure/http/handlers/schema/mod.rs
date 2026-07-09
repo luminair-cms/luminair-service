@@ -25,7 +25,7 @@ pub async fn one_document_metadata<S: AppState>(
     Path(id): Path<String>,
     State(state): State<S>,
 ) -> Result<ApiSuccess<DetailedDocumentResponse>, ApiError> {
-    let document_type_id = DocumentTypeId::try_new(id)
+    let document_type_id = DocumentTypeId::try_new(&id)
         .map_err(|err| ApiError::UnprocessableEntity(err.to_string()))?;
 
     let result = state
