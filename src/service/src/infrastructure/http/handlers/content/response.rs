@@ -64,6 +64,7 @@ impl OneDocumentResponse {
 pub struct DocumentInstanceResponse {
     pub id: i64,
     pub document_id: String,
+    pub status: String,
     #[serde(flatten)]
     pub audit: DocumentInstanceAudit,
     #[serde(flatten)]
@@ -120,6 +121,17 @@ impl From<DocumentInstance> for DocumentInstanceResponse {
             version: audit.version,
         };
 
+        let status = match &value.content.publication_state {
+            PublicationState::Published { .. } => "published".to_string(),
+            PublicationState::Draft { revision } => {
+                if *revision == 0 {
+                    "draft".to_string()
+                } else {
+                    "modified".to_string()
+                }
+            }
+        };
+
         let published = match value.content.publication_state {
             PublicationState::Draft { revision: _ } => None,
             PublicationState::Published {
@@ -165,6 +177,7 @@ impl From<DocumentInstance> for DocumentInstanceResponse {
         Self {
             id,
             document_id,
+            status,
             audit,
             published,
             fields,
