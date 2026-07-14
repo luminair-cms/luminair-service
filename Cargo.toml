@@ -7,18 +7,18 @@ members = [
 resolver = "3" # Recommended for newer Cargo features
 
 [workspace.dependencies]
-anyhow = "1.0.102"
+anyhow = "1.0.103"
 axum = { version = "0.8.9", features = ["macros"] }
 axum-prometheus = "0.10.0"
-chrono = { version = "0.4.44", features = ["serde"] }
-config = { version = "0.15.23", features = ["yaml"] }
+chrono = { version = "0.4.45", features = ["serde"] }
+config = { version = "0.15.25", features = ["yaml"] }
 dotenvy = "0.15"
 email_address = "0.2.9"
 futures = "0.3.32"
 itertools = "0.15.0"
 nutype = { version = "0.7.0", features = ["regex", "serde"] }
-regex = "1.12.3"
-rust_decimal = { version = "1.40", features = ["serde-float", "serde-with-float"] }
+regex = "1.13.0"
+rust_decimal = { version = "1.42.1", features = ["serde-float", "serde-with-float"] }
 sea-query-sqlx = { version = "0.9.1", features = ["sqlx-postgres", "postgres-array", "postgres-vector", "with-chrono", "with-json", "with-rust_decimal", "with-uuid"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0.150"
@@ -27,10 +27,10 @@ tempfile = "3"
 testcontainers-modules = { version = "0.15.0", features = ["postgres"] }
 thiserror = "2.0.18"
 tokio = { version = "1.52.3", features = ["full"] }
-tower = { version = "0.5.2", features = ["util"] }
+tower = { version = "0.5.3", features = ["util"] }
 tower-http = { version = "0.7.0", features = ["add-extension", "trace"] }
 tracing = "0.1.44"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 url = "2.5.8"
 
 [workspace.dependencies.sea-query]
@@ -38,7 +38,7 @@ version = "1.0.1"
 features = ["backend-postgres", "sqlx-utils", "with-chrono", "with-json", "with-rust_decimal", "with-uuid", "postgres-array", "postgres-interval", "postgres-vector"]
 
 [workspace.dependencies.uuid]
-version = "1.23.2"
+version = "1.23.5"
 features = ["v4", "v7"]
 
 
