@@ -7,7 +7,9 @@ use crate::application::error::ServiceError;
 use crate::application::service::DocumentsService;
 use crate::domain::document::content::DocumentContent;
 use crate::domain::document::error::DocumentError;
-use crate::domain::document::{DatabaseRowId, DocumentInstance, DocumentInstanceId};
+use crate::domain::document::{
+    DatabaseRowId, DocumentInstance, DocumentInstanceId, lifecycle::PublicationState,
+};
 use crate::domain::query::{DocumentInstanceQuery, DocumentStatus};
 use crate::domain::repository::{DocumentsRepository, RelationMap, RelationOps, RepositoryError};
 use chrono::Utc;
@@ -184,6 +186,13 @@ impl<R: DocumentsRepository> DocumentsService for DocumentsServiceImpl<R> {
         instance.audit.updated_at = Utc::now();
         instance.audit.updated_by = cmd.user_id;
 
+        // Transition publication state to Draft (MODIFIED editorial status) if it's currently Published
+        if let PublicationState::Published { revision, .. } = &instance.content.publication_state {
+            instance.content.publication_state = PublicationState::Draft {
+                revision: *revision,
+            };
+        }
+
         self.repository.update(cmd.document_type, &instance).await?;
         Ok(instance)
     }
@@ -303,6 +312,13 @@ impl<R: DocumentsRepository> DocumentsService for DocumentsServiceImpl<R> {
         // Bump the version and transition status (e.g. from PUBLISHED to MODIFIED)
         instance.audit.version += 1;
         instance.audit.updated_at = Utc::now();
+
+        // Transition publication state to Draft (MODIFIED editorial status) if it's currently Published
+        if let PublicationState::Published { revision, .. } = &instance.content.publication_state {
+            instance.content.publication_state = PublicationState::Draft {
+                revision: *revision,
+            };
+        }
 
         self.repository
             .update(cmd.document_type, &instance)
