@@ -355,10 +355,24 @@ fn handle_document_fields(
 
         main_table_builder.push(column.clone());
         if let Some(ref mut stb) = snapshots_table_builder {
-            stb.push(column);
+            // In snapshot tables, field-level uniqueness constraints must NOT be
+            // inherited: the table is a historical revision log — multiple revision
+            // rows for the same document share identical field values (e.g. the same
+            // `uid`). Uniqueness is already guaranteed by the composite unique index
+            // on (document_id, revision) that SnapshotsTableBuilder creates.
+            let snapshot_column = Column::new(
+                field.id.normalized(),
+                column_type,
+                None,
+                field.required,
+                false, // never unique in snapshot table
+                None,
+            );
+            stb.push(snapshot_column);
         }
     }
 }
+
 
 fn infer_column_type(field: &DocumentField) -> ColumnType {
     match field.field_type {
