@@ -373,7 +373,6 @@ fn handle_document_fields(
     }
 }
 
-
 fn infer_column_type(field: &DocumentField) -> ColumnType {
     match field.field_type {
         FieldType::Uid => ColumnType::Text,
