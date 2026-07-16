@@ -155,3 +155,59 @@ pub fn build_copy_relations_to_snapshots(
 
     insert_query.build_sqlx(PostgresQueryBuilder)
 }
+
+pub fn build_snapshot_update(
+    document: &DocumentType,
+    instance: &DocumentInstance,
+) -> (String, SqlxValues) {
+    let table_name = format!("{}_snapshots", document.id.normalized());
+    let table = sea_query::TableName::from(table_name);
+
+    let mut query = Query::update();
+    query.table(table);
+
+    // Set columns
+    query.value(
+        Alias::new(PUBLISHED_FIELD_NAME),
+        match &instance.content.publication_state {
+            PublicationState::Published { published_at, .. } => Expr::from(*published_at),
+            _ => Expr::null(),
+        },
+    );
+
+    query.value(
+        Alias::new(PUBLISHED_BY_FIELD_NAME),
+        match &instance.content.publication_state {
+            PublicationState::Published { published_by, .. } => {
+                if let Some(user_id) = published_by {
+                    Expr::from(user_id.to_string())
+                } else {
+                    Expr::null()
+                }
+            }
+            _ => Expr::null(),
+        },
+    );
+
+    query.value(
+        Alias::new(REVISION_FIELD_NAME),
+        match &instance.content.publication_state {
+            PublicationState::Published { revision, .. } | PublicationState::Draft { revision } => {
+                Expr::val(*revision)
+            }
+        },
+    );
+
+    for field in &document.fields {
+        let expr = match instance.content.fields.get(&field.id) {
+            Some(val) => val.into(),
+            None => Expr::null(),
+        };
+        query.value(Alias::new(field.id.normalized()), expr);
+    }
+
+    query.and_where(Expr::col(Alias::new(DOCUMENT_ID_FIELD_NAME)).eq(instance.document_id.0));
+    query.returning(Query::returning().column(Alias::new(SNAPSHOT_ID_FIELD_NAME)));
+
+    query.build_sqlx(PostgresQueryBuilder)
+}

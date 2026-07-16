@@ -3,7 +3,7 @@ use crate::infrastructure::persistence::builders::main_select_columns;
 use luminair_common::persistence::TableNameProviderConstructor;
 use luminair_common::{
     AttributeId, DOCUMENT_ID_FIELD_NAME, DocumentType, OWNING_DOCUMENT_ID_FIELD_NAME,
-    STATUS_FIELD_NAME, TARGET_DOCUMENT_ID_FIELD_NAME, VERSION_FIELD_NAME,
+    SNAPSHOT_ID_FIELD_NAME, STATUS_FIELD_NAME, TARGET_DOCUMENT_ID_FIELD_NAME, VERSION_FIELD_NAME,
 };
 use sea_query::extension::postgres::PgExpr;
 use sea_query::{
@@ -130,5 +130,85 @@ pub fn delete_relation_entry(
         .from_table(relation_table)
         .and_where(owning_id_column.eq(owning_document_id))
         .and_where(target_id_column.eq(target_document_id))
+        .build_sqlx(PostgresQueryBuilder)
+}
+
+/// SELECT target_document_id FROM {relation_snapshot_table} WHERE owning_document_id = $1
+pub fn query_snapshot_relation_target_ids(
+    main_document: &DocumentType,
+    relation_attr: &AttributeId,
+    document_id: Uuid,
+) -> (String, SqlxValues) {
+    let relation_snapshot_table = main_document.relation_snapshot_table(relation_attr);
+    let target_id_col = TARGET_DOCUMENT_ID_FIELD_NAME;
+    let owning_id_col = OWNING_DOCUMENT_ID_FIELD_NAME;
+
+    Query::select()
+        .column(Alias::new(target_id_col))
+        .from(relation_snapshot_table)
+        .and_where(Expr::col(Alias::new(owning_id_col)).eq(document_id))
+        .build_sqlx(PostgresQueryBuilder)
+}
+
+/// SELECT target_document_id FROM {relation_table} WHERE owning_document_id = $1
+pub fn query_working_relation_target_ids(
+    main_document: &DocumentType,
+    relation_attr: &AttributeId,
+    document_id: Uuid,
+) -> (String, SqlxValues) {
+    let relation_table = main_document.relation_table(relation_attr);
+    let target_id_col = TARGET_DOCUMENT_ID_FIELD_NAME;
+    let owning_id_col = OWNING_DOCUMENT_ID_FIELD_NAME;
+
+    Query::select()
+        .column(Alias::new(target_id_col))
+        .from(relation_table)
+        .and_where(Expr::col(Alias::new(owning_id_col)).eq(document_id))
+        .build_sqlx(PostgresQueryBuilder)
+}
+
+/// INSERT INTO {relation_snapshot_table} (snapshot_id, target_document_id, owning_document_id) VALUES ($1, $2, $3)
+pub fn insert_relation_snapshot_entry(
+    main_document: &DocumentType,
+    relation_attr: &AttributeId,
+    snapshot_id: i64,
+    owning_document_id: Uuid,
+    target_document_id: Uuid,
+) -> (String, SqlxValues) {
+    let relation_snapshot_table = main_document.relation_snapshot_table(relation_attr);
+    let snapshot_id_col = SNAPSHOT_ID_FIELD_NAME;
+    let target_id_col = TARGET_DOCUMENT_ID_FIELD_NAME;
+    let owning_id_col = OWNING_DOCUMENT_ID_FIELD_NAME;
+
+    Query::insert()
+        .into_table(relation_snapshot_table)
+        .columns(vec![
+            Alias::new(snapshot_id_col),
+            Alias::new(target_id_col),
+            Alias::new(owning_id_col),
+        ])
+        .values_panic(vec![
+            snapshot_id.into(),
+            target_document_id.into(),
+            owning_document_id.into(),
+        ])
+        .build_sqlx(PostgresQueryBuilder)
+}
+
+/// DELETE FROM {relation_snapshot_table} WHERE snapshot_id = $1 AND target_document_id = $2
+pub fn delete_relation_snapshot_entry(
+    main_document: &DocumentType,
+    relation_attr: &AttributeId,
+    snapshot_id: i64,
+    target_document_id: Uuid,
+) -> (String, SqlxValues) {
+    let relation_snapshot_table = main_document.relation_snapshot_table(relation_attr);
+    let snapshot_id_col = SNAPSHOT_ID_FIELD_NAME;
+    let target_id_col = TARGET_DOCUMENT_ID_FIELD_NAME;
+
+    Query::delete()
+        .from_table(relation_snapshot_table)
+        .and_where(Expr::col(Alias::new(snapshot_id_col)).eq(snapshot_id))
+        .and_where(Expr::col(Alias::new(target_id_col)).eq(target_document_id))
         .build_sqlx(PostgresQueryBuilder)
 }

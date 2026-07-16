@@ -6,10 +6,14 @@ use crate::{
     },
     infrastructure::persistence::builders::{
         find::{query_count_documents, query_find_document_by_criteria, query_find_document_by_id},
-        relations::{delete_relation_entry, insert_relation_entry, query_find_related_documents},
+        relations::{
+            delete_relation_entry, delete_relation_snapshot_entry, insert_relation_entry,
+            insert_relation_snapshot_entry, query_find_related_documents,
+            query_snapshot_relation_target_ids, query_working_relation_target_ids,
+        },
         write::{
-            build_copy_relations_to_snapshots, build_snapshot_insert, delete_document,
-            insert_document, update_document,
+            build_copy_relations_to_snapshots, build_snapshot_insert, build_snapshot_update,
+            delete_document, insert_document, update_document,
         },
     },
 };
@@ -236,25 +240,101 @@ impl DocumentsRepository for PostgresDocumentsRepository {
             // 1. Update main table metadata ONLY (status -> PUBLISHED, revision, published_at, version, updated_at)
             self.update_main_table_metadata_only(document_type, instance)
                 .await?;
-            // 2. Copy row to snapshot table
-            let snapshot_id = self
-                .store_snapshot_for_published_instance(document_type, instance)
-                .await?;
-            // 3. Copy relations to snapshots
+
+            // 2. Insert or Update snapshot row depending on revision
+            let is_update = matches!(
+                &instance.content.publication_state,
+                PublicationState::Published { revision, .. } if *revision > 1
+            );
+
+            let snapshot_id = if is_update {
+                self.update_snapshot_for_published_instance(document_type, instance)
+                    .await?
+            } else {
+                self.store_snapshot_for_published_instance(document_type, instance)
+                    .await?
+            };
+
+            // 3. Diff and update relations
             for relation in &document_type.relations {
                 if !relation.relation_type.is_owning() {
                     continue;
                 }
-                let (sql, values) = build_copy_relations_to_snapshots(
-                    document_type,
-                    &relation.id,
-                    instance.document_id.0,
-                    snapshot_id,
-                );
-                sqlx_query_with(sql, values)
-                    .execute(self.database.database_pool())
-                    .await
-                    .map_err(map_db_error)?;
+
+                if is_update {
+                    // Fetch working table targets
+                    let (working_sql, working_values) = query_working_relation_target_ids(
+                        document_type,
+                        &relation.id,
+                        instance.document_id.0,
+                    );
+                    let working_rows = sqlx_query_with(working_sql, working_values)
+                        .fetch_all(self.database.database_pool())
+                        .await
+                        .map_err(map_db_error)?;
+                    let current_working_ids: std::collections::HashSet<Uuid> = working_rows
+                        .into_iter()
+                        .map(|row| row.get::<Uuid, _>("target_document_id"))
+                        .collect();
+
+                    // Fetch existing snapshot targets
+                    let (snapshot_sql, snapshot_values) = query_snapshot_relation_target_ids(
+                        document_type,
+                        &relation.id,
+                        instance.document_id.0,
+                    );
+                    let snapshot_rows = sqlx_query_with(snapshot_sql, snapshot_values)
+                        .fetch_all(self.database.database_pool())
+                        .await
+                        .map_err(map_db_error)?;
+                    let existing_snapshot_ids: std::collections::HashSet<Uuid> = snapshot_rows
+                        .into_iter()
+                        .map(|row| row.get::<Uuid, _>("target_document_id"))
+                        .collect();
+
+                    // Calculate difference: items to delete
+                    let to_delete = existing_snapshot_ids.difference(&current_working_ids);
+                    for target_id in to_delete {
+                        let (sql, values) = delete_relation_snapshot_entry(
+                            document_type,
+                            &relation.id,
+                            snapshot_id,
+                            *target_id,
+                        );
+                        sqlx_query_with(sql, values)
+                            .execute(self.database.database_pool())
+                            .await
+                            .map_err(map_db_error)?;
+                    }
+
+                    // Calculate difference: items to insert
+                    let to_insert = current_working_ids.difference(&existing_snapshot_ids);
+                    for target_id in to_insert {
+                        let (sql, values) = insert_relation_snapshot_entry(
+                            document_type,
+                            &relation.id,
+                            snapshot_id,
+                            instance.document_id.0,
+                            *target_id,
+                        );
+                        sqlx_query_with(sql, values)
+                            .execute(self.database.database_pool())
+                            .await
+                            .map_err(map_db_error)?;
+                    }
+                } else {
+                    // First publish: copy everything
+                    let (sql, values) = build_copy_relations_to_snapshots(
+                        document_type,
+                        &relation.id,
+                        instance.document_id.0,
+                        snapshot_id,
+                    );
+                    sqlx_query_with(sql, values)
+                        .execute(self.database.database_pool())
+                        .await
+                        .map_err(map_db_error)?;
+                }
             }
         } else {
             // For both remaining use cases, we perform a full content and metadata update on the main table:
@@ -493,6 +573,22 @@ impl PostgresDocumentsRepository {
         instance: &DocumentInstance,
     ) -> Result<i64, RepositoryError> {
         let (sql, values) = build_snapshot_insert(document_type, instance);
+        let row = sqlx_query_with(sql, values)
+            .fetch_one(self.database.database_pool())
+            .await
+            .map_err(map_db_error)?;
+        let snapshot_id: i64 = row.try_get("snapshot_id").map_err(|e| {
+            RepositoryError::DatabaseError(format!("Failed to retrieve snapshot_id: {}", e))
+        })?;
+        Ok(snapshot_id)
+    }
+
+    async fn update_snapshot_for_published_instance(
+        &self,
+        document_type: &DocumentType,
+        instance: &DocumentInstance,
+    ) -> Result<i64, RepositoryError> {
+        let (sql, values) = build_snapshot_update(document_type, instance);
         let row = sqlx_query_with(sql, values)
             .fetch_one(self.database.database_pool())
             .await
