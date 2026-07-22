@@ -112,6 +112,14 @@ pub fn insert_relation_entry(
         .into_table(relation_table)
         .columns(columns)
         .values_panic(vec![owning_document_id.into(), target_document_id.into()])
+        .on_conflict(
+            sea_query::OnConflict::columns(vec![
+                Alias::new(OWNING_DOCUMENT_ID_FIELD_NAME),
+                Alias::new(TARGET_DOCUMENT_ID_FIELD_NAME),
+            ])
+            .do_nothing()
+            .to_owned(),
+        )
         .build_sqlx(PostgresQueryBuilder)
 }
 
