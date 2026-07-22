@@ -13,6 +13,7 @@ pub enum DocumentStatus {
 }
 
 /// Query for finding DocumentInstances
+/// Used in repository for single DocumentType
 #[derive(Debug, Clone)]
 pub struct DocumentInstanceQuery {
     pub filter: FilterExpression,
