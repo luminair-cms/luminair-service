@@ -31,12 +31,12 @@ pub trait DocumentsService: Send + Sync + 'static {
     fn update(
         &self,
         cmd: UpdateDocumentCommand,
-    ) -> impl Future<Output = Result<DocumentInstance, ServiceError>> + Send;
+    ) -> impl Future<Output = Result<(), ServiceError>> + Send;
 
     fn update_with_relations(
         &self,
         cmd: UpdateDocumentWithRelationsCommand,
-    ) -> impl Future<Output = Result<DocumentInstance, ServiceError>> + Send;
+    ) -> impl Future<Output = Result<(), ServiceError>> + Send;
 
     fn delete(
         &self,
@@ -46,7 +46,7 @@ pub trait DocumentsService: Send + Sync + 'static {
     fn publish(
         &self,
         cmd: PublishDocumentCommand,
-    ) -> impl Future<Output = Result<DocumentInstance, ServiceError>> + Send;
+    ) -> impl Future<Output = Result<(), ServiceError>> + Send;
 
     fn modify_relations(
         &self,

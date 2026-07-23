@@ -153,7 +153,7 @@ pub async fn update_document_handler<S: AppState>(
     State(state): State<S>,
     Path((api_type, id)): Path<(String, String)>,
     Json(payload): Json<serde_json::Value>,
-) -> Result<ApiSuccess<OneDocumentResponse>, ApiError> {
+) -> Result<StatusCode, ApiError> {
     let document_type = resolve_document_type(&state, &api_type)?;
     let document_instance_id = DocumentInstanceId::try_from(&id)?;
 
@@ -172,14 +172,9 @@ pub async fn update_document_handler<S: AppState>(
         user_id: None,
     };
 
-    let updated_instance = state.documents_service().update_with_relations(cmd).await?;
+    state.documents_service().update_with_relations(cmd).await?;
 
-    Ok(ApiSuccess::new(
-        StatusCode::OK,
-        OneDocumentResponse::from_optional(Some(updated_instance)).ok_or_else(|| {
-            ApiError::NotFound("Document instance not found after update".to_string())
-        })?,
-    ))
+    Ok(StatusCode::NO_CONTENT)
 }
 
 pub async fn delete_existing_document<S: AppState>(
@@ -203,7 +198,7 @@ pub async fn delete_existing_document<S: AppState>(
 pub async fn publish_document<S: AppState>(
     State(state): State<S>,
     Path((api_type, id)): Path<(String, String)>,
-) -> Result<ApiSuccess<OneDocumentResponse>, ApiError> {
+) -> Result<StatusCode, ApiError> {
     let document_type = resolve_document_type(&state, &api_type)?;
     let document_instance_id = DocumentInstanceId::try_from(&id)?;
 
@@ -213,16 +208,11 @@ pub async fn publish_document<S: AppState>(
         user_id: None,
     };
 
-    let published_instance = state
+    state
         .documents_service()
         .publish(cmd)
         .await
         .map_err(ApiError::from)?;
 
-    Ok(ApiSuccess::new(
-        StatusCode::OK,
-        OneDocumentResponse::from_optional(Some(published_instance)).ok_or_else(|| {
-            ApiError::NotFound("Document instance not found after publish".to_string())
-        })?,
-    ))
+    Ok(StatusCode::NO_CONTENT)
 }

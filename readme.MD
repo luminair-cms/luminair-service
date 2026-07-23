@@ -32,6 +32,7 @@ This project is early stage and is primarily built as a Rust learning platform u
 - Schema-driven content modeling
 - Field-level i18n support
 - Separation between domain logic and infrastructure
+- Command & Query Segregation (CQS): Mutation operations (`create`, `update`, `publish`, `delete`) return identifiers or status only, delegating state retrieval strictly to Query operations (`find`, `find_by_id`).
 - Minimal REST API conventions inspired by Strapi
 
 ## Database Migrations

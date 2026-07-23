@@ -23,7 +23,7 @@ async fn populate_loads_related_documents() -> anyhow::Result<()> {
         &format!(r#"{{"data": {{"category": {{"connect": ["{cat_id}"]}}}}}}"#),
     )
     .await?;
-    assert_eq!(status, StatusCode::OK);
+    assert_eq!(status, StatusCode::NO_CONTENT);
 
     // Fetch with ?populate=category
     let (status, json) = get_json(
@@ -62,7 +62,7 @@ async fn connect_and_disconnect_relation() -> anyhow::Result<()> {
         &format!(r#"{{"data": {{"category": {{"connect": ["{cat_id}"]}}}}}}"#),
     )
     .await?;
-    assert_eq!(status, StatusCode::OK, "connect should return 200");
+    assert_eq!(status, StatusCode::NO_CONTENT, "connect should return 204");
 
     let (_, json) = get_json(
         &router,
@@ -84,7 +84,7 @@ async fn connect_and_disconnect_relation() -> anyhow::Result<()> {
         &format!(r#"{{"data": {{"category": {{"disconnect": ["{cat_id}"]}}}}}}"#),
     )
     .await?;
-    assert_eq!(status, StatusCode::OK, "disconnect should return 200");
+    assert_eq!(status, StatusCode::NO_CONTENT, "disconnect should return 204");
 
     let (_, json) = get_json(
         &router,
@@ -120,8 +120,7 @@ async fn publish_draft_makes_document_visible_as_published() -> anyhow::Result<(
     assert_eq!(status, StatusCode::NOT_FOUND, "should not be published yet");
 
     // Publish
-    let published = publish_document(&router, &loc).await?;
-    assert_eq!(published["data"]["uid"], "pub-brd");
+    publish_document(&router, &loc).await?;
 
     // Now available as published (default status)
     let (status, json) = get_json(&router, &loc).await?;

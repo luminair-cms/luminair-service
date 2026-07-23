@@ -87,6 +87,15 @@ Publication is modeled as two separate concerns:
 
 This allows the system to track both the publication workflow and the overall history of changes.
 
+## Command & Query Segregation (CQS)
+
+The application layer follows strict Command & Query Separation principles:
+
+- **Commands** (`create`, `update`, `publish`, `delete`, `modify_relations`) execute state mutations. Commands return resource identifiers (e.g. `DocumentInstanceId` on `create`) or execution status (`Result<(), ServiceError>`), but do not return full domain state entity objects.
+- **Queries** (`find`, `find_by_id`) handle reading and populating domain state representations.
+
+HTTP mutation handlers reflect this design by returning HTTP `204 No Content` for updates and publications, relying on clients to fetch updated data via query endpoints or query cache invalidation.
+
 ## Schema-driven design
 
 The backend is driven by JSON schema definitions under `config/schema/`.

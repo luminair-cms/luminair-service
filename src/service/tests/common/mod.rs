@@ -177,16 +177,16 @@ pub async fn create_document(
     Ok(loc)
 }
 
-/// POST to `{document_uri}/publish`; returns the published document JSON.
-pub async fn publish_document(router: &TestRouter, document_uri: &str) -> anyhow::Result<Value> {
+/// POST to `{document_uri}/publish`; returns Ok(()).
+pub async fn publish_document(router: &TestRouter, document_uri: &str) -> anyhow::Result<()> {
     let (status, _, bytes) = post_json(router, &format!("{document_uri}/publish"), "{}").await?;
     assert_eq!(
         status,
-        StatusCode::OK,
+        StatusCode::NO_CONTENT,
         "publish failed: {}",
         String::from_utf8_lossy(&bytes)
     );
-    Ok(serde_json::from_slice(&bytes)?)
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------

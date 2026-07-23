@@ -170,7 +170,7 @@ impl<R: DocumentsRepository> DocumentsService for DocumentsServiceImpl<R> {
         Ok(created_id)
     }
 
-    async fn update(&self, cmd: UpdateDocumentCommand) -> Result<DocumentInstance, ServiceError> {
+    async fn update(&self, cmd: UpdateDocumentCommand) -> Result<(), ServiceError> {
         // Updates are applied to the draft row — the published row is immutable
         // until the next `publish()` call propagates the draft forward.
         let query = DocumentInstanceQuery::new().with_status(DocumentStatus::Draft);
@@ -193,13 +193,13 @@ impl<R: DocumentsRepository> DocumentsService for DocumentsServiceImpl<R> {
         }
 
         self.repository.update(cmd.document_type, &instance).await?;
-        Ok(instance)
+        Ok(())
     }
 
     async fn update_with_relations(
         &self,
         cmd: UpdateDocumentWithRelationsCommand,
-    ) -> Result<DocumentInstance, ServiceError> {
+    ) -> Result<(), ServiceError> {
         if !cmd.fields.is_empty() {
             let update_cmd = UpdateDocumentCommand {
                 document_type: cmd.document_type,
@@ -219,19 +219,7 @@ impl<R: DocumentsRepository> DocumentsService for DocumentsServiceImpl<R> {
             self.modify_relations(modify_cmd).await?;
         }
 
-        // Return the fully updated document state (with status: Draft)
-        let query = DocumentInstanceQuery::new().with_status(DocumentStatus::Draft);
-        let find_cmd = FindByIdCommand {
-            document_type: cmd.document_type,
-            document_instance_id: cmd.document_id,
-            populate: None,
-            populate_filters: None,
-            query,
-        };
-
-        self.find_by_id(find_cmd)
-            .await?
-            .ok_or(ServiceError::DocumentNotFound)
+        Ok(())
     }
 
     async fn delete(&self, cmd: DeleteDocumentCommand) -> Result<(), ServiceError> {
@@ -241,7 +229,7 @@ impl<R: DocumentsRepository> DocumentsService for DocumentsServiceImpl<R> {
             .map_err(ServiceError::from)
     }
 
-    async fn publish(&self, cmd: PublishDocumentCommand) -> Result<DocumentInstance, ServiceError> {
+    async fn publish(&self, cmd: PublishDocumentCommand) -> Result<(), ServiceError> {
         // Publish always operates on the draft row — the state machine lives in
         // `DocumentInstance::publish`, the repository only persists the result.
         // TODO: if the document is already published, this will return an AlreadyPublished error.
@@ -257,7 +245,7 @@ impl<R: DocumentsRepository> DocumentsService for DocumentsServiceImpl<R> {
         instance.audit.updated_by = cmd.user_id;
 
         self.repository.update(cmd.document_type, &instance).await?;
-        Ok(instance)
+        Ok(())
     }
 
     async fn modify_relations(&self, cmd: ModifyRelationsCommand) -> Result<(), ServiceError> {
